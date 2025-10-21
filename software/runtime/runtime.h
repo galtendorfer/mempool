@@ -180,17 +180,13 @@ static inline void mempool_reset_heap(const uint32_t core_id, uint32_t heap_seq_
 
 
 // Initialize Dynamic Heap Allocator, as default specified in the linker script
-// @inp (uint32_t) group_factor: Number of Tiles per partition 
-static inline void mempool_dynamic_heap_alloc_init(const uint32_t core_id, const uint32_t group_factor){
+static inline void mempool_dynamic_heap_alloc_init(const uint32_t core_id, const uint32_t tiles_per_partition){
   if (core_id == 0){
     extern uint32_t __heap_seq_start;
-    uint32_t num_tiles_per_partition = group_factor;
-
-
     // Dynamic allocator base and size
     uint32_t seq_heap_base = (uint32_t)&__heap_seq_start;
-    uint32_t seq_heap_size = NUM_CORES_PER_TILE * num_tiles_per_partition * HEAP_SEQ_MEM_SIZE;
-    uint32_t num_partition = mempool_get_tile_count() / group_factor;
+    uint32_t seq_heap_size = (NUM_CORES_PER_TILE * tiles_per_partition) * DAS_MEM_SIZE;
+    uint32_t num_partition = mempool_get_tile_count() / tiles_per_partition;
     // Dynamically allocate the space for allocators 
     init_dynamic_heap_alloc(num_partition); 
     for (uint32_t part_id=0; part_id<num_partition; ++part_id){
@@ -203,16 +199,16 @@ static inline void mempool_dynamic_heap_alloc_init(const uint32_t core_id, const
 
 // Reset Dynamic Heap region with explicit start address specification
 // A UNIFIED allocator will be used
-static inline void mempool_dynamic_heap_alloc_reset(const uint32_t core_id, const uint32_t group_factor, uint32_t heap_seq_start){
+static inline void mempool_dynamic_heap_alloc_reset(const uint32_t core_id, const uint32_t tiles_per_partition, uint32_t heap_seq_start){
   if (core_id == 0){
     extern uint32_t __heap_end;
     // Dynamic allocator base and size
     uint32_t seq_heap_base = heap_seq_start;
     uint32_t seq_heap_size = (uint32_t)&__heap_end - heap_seq_start;
-    uint32_t num_partition = mempool_get_tile_count() / group_factor;
+    uint32_t num_partition = mempool_get_tile_count() / tiles_per_partition;
     // Dynamically allocate the space for allocators 
     init_dynamic_heap_alloc(num_partition); 
-    for (uint32_t part_id=0; part_id<num_partition; ++part_id){
+    for (uint32_t part_id=0; part_id < num_partition; ++part_id){
       alloc_t *dynamic_heap_allocator = get_dynamic_heap_alloc(part_id);
       alloc_init(dynamic_heap_allocator, (uint32_t *)seq_heap_base, seq_heap_size);
       seq_heap_base += seq_heap_size;
@@ -299,26 +295,25 @@ static inline void set_wake_up_offset(uint32_t offset) {
 }
 
 // Partition Configuration
-static inline void partition_config (uint32_t reg_sel, uint32_t group_factor){
+static inline void partition_config (uint32_t reg_sel, uint32_t tiles_per_partition){
   asm volatile("" ::: "memory");
   switch (reg_sel){
     case 0: 
-      *partition_reg = group_factor;
+      *partition_reg = tiles_per_partition;
       break;
     case 1: 
-      *partition1_reg = group_factor;
+      *partition1_reg = tiles_per_partition;
       break;
     case 2: 
-      *partition2_reg = group_factor;
+      *partition2_reg = tiles_per_partition;
       break;
     case 3: 
-      *partition3_reg = group_factor;
+      *partition3_reg = tiles_per_partition;
       break;
     default:
-      *partition_reg = group_factor;
+      *partition_reg = tiles_per_partition;
       break;
   }
-  // partition_reg = group_factor;
   asm volatile("" ::: "memory");
 } 
 
