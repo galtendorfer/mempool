@@ -54,25 +54,47 @@ static uint32_t volatile *wake_up_offset_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
                           CONTROL_REGISTERS_WAKE_UP_OFFST_REG_OFFSET);
 
-/* DAS-related regs
+/* DAS-related regs */
 
-extern volatile uint32_t partition_reg;
-extern volatile uint32_t partition1_reg;
-extern volatile uint32_t partition2_reg;
-extern volatile uint32_t partition3_reg;
+static uint32_t volatile *partition_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_PARTITION_SEL_0_REG_OFFSET);
+static uint32_t volatile *partition1_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_PARTITION_SEL_1_REG_OFFSET);
+static uint32_t volatile *partition2_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_PARTITION_SEL_2_REG_OFFSET);
+static uint32_t volatile *partition3_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_PARTITION_SEL_3_REG_OFFSET);
 
-extern volatile uint32_t start_addr_scheme0_reg;
-extern volatile uint32_t start_addr_scheme1_reg;
-extern volatile uint32_t start_addr_scheme2_reg;
-extern volatile uint32_t start_addr_scheme3_reg;
+static uint32_t volatile *start_addr_scheme0_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_START_ADDR_SCHEME_0_REG_OFFSET);
+static uint32_t volatile *start_addr_scheme1_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_START_ADDR_SCHEME_1_REG_OFFSET);
+static uint32_t volatile *start_addr_scheme2_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_START_ADDR_SCHEME_2_REG_OFFSET);
+static uint32_t volatile *start_addr_scheme3_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_START_ADDR_SCHEME_3_REG_OFFSET);
 
-extern volatile uint32_t allocated_size0_reg;
-extern volatile uint32_t allocated_size1_reg;
-extern volatile uint32_t allocated_size2_reg;
-extern volatile uint32_t allocated_size3_reg;
+static uint32_t volatile *allocated_size0_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_ALLOCATED_SIZE_0_REG_OFFSET);
+static uint32_t volatile *allocated_size1_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_ALLOCATED_SIZE_1_REG_OFFSET);
+static uint32_t volatile *allocated_size2_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_ALLOCATED_SIZE_2_REG_OFFSET);
+static uint32_t volatile *allocated_size3_reg =
+    (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
+                          CONTROL_REGISTERS_ALLOCATED_SIZE_3_REG_OFFSET);
 
-extern volatile uint32_t dma_mode_reg;
-*/             
 
 typedef uint32_t mempool_id_t;
 typedef uint32_t mempool_timer_t;

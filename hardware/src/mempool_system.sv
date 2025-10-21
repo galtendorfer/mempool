@@ -144,24 +144,23 @@ module mempool_system
     .TCDMBaseAddr(TCDMBaseAddr),
     .BootAddr    (BootAddr    )
   ) i_mempool_cluster (
-    .clk_i          (clk_i                          ),
-    .rst_ni         (rst_ni                         ),
-    .wake_up_i      (wake_up                        ),
-    .partition_sel_i(partition_sel                  ),
-    .allocated_size_i   (allocated_size),
-    .start_addr_scheme_i(start_addr_scheme          ),
-    .dma_mode_i         (dma_mode[1:0]),
-    .testmode_i     (1'b0                           ),
-    .scan_enable_i  (1'b0                           ),
-    .scan_data_i    (1'b0                           ),
-    .scan_data_o    (/* Unused */                   ),
-    .ro_cache_ctrl_i(ro_cache_ctrl                  ),
-    .dma_req_i      (dma_req                        ),
-    .dma_req_valid_i(dma_req_valid                  ),
-    .dma_req_ready_o(dma_req_ready                  ),
-    .dma_meta_o     (dma_meta                       ),
-    .axi_mst_req_o  (axi_mst_req[NumAXIMasters-2:0] ),
-    .axi_mst_resp_i (axi_mst_resp[NumAXIMasters-2:0])
+    .clk_i              (clk_i                          ),
+    .rst_ni             (rst_ni                         ),
+    .wake_up_i          (wake_up                        ),
+    .partition_sel_i    (partition_sel                  ),
+    .allocated_size_i   (allocated_size                 ),
+    .start_addr_scheme_i(start_addr_scheme              ),
+    .testmode_i         (1'b0                           ),
+    .scan_enable_i      (1'b0                           ),
+    .scan_data_i        (1'b0                           ),
+    .scan_data_o        (/* Unused */                   ),
+    .ro_cache_ctrl_i    (ro_cache_ctrl                  ),
+    .dma_req_i          (dma_req                        ),
+    .dma_req_valid_i    (dma_req_valid                  ),
+    .dma_req_ready_o    (dma_req_ready                  ),
+    .dma_meta_o         (dma_meta                       ),
+    .axi_mst_req_o      (axi_mst_req[NumAXIMasters-2:0] ),
+    .axi_mst_resp_i     (axi_mst_resp[NumAXIMasters-2:0])
   );
 
   /**********************
@@ -813,7 +812,10 @@ module mempool_system
     .eoc_o                (/* Unused */                    ),
     .eoc_valid_o          (eoc_valid_o                     ),
     .wake_up_o            (wake_up                         ),
-    .ro_cache_ctrl_o      (ro_cache_ctrl                   )
+    .ro_cache_ctrl_o      (ro_cache_ctrl                   ),
+    .partition_sel_o      (partition_sel                   ),
+    .start_addr_scheme_o  (start_addr_scheme               ),
+    .allocated_size_o     (allocated_size                  )
   );
 
   mempool_dma #(

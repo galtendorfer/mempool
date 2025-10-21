@@ -71,6 +71,100 @@
       hwqe: "true"
       fields: [{ bits: "31:0" }]
     },
+
+    { name: "partition_sel_0"
+      desc: "Tile grouping for partition 1"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      resval: 128 // Number of tiles
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "partition_sel_1"
+      desc: "Tile grouping for partition 2"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      resval: 128 // Number of tiles
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "partition_sel_2"
+      desc: "Tile grouping for partition 3"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      resval: 128 // Number of tiles
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "partition_sel_3"
+      desc: "Tile grouping for partition 4"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      resval: 128 // Number of tiles
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "allocated_size_0"
+      desc: "Allocated size on partition 0"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "allocated_size_1"
+      desc: "Allocated size on partition 1"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "allocated_size_2"
+      desc: "Allocated size on partition 2"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "allocated_size_3"
+      desc: "Allocated size on partition 3"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "start_addr_scheme_0"
+      desc: "Allocated size on partition 0"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      resval: 4194304 // 0x400000 starting point of the L1
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "start_addr_scheme_1"
+      desc: "Allocated size on partition 1"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      resval: 4194304 // 0x400000 starting point of the L1
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "start_addr_scheme_2"
+      desc: "Allocated size on partition 2"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      resval: 4194304 // 0x400000 starting point of the L1
+      fields: [{ bits: "31:0" }]
+    },
+    { name: "start_addr_scheme_3"
+      desc: "Allocated size on partition 3"
+      swaccess: "wo"
+      hwaccess: "hro"
+      hwqe: "true"
+      resval: 4194304 // 0x400000 starting point of the L1
+      fields: [{ bits: "31:0" }]
+    },
+
     { name: "tcdm_start_address"
       desc: "TCDM Start Address Register"
       swaccess: "ro"

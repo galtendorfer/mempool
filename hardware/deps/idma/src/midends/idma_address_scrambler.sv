@@ -21,15 +21,15 @@ module idma_address_scrambler #(
   parameter int unsigned MemSizePerRow         = 4*4*1024,  // 4bytes * 4096 banks
   parameter int unsigned TCDMSize              = 1024*1024
 ) (
-  input  logic [AddrWidth-1:0] address_i,
-  input  logic [31:0]          num_bytes_i,
+  input  logic [AddrWidth-1:0]      address_i,
+  input  logic [31:0]               num_bytes_i,
   input  logic [3:0][7:0]           group_factor_i,
   // For each allocation, the maximum number of rows assigned can be 128 rows
   input  logic [3:0][7:0]           allocated_size_i,
   input  logic [3:0][DataWidth-1:0] start_addr_scheme_i,
-  output logic [7:0]           group_factor_o,
-  output logic [7:0]           allocated_size_o,
-  output logic [AddrWidth-1:0] address_o
+  output logic [7:0]                group_factor_o,
+  output logic [7:0]                allocated_size_o,
+  output logic [AddrWidth-1:0]      address_o
 );
   // Basic Settings
   localparam int unsigned BankOffsetBits    = $clog2(NumBanksPerTile);

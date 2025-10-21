@@ -64,7 +64,6 @@ module mempool_group
   input  logic                            [3:0][PartitionDataWidth-1:0]          partition_sel_i,
   input  logic                            [3:0][PartitionDataWidth-1:0]          allocated_size_i,
   input  logic                            [3:0][DataWidth-1:0]                   start_addr_scheme_i,
-  input  logic                            [1:0]                                  dma_mode_i,
   // RO-Cache configuration
   input  `STRUCT_PORT(ro_cache_ctrl_t)                                           ro_cache_ctrl_i,
   // DMA request
@@ -582,21 +581,20 @@ module mempool_group
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
     ) i_idma_distributed_midend_v2 (
-      .clk_i       (clk_i            ),
-      .rst_ni      (rst_ni           ),
+      .clk_i           (clk_i                   ),
+      .rst_ni          (rst_ni                  ),
       // slave
-      .burst_req_i (dma_req_cut      ),
-      .valid_i     (dma_req_cut_valid),
-      .ready_o     (dma_req_cut_ready),
-      .meta_o      (dma_meta_cut     ),
+      .burst_req_i     (dma_req_cut             ),
+      .valid_i         (dma_req_cut_valid       ),
+      .ready_o         (dma_req_cut_ready       ),
+      .meta_o          (dma_meta_cut            ),
       // partition
       .allocated_size_i(dma_allocated_size_sel_i),
-      .dma_mode_i      (dma_mode_i),
       // master
-      .burst_req_o (dma_req          ),
-      .valid_o     (dma_req_valid    ),
-      .ready_i     (dma_req_ready    ),
-      .meta_i      (dma_meta         )
+      .burst_req_o     (dma_req                 ),
+      .valid_o         (dma_req_valid           ),
+      .ready_i         (dma_req_ready           ),
+      .meta_i          (dma_meta                )
     );
 
   `else
@@ -1000,21 +998,20 @@ module mempool_group
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
     ) i_idma_distributed_midend_v2 (
-      .clk_i       (clk_i            ),
-      .rst_ni      (rst_ni           ),
+      .clk_i           (clk_i                   ),
+      .rst_ni          (rst_ni                  ),
       // slave
-      .burst_req_i (dma_req_cut      ),
-      .valid_i     (dma_req_cut_valid),
-      .ready_o     (dma_req_cut_ready),
-      .meta_o      (dma_meta_cut     ),
+      .burst_req_i     (dma_req_cut             ),
+      .valid_i         (dma_req_cut_valid       ),
+      .ready_o         (dma_req_cut_ready       ),
+      .meta_o          (dma_meta_cut            ),
       // partition
       .allocated_size_i(dma_allocated_size_sel_i),
-      .dma_mode_i      (dma_mode_i),
       // master
-      .burst_req_o (dma_req          ),
-      .valid_o     (dma_req_valid    ),
-      .ready_i     (dma_req_ready    ),
-      .meta_i      (dma_meta         )
+      .burst_req_o     (dma_req                 ),
+      .valid_o         (dma_req_valid           ),
+      .ready_i         (dma_req_ready           ),
+      .meta_i          (dma_meta                )
     );
 
     // xbar

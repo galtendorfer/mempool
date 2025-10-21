@@ -17,32 +17,30 @@ module mempool_cluster
   parameter int    unsigned        NumAXIMasters = NumGroups * NumAXIMastersPerGroup
 ) (
   // Clock and reset
-  input  logic                               clk_i,
-  input  logic                               rst_ni,
-  input  logic                               testmode_i,
+  input  logic                                         clk_i,
+  input  logic                                         rst_ni,
+  input  logic                                         testmode_i,
   // Scan chain
-  input  logic                               scan_enable_i,
-  input  logic                               scan_data_i,
-  output logic                               scan_data_o,
+  input  logic                                         scan_enable_i,
+  input  logic                                         scan_data_i,
+  output logic                                         scan_data_o,
   // Wake up signal
-  input  logic           [NumCores-1:0]      wake_up_i,
+  input  logic           [NumCores-1:0]                wake_up_i,
   // Partition Selection
   input  logic           [3:0][PartitionDataWidth-1:0] partition_sel_i,
   input  logic           [3:0][PartitionDataWidth-1:0] allocated_size_i,
   input  logic           [3:0][DataWidth-1:0]          start_addr_scheme_i,
-  // DMA Mode Selection
-  input  logic           [1:0]               dma_mode_i,
   // RO-Cache configuration
-  input  ro_cache_ctrl_t                     ro_cache_ctrl_i,
+  input  ro_cache_ctrl_t                               ro_cache_ctrl_i,
   // DMA request
-  input  dma_req_t                           dma_req_i,
-  input  logic                               dma_req_valid_i,
-  output logic                               dma_req_ready_o,
+  input  dma_req_t                                     dma_req_i,
+  input  logic                                         dma_req_valid_i,
+  output logic                                         dma_req_ready_o,
   // DMA status
-  output dma_meta_t                          dma_meta_o,
+  output dma_meta_t                                    dma_meta_o,
   // AXI Interface
-  output axi_tile_req_t  [NumAXIMasters-1:0] axi_mst_req_o,
-  input  axi_tile_resp_t [NumAXIMasters-1:0] axi_mst_resp_i
+  output axi_tile_req_t  [NumAXIMasters-1:0]           axi_mst_req_o,
+  input  axi_tile_resp_t [NumAXIMasters-1:0]           axi_mst_resp_i
 );
 
   /*********************
@@ -107,25 +105,22 @@ module mempool_cluster
     .burst_req_t    (dma_req_t                   ),
     .meta_t         (dma_meta_t                  )
   ) i_idma_split_midend_v2 (
-    .clk_i      (clk_i              ),
-    .rst_ni     (rst_ni             ),
+    .clk_i              (clk_i                  ),
+    .rst_ni             (rst_ni                 ),
     // slave
-    .burst_req_i(dma_req_cut        ),
-    .valid_i    (dma_req_cut_valid  ),
-    .ready_o    (dma_req_cut_ready  ),
-    .meta_o     (dma_meta_cut       ),
-    // master
-    .dma_mode_i         (dma_mode_i),
-    .burst_req_o(dma_req_partition      ),
-    .valid_o    (dma_req_partition_valid),
-    .ready_i    (dma_req_partition_ready),
-    .meta_i     (dma_meta_partition     ),
-
+    .burst_req_i        (dma_req_cut            ),
+    .valid_i            (dma_req_cut_valid      ),
+    .ready_o            (dma_req_cut_ready      ),
+    .meta_o             (dma_meta_cut           ),
+    .burst_req_o        (dma_req_partition      ),
+    .valid_o            (dma_req_partition_valid),
+    .ready_i            (dma_req_partition_ready),
+    .meta_i             (dma_meta_partition     ),
     // partition information
-    .group_factor_i        (partition_sel_i            ),
-    .allocated_size_i      (allocated_size_i           ),
-    .start_addr_scheme_i   (start_addr_scheme_i        ),
-    .allocated_size_o   (allocated_size_sel)
+    .group_factor_i     (partition_sel_i        ),
+    .allocated_size_i   (allocated_size_i       ),
+    .start_addr_scheme_i(start_addr_scheme_i    ),
+    .allocated_size_o   (allocated_size_sel     )
   );
 
   idma_distributed_midend_v2 #(
@@ -137,21 +132,20 @@ module mempool_cluster
     .burst_req_t    (dma_req_t            ),
     .meta_t         (dma_meta_t           )
   ) i_idma_distributed_midend_v2 (
-    .clk_i       (clk_i              ),
-    .rst_ni      (rst_ni             ),
+    .clk_i           (clk_i                  ),
+    .rst_ni          (rst_ni                 ),
     // slave
-    .burst_req_i (dma_req_partition      ),
-    .valid_i     (dma_req_partition_valid),
-    .ready_o     (dma_req_partition_ready),
-    .meta_o      (dma_meta_partition     ),
+    .burst_req_i     (dma_req_partition      ),
+    .valid_i         (dma_req_partition_valid),
+    .ready_o         (dma_req_partition_ready),
+    .meta_o          (dma_meta_partition     ),
     // partition info
-    .allocated_size_i(allocated_size_sel),
-    .dma_mode_i      (dma_mode_i),
+    .allocated_size_i(allocated_size_sel     ),
     // master
-    .burst_req_o (dma_req_group      ),
-    .valid_o     (dma_req_group_valid),
-    .ready_i     (dma_req_group_ready),
-    .meta_i      (dma_meta_q         )
+    .burst_req_o     (dma_req_group          ),
+    .valid_o         (dma_req_group_valid    ),
+    .ready_i         (dma_req_group_ready    ),
+    .meta_i          (dma_meta_q             )
   );
 
   for (genvar g = 0; unsigned'(g) < NumGroups; g++) begin: gen_dma_req_group_register
@@ -327,7 +321,6 @@ module mempool_cluster
           .partition_sel_i         (partition_sel_i                                                 ),
           .start_addr_scheme_i     (start_addr_scheme_i                                             ),
           .allocated_size_i        (allocated_size_i                                                ),
-          .dma_mode_i              (dma_mode_i                                                      ),
           .ro_cache_ctrl_i         (ro_cache_ctrl_q[g]                                              ),
           // DMA request
           .dma_req_i               (dma_req_group_q[g]                                              ),
@@ -373,7 +366,6 @@ module mempool_cluster
           .partition_sel_i         (partition_sel_i                                                 ),
           .start_addr_scheme_i     (start_addr_scheme_i                                             ),
           .allocated_size_i        (allocated_size_i                                                ),
-          .dma_mode_i              (dma_mode_i                                                      ),
           .ro_cache_ctrl_i         (ro_cache_ctrl_q[g]                                              ),
           // DMA request
           .dma_req_i               (dma_req_group_q[g]                                              ),
@@ -416,7 +408,6 @@ module mempool_cluster
           .partition_sel_i         (partition_sel_i                                                 ),
           .start_addr_scheme_i     (start_addr_scheme_i                                             ),
           .allocated_size_i        (allocated_size_i                                                ),
-          .dma_mode_i              (dma_mode_i                                                      ),
           .ro_cache_ctrl_i         (ro_cache_ctrl_q[g]                                              ),
           // DMA request
           .dma_req_i               (dma_req_group_q[g]                                              ),

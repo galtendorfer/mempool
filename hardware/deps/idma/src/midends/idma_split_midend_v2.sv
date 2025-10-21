@@ -28,17 +28,16 @@ module idma_split_midend_v2 #(
   output meta_t      meta_o,
 
   // Partition related signals
-  input  logic [1:0]                dma_mode_i,
   input  logic [3:0][7:0]           group_factor_i,
   input  logic [3:0][7:0]           allocated_size_i,
   input  logic [3:0][AddrWidth-1:0] start_addr_scheme_i,
   output logic [7:0]                allocated_size_o,
 
   // Master
-  output burst_req_t burst_req_o,
-  output logic       valid_o,
-  input  logic       ready_i,
-  input  meta_t      meta_i
+  output burst_req_t                burst_req_o,
+  output logic                      valid_o,
+  input  logic                      ready_i,
+  input  meta_t                     meta_i
 );
 
   // ------ Parameter Settings ------ //
@@ -198,182 +197,77 @@ module idma_split_midend_v2 #(
 
     unique case (state_q)
       Idle: begin
-        if (valid_i) begin 
-          unique case (dma_mode_i)
-            // ------ Std Mode ------ //
-            2'b00: begin 
-              if ( (DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0]) >= burst_req_i.num_bytes) begin
-                burst_req_o = burst_req_i;
-                valid_o = 1'b1;
-                ready_o = ready_i;
-                req_valid = ready_i;
-              end else begin
-                // Store and acknowledge
-                req_d = burst_req_i;
-                ready_o = 1'b1;
-                burst_req_o = burst_req_i;
-                // Calculate the size for the 1st burst
-                burst_req_o.num_bytes = DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
-                valid_o = 1'b1;
+        if (valid_i) begin
 
-                // Modify the stored info after first beat sent
-                if (ready_i) begin
-                  req_d.num_bytes -= DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
-                  req_d.src += DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
-                  req_d.dst += DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
-                  req_valid = 1'b1;
-                end
-                state_d = Busy;
-              end
+`ifdef DAS
+          if ( (PartitionDmaRegionWidth-masked_start_addr) >= burst_req_i.num_bytes ) begin
+            burst_req_o = burst_req_i;
+            // Address in SPM need to be translated back to physical address
+            if (spm2dram) begin
+              burst_req_o.src = post_scramble_src;
+            end else begin
+              burst_req_o.dst = post_scramble_dst;
             end
-
-            // ------ Fast Mode ------ //
-            2'b01: begin  
-              if ( (PartitionDmaRegionWidth-masked_start_addr) >= burst_req_i.num_bytes ) begin
-                burst_req_o = burst_req_i;
-                // Address in SPM need to be translated back to physical address
-                if (spm2dram) begin
-                  burst_req_o.src = post_scramble_src;
-                end else begin
-                  burst_req_o.dst = post_scramble_dst;
-                end
-                valid_o = 1'b1;
-                ready_o = ready_i;
-                req_valid = ready_i;
+            valid_o = 1'b1;
+            ready_o = ready_i;
+            req_valid = ready_i;
+          end else begin
+            // Store and acknowledge
+            req_d = burst_req_i;
+            ready_o = 1'b1;
+            burst_req_o = burst_req_i;
+            // Calculate the size for the 1st burst
+            burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
+            // TODO (bowwang): parameterize
+            req_d.num_bytes       = (group_factor_sel <= 8) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
+            if (spm2dram) begin
+              burst_req_o.src = post_scramble_src;
+              req_d.src       = post_scramble_src;
+            end else begin
+              burst_req_o.dst = post_scramble_dst;
+              req_d.dst       = post_scramble_dst;
+            end
+            valid_o = 1'b1;
+            // Modify the stored info after first beat sent
+            if (ready_i) begin
+              // TODO (bowwang): May not be mecessary to consider alignment
+              req_d.num_bytes -= PartitionDmaRegionWidth-masked_start_addr;
+              if (spm2dram) begin
+                req_d.src += DmaRegionWidth-masked_start_addr;
+                req_d.dst += PartitionDmaRegionWidth-masked_start_addr;
               end else begin
-                // Store and acknowledge
-                req_d = burst_req_i;
-                ready_o = 1'b1;
-                burst_req_o = burst_req_i;
-                // Calculate the size for the 1st burst
-                burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
-                // TODO (bowwang): parameterize
-                req_d.num_bytes       = (group_factor_sel <= 8) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
-                if (spm2dram) begin
-                  burst_req_o.src = post_scramble_src;
-                  req_d.src       = post_scramble_src;
-                end else begin
-                  burst_req_o.dst = post_scramble_dst;
-                  req_d.dst       = post_scramble_dst;
-                end
-                valid_o = 1'b1;
-
-                // Modify the stored info after first beat sent
-                if (ready_i) begin
-                  // TODO (bowwang): May not be mecessary to consider alignment
-                  req_d.num_bytes -= PartitionDmaRegionWidth-masked_start_addr;
-                  if (spm2dram) begin
-                    req_d.src += DmaRegionWidth-masked_start_addr;
-                    req_d.dst += PartitionDmaRegionWidth-masked_start_addr;
-                  end else begin
-                    req_d.src += PartitionDmaRegionWidth-masked_start_addr;
-                    req_d.dst += DmaRegionWidth-masked_start_addr;
-                  end
-                  req_valid  = 1'b1;
-                  beat_cnt_d = 1;
-                end
-                state_d = Busy;
+                req_d.src += PartitionDmaRegionWidth-masked_start_addr;
+                req_d.dst += DmaRegionWidth-masked_start_addr;
               end
-            end 
-
-            // ------ Duplicate Mode ------ //
-            2'b10: begin  
-              if ( (PartitionDmaRegionWidth-masked_start_addr) >= burst_req_i.num_bytes ) begin
-                burst_req_o = burst_req_i;
-                // Address in SPM need to be translated back to physical address
-                if (spm2dram) begin
-                  burst_req_o.src = post_scramble_src;
-                end else begin
-                  burst_req_o.dst = post_scramble_dst;
-                end
-                valid_o = 1'b1;
-                ready_o = ready_i;
-                req_valid = ready_i;
-              end else begin
-                // Store and acknowledge
-                req_d = burst_req_i;
-                ready_o = 1'b1;
-                burst_req_o = burst_req_i;
-                // Calculate the size for the 1st burst
-                burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
-                // TODO (bowwang): parameterize
-                req_d.num_bytes = (group_factor_sel <= 8) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
-                dup_start_addr_d = burst_req_i.src;
-                if (spm2dram) begin
-                  burst_req_o.src = post_scramble_src;
-                  req_d.src       = post_scramble_src;
-                end else begin
-                  burst_req_o.dst = post_scramble_dst;
-                  req_d.dst       = post_scramble_dst;
-                end
-                valid_o = 1'b1;
-
-                // Modify the stored info after first beat sent
-                if (ready_i) begin
-                  // TODO (bowwang): May not be mecessary to consider alignment
-                  req_d.num_bytes -= PartitionDmaRegionWidth-masked_start_addr;
-                  if (spm2dram) begin
-                    req_d.src += DmaRegionWidth-masked_start_addr;
-                    req_d.dst += PartitionDmaRegionWidth-masked_start_addr;
-                  end else begin
-                    req_d.src += PartitionDmaRegionWidth-masked_start_addr;
-                    req_d.dst += DmaRegionWidth-masked_start_addr;
-                  end
-                  req_valid  = 1'b1;
-                  beat_cnt_d = 1;
-                end
-                state_d = Busy;
-              end
-            end 
-
-            2'b11: begin  // Partition_Std Mode
-              if ( (PartitionDmaRegionWidth-masked_start_addr) >= burst_req_i.num_bytes ) begin
-                burst_req_o = burst_req_i;
-                // Address in SPM need to be translated back to physical address
-                if (spm2dram) begin
-                  burst_req_o.src = post_scramble_src;
-                end else begin
-                  burst_req_o.dst = post_scramble_dst;
-                end
-                valid_o = 1'b1;
-                ready_o = ready_i;
-                req_valid = ready_i;
-              end else begin
-                // Store and acknowledge
-                req_d = burst_req_i;
-                ready_o = 1'b1;
-                burst_req_o = burst_req_i;
-                // Calculate the size for the 1st burst
-                burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
-                if (spm2dram) begin
-                  burst_req_o.src = post_scramble_src;
-                  req_d.src       = post_scramble_src;
-                end else begin
-                  burst_req_o.dst = post_scramble_dst;
-                  req_d.dst       = post_scramble_dst;
-                end
-                valid_o = 1'b1;
-
-                // Modify the stored info after first beat sent
-                if (ready_i) begin
-                  // TODO (bowwang): May not be mecessary to consider alignment
-                  req_d.num_bytes -= PartitionDmaRegionWidth-masked_start_addr;
-                  if (spm2dram) begin
-                    req_d.src += DmaRegionWidth-masked_start_addr;
-                    req_d.dst += PartitionDmaRegionWidth-masked_start_addr;
-                  end else begin
-                    req_d.src += PartitionDmaRegionWidth-masked_start_addr;
-                    req_d.dst += DmaRegionWidth-masked_start_addr;
-                  end
-                  req_valid  = 1'b1;
-                  beat_cnt_d = 1;
-                end
-                state_d = Busy;
-              end
-            end 
-
-            default: /*do nothing*/;
-          endcase
+              req_valid  = 1'b1;
+              beat_cnt_d = 1;
+            end
+            state_d = Busy;
+          end
+`else
+          if ( (DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0]) >= burst_req_i.num_bytes) begin
+            burst_req_o = burst_req_i;
+            valid_o = 1'b1;
+            ready_o = ready_i;
+            req_valid = ready_i;
+          end else begin
+            // Store and acknowledge
+            req_d = burst_req_i;
+            ready_o = 1'b1;
+            burst_req_o = burst_req_i;
+            // Calculate the size for the 1st burst
+            burst_req_o.num_bytes = DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
+            valid_o = 1'b1;
+            // Modify the stored info after first beat sent
+            if (ready_i) begin
+              req_d.num_bytes -= DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
+              req_d.src += DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
+              req_d.dst += DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
+              req_valid = 1'b1;
+            end
+            state_d = Busy;
+          end
+`endif
         end
       end // Idle
 
@@ -383,63 +277,52 @@ module idma_split_midend_v2 #(
         valid_o = 1'b1;
         req_valid = ready_i;
 
-        unique case (dma_mode_i)
-          // ------ Std Mode ------ //
-          2'b00: begin
-            if ($unsigned(req_q.num_bytes) <= $unsigned(DmaRegionWidth)) begin
-              if (ready_i) begin
-                state_d = Idle;
-              end
-            end else begin
-              burst_req_o.num_bytes = DmaRegionWidth;
-              if (ready_i) begin
-                req_d.num_bytes = req_q.num_bytes - DmaRegionWidth;
+`ifdef PARTITION
+        if ($unsigned(req_q.num_bytes) <= $unsigned(PartitionDmaRegionWidth)) begin
+          // Last split
+          if (ready_i) begin
+            state_d = Idle;
+            beat_cnt_d = beat_cnt_q + 1;
+          end
+        end else begin
+          burst_req_o.num_bytes = PartitionDmaRegionWidth;
+          if (ready_i) begin
+            req_d.num_bytes = req_q.num_bytes - PartitionDmaRegionWidth;
+            beat_cnt_d = beat_cnt_q + 1;
+            if (spm2dram) begin
+              if (shift_row == allocated_size_sel-1) begin
+                req_d.src = req_q.src + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
+              end else begin
                 req_d.src = req_q.src + DmaRegionWidth;
+              end
+              req_d.dst = req_q.dst + PartitionDmaRegionWidth;
+            end else begin
+              req_d.src = req_q.src + PartitionDmaRegionWidth;
+              if (shift_row == allocated_size_sel-1) begin
+                req_d.dst   = req_q.dst + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
+                if (dma_mode_i == 2'b10) begin // duplication mode: recover start adddr
+                  req_d.src = dup_start_addr_q;
+                end
+              end else begin
                 req_d.dst = req_q.dst + DmaRegionWidth;
               end
-            end
-          end 
-
-          2'b01,
-          2'b10, 
-          2'b11: begin
-            if ($unsigned(req_q.num_bytes) <= $unsigned(PartitionDmaRegionWidth)) begin
-              // Last split
-              if (ready_i) begin
-                state_d = Idle;
-                beat_cnt_d = beat_cnt_q + 1;
-              end
-            end else begin
-              burst_req_o.num_bytes = PartitionDmaRegionWidth;
-              if (ready_i) begin
-                req_d.num_bytes = req_q.num_bytes - PartitionDmaRegionWidth;
-                beat_cnt_d = beat_cnt_q + 1;
-
-                if (spm2dram) begin
-                  if (shift_row == allocated_size_sel-1) begin
-                    req_d.src       = req_q.src + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
-                  end else begin
-                    req_d.src       = req_q.src + DmaRegionWidth;
-                  end
-                  req_d.dst = req_q.dst + PartitionDmaRegionWidth;
-                end else begin
-                  req_d.src = req_q.src + PartitionDmaRegionWidth;
-                  if (shift_row == allocated_size_sel-1) begin
-                    req_d.dst       = req_q.dst + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
-                    if (dma_mode_i == 2'b10) begin // duplication mode: recover start adddr
-                      req_d.src     = dup_start_addr_q;
-                    end
-                  end else begin
-                    req_d.dst       = req_q.dst + DmaRegionWidth;
-                  end
-                end// spm2dram
-              end // ready_i
-            end
-          end // case {01, 10, 11}
-
-          default: /*do nothing*/;
-        endcase
-
+            end// spm2dram
+          end // ready_i
+        end
+`else
+        if ($unsigned(req_q.num_bytes) <= $unsigned(DmaRegionWidth)) begin
+          if (ready_i) begin
+            state_d = Idle;
+          end
+        end else begin
+          burst_req_o.num_bytes = DmaRegionWidth;
+          if (ready_i) begin
+            req_d.num_bytes = req_q.num_bytes - DmaRegionWidth;
+            req_d.src = req_q.src + DmaRegionWidth;
+            req_d.dst = req_q.dst + DmaRegionWidth;
+          end
+        end
+`endif
       end // Busy
       default: /*do nothing*/;
     endcase

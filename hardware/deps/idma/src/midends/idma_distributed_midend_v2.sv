@@ -5,12 +5,6 @@
 // Samuel Riedel <sriedel@iis.ee.ethz.ch>
 // Bowen Wang    <bowwang@student.ethz.ch>
 
-// Mode selection: [1:0] dma_mode_i
-// 2'b00: safe mode, no modificaion will be added to the transfer
-// 2'b01: fast mode, only apply to L1-aligned address
-// 2'b10: dupl mode, only apply to partition-aligned address
-// 2'b11: NOP  
-
 `include "common_cells/registers.svh"
 
 module idma_distributed_midend_v2 #(
@@ -37,7 +31,6 @@ module idma_distributed_midend_v2 #(
   output logic                        ready_o,
   output meta_t                       meta_o,
   // partition related signals
-  input  logic       [1:0]            dma_mode_i,
   input  logic       [7:0]            allocated_size_i, 
   // Master
   output burst_req_t [NoMstPorts-1:0] burst_req_o,
@@ -169,45 +162,38 @@ module idma_distributed_midend_v2 #(
       // Feed through the address bits
       burst_req_o[i].src = burst_req_i.src;
       burst_req_o[i].dst = burst_req_i.dst;
+
       // Modify lower addresses bits and size
       if (($unsigned(start_addr) >= (i+1)*DmaRegionWidth) || ($unsigned(end_addr) <= i*DmaRegionWidth)) begin
-        // We are not involved in the transfer
-        if ( (dma_mode_i == 2'b00) || (dma_mode_i == 2'b11) ) begin // safe mode
-          burst_req_o[i].src = '0;
-          burst_req_o[i].dst = '0;
-          burst_req_o[i].num_bytes = 1;
-          // Make handshake ourselves
-          valid_o[i] = 1'b0;
-          ready[i] = 1'b1;
-          // Inject trans complete
-          if (valid[i]) begin
-            tie_off_trans_complete_d[i] = 1'b1;
+`ifdef DAS
+        burst_req_o[i].num_bytes = (burst_req_i.num_bytes<DmaRegionWidth) ? burst_req_i.num_bytes : DmaRegionWidth;
+        if (($unsigned(burst_req_i.src) >= DmaRegionStart) && ($unsigned(burst_req_i.src) < DmaRegionEnd)) begin
+          burst_req_o[i].src = burst_req_i.src+i*DmaRegionWidth;
+          burst_req_o[i].dst = burst_req_i.dst+i*allocated_size_i*DmaRegionWidth;
+        end else begin
+          // L2 --> L1
+          if (burst_req_i.num_bytes<=DmaRegionWidth )begin
+            burst_req_o[i].src = burst_req_i.src+i*allocated_size_i*DmaRegionWidth;
+          end else if (i==2) begin
+            burst_req_o[i].src = burst_req_i.src+i*allocated_size_i*DmaRegionWidth;
+          end else if (i==3) begin
+            burst_req_o[i].src = burst_req_i.src+(i-1)*allocated_size_i*DmaRegionWidth + DmaRegionWidth;
           end
-        end else if (dma_mode_i == 2'b01) begin // fast mode
-          burst_req_o[i].num_bytes = (burst_req_i.num_bytes<DmaRegionWidth) ? burst_req_i.num_bytes : DmaRegionWidth;
-          if (($unsigned(burst_req_i.src) >= DmaRegionStart) && ($unsigned(burst_req_i.src) < DmaRegionEnd)) begin
-            burst_req_o[i].src = burst_req_i.src+i*DmaRegionWidth;
-            burst_req_o[i].dst = burst_req_i.dst+i*allocated_size_i*DmaRegionWidth;
-          end else begin
-            // L2 --> L1
-            if (burst_req_i.num_bytes<=DmaRegionWidth )begin
-              burst_req_o[i].src = burst_req_i.src+i*allocated_size_i*DmaRegionWidth;
-            end else if (i==2) begin
-              burst_req_o[i].src = burst_req_i.src+i*allocated_size_i*DmaRegionWidth;
-            end else if (i==3) begin
-              burst_req_o[i].src = burst_req_i.src+(i-1)*allocated_size_i*DmaRegionWidth + DmaRegionWidth;
-            end
-            burst_req_o[i].dst = burst_req_i.dst+i*DmaRegionWidth;
-          end
-        end else if (dma_mode_i == 2'b10) begin // duplication mode: only consider L2 --> L1
-          if (($unsigned(burst_req_i.dst) >= DmaRegionStart) && ($unsigned(burst_req_i.dst) < DmaRegionEnd)) begin
-            // L2 ------> L1
-            burst_req_o[i].num_bytes = (burst_req_i.num_bytes<DmaRegionWidth) ? burst_req_i.num_bytes : DmaRegionWidth;
-            // burst_req_o[i].src = burst_req_i.src+i*allocated_size_i*DmaRegionWidth;
-            burst_req_o[i].src = (burst_req_i.num_bytes<=DmaRegionWidth) ? burst_req_i.src : burst_req_i.src+(i-2)*DmaRegionWidth;
-            burst_req_o[i].dst = burst_req_i.dst+i*DmaRegionWidth;
-          end 
+          burst_req_o[i].dst = burst_req_i.dst+i*DmaRegionWidth;
         end
+`else
+        // We are not involved in the transfer
+        burst_req_o[i].src = '0;
+        burst_req_o[i].dst = '0;
+        burst_req_o[i].num_bytes = 1;
+        // Make handshake ourselves
+        valid_o[i] = 1'b0;
+        ready[i] = 1'b1;
+        // Inject trans complete
+        if (valid[i]) begin
+          tie_off_trans_complete_d[i] = 1'b1;
+        end
+`endif
 
       end else if (($unsigned(start_addr) >= i*DmaRegionWidth)) begin
         // First (and potentially only) slice
@@ -217,7 +203,6 @@ module idma_distributed_midend_v2 #(
         end else begin
           burst_req_o[i].num_bytes = DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
         end
-      // end else if (($unsigned(start_addr) < i*DmaRegionWidth)) begin
 
       end else begin
         // Round up the address to the next DMA boundary

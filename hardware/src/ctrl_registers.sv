@@ -7,6 +7,7 @@
 
 module ctrl_registers
   import mempool_pkg::ro_cache_ctrl_t;
+  import mempool_pkg::PartitionDataWidth;
 #(
   parameter int DataWidth                      = 32,
   // Parameters
@@ -17,16 +18,19 @@ module ctrl_registers
   parameter type axi_lite_req_t                = logic,
   parameter type axi_lite_resp_t               = logic
 ) (
-  input  logic                           clk_i,
-  input  logic                           rst_ni,
+  input  logic                                    clk_i,
+  input  logic                                    rst_ni,
   // AXI Bus
-  input  axi_lite_req_t                  axi_lite_slave_req_i,
-  output axi_lite_resp_t                 axi_lite_slave_resp_o,
+  input  axi_lite_req_t                           axi_lite_slave_req_i,
+  output axi_lite_resp_t                          axi_lite_slave_resp_o,
   // Control registers
-  output logic      [DataWidth-1:0]      eoc_o,
-  output logic                           eoc_valid_o,
-  output logic      [NumCores-1:0]       wake_up_o,
-  output ro_cache_ctrl_t                 ro_cache_ctrl_o
+  output logic      [DataWidth-1:0]               eoc_o,
+  output logic                                    eoc_valid_o,
+  output logic      [NumCores-1:0]                wake_up_o,
+  output ro_cache_ctrl_t                          ro_cache_ctrl_o,
+  output logic      [3:0][PartitionDataWidth-1:0] partition_sel_o,
+  output logic      [3:0][PartitionDataWidth-1:0] allocated_size_o,
+  output logic      [3:0][DataWidth-1:0]          start_addr_scheme_o
 );
 
   import mempool_pkg::AddrWidth;
@@ -97,6 +101,21 @@ module ctrl_registers
     `FFL(ctrl_hw2reg.ro_cache_start[i].d, ctrl_reg2hw.ro_cache_start[i].q, ctrl_reg2hw.ro_cache_start[i].qe, ro_cache_regions[i].start_addr, clk_i, rst_ni)
     `FFL(ctrl_hw2reg.ro_cache_end[i].d, ctrl_reg2hw.ro_cache_end[i].q, ctrl_reg2hw.ro_cache_end[i].qe, ro_cache_regions[i].end_addr, clk_i, rst_ni)
   end
+
+
+  assign partition_sel_o[0]     = ctrl_reg2hw.partition_sel_0.q[PartitionDataWidth-1:0];
+  assign partition_sel_o[1]     = ctrl_reg2hw.partition_sel_1.q[PartitionDataWidth-1:0];
+  assign partition_sel_o[2]     = ctrl_reg2hw.partition_sel_2.q[PartitionDataWidth-1:0];
+  assign partition_sel_o[3]     = ctrl_reg2hw.partition_sel_3.q[PartitionDataWidth-1:0];
+  assign start_addr_scheme_o[0] = ctrl_reg2hw.start_addr_scheme_0.q;
+  assign start_addr_scheme_o[1] = ctrl_reg2hw.start_addr_scheme_1.q;
+  assign start_addr_scheme_o[2] = ctrl_reg2hw.start_addr_scheme_2.q;
+  assign start_addr_scheme_o[3] = ctrl_reg2hw.start_addr_scheme_3.q;
+  assign allocated_size_o[0]    = ctrl_reg2hw.allocated_size_0.q[PartitionDataWidth-1:0];
+  assign allocated_size_o[1]    = ctrl_reg2hw.allocated_size_1.q[PartitionDataWidth-1:0];
+  assign allocated_size_o[2]    = ctrl_reg2hw.allocated_size_2.q[PartitionDataWidth-1:0];
+  assign allocated_size_o[3]    = ctrl_reg2hw.allocated_size_3.q[PartitionDataWidth-1:0];
+
 
   /************************
    *  Wakeup Pulse Logic  *
