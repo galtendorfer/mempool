@@ -160,7 +160,6 @@ endif
 LINKER_SCRIPT ?= $(ROOT_DIR)/arch.ld
 
 RUNTIME += $(ROOT_DIR)/alloc.c.o
-RUNTIME += $(ROOT_DIR)/alloc_partition.c.o
 RUNTIME += $(ROOT_DIR)/crt0.S.o
 RUNTIME += $(ROOT_DIR)/printf.c.o
 RUNTIME += $(ROOT_DIR)/serial.c.o

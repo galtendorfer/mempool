@@ -38,13 +38,7 @@ alloc_t alloc_tile[NUM_CORES / NUM_CORES_PER_TILE];
 // ----------------------------------------------------------------------------
 // Dynamic Heap Allocator 
 // ----------------------------------------------------------------------------
-alloc_t* dynamic_heap_alloc = NULL;
-void init_dynamic_heap_alloc(uint32_t num_partition){ // how many parts to devide the whole system
-  dynamic_heap_alloc = (alloc_t *)simple_malloc(num_partition * sizeof(alloc_t));
-}
-void free_dynamic_heap_alloc(void){
-  simple_free(dynamic_heap_alloc);
-}
+alloc_t dynamic_heap_alloc;
 
 // ----------------------------------------------------------------------------
 // Canary System based on LSBs of block pointer
@@ -288,140 +282,13 @@ void *simple_malloc(const uint32_t size) {
   return domain_malloc(&alloc_l1, size);
 }
 
-// ------ Allocate a space aligned with L1 boundary ------ //
-static uint32_t calc_aligned_l1_size (uint32_t* addr) {
-  uint32_t shift_size = 0;
-  uint32_t l1_aligned_mask = 0x3fff;
-  uint32_t masked_addr     = (uint32_t)addr & l1_aligned_mask;
-  if (masked_addr==0x3ffc){
-    shift_size = 0;
-  }
-  else{
-    shift_size = 0x3ffc - masked_addr;
-  }
-  return shift_size;
-}
-
-// Input size is block size: [data_size + meta_size]
-static void *allocate_memory_l1_aligned(alloc_t *alloc, const uint32_t size) {
-  // Get first block of linked list of free blocks
-  alloc_block_t *curr = alloc->first_block;
-  alloc_block_t *prev = 0;
-
-  uint32_t shift_size = 0;
-  shift_size = calc_aligned_l1_size( (uint32_t*)curr);
-  uint32_t aligned_size = size + shift_size;
-
-  // Search first block large enough in linked list
-  while (curr && (curr->size < aligned_size)) {
-    prev = curr;
-    curr = curr->next;
-
-    shift_size = calc_aligned_l1_size( (uint32_t*)curr);
-    aligned_size = size + shift_size;
-  }
-
-  if (curr) {
-    // Update allocator
-    if (shift_size==0){
-      printf("[L1 Alloc] No Alignment.\n");
-      if (curr->size == size) {
-        // Special case: Whole block taken
-        if (prev) {
-          prev->next = curr->next;
-        } else {
-          alloc->first_block = curr->next;
-        }
-      } else {
-        // Regular case: Split off block
-        alloc_block_t *new_block = (alloc_block_t *)((char *)curr + size);
-        new_block->size = curr->size - size;
-        new_block->next = curr->next;
-        if (prev) {
-          prev->next = new_block;
-        } else {
-          alloc->first_block = new_block;
-        }
-      }
-    }
-    else{
-      printf("[L1 Alloc] Alignment Needed.\n");
-      if (curr->size == aligned_size) {
-        // Special case: Whole block taken, first part of the block is still empty
-        // store the curr info in tmp
-        // uint32_t tmp_size = curr->size;
-        struct alloc_block_s *tmp_next = curr->next;
-        alloc_block_t *shift_block = (alloc_block_t *)((char *)curr);
-        shift_block->size = shift_size;
-        shift_block->next = tmp_next;
-        if (prev) {
-          prev->next = shift_block;
-        } else {
-          alloc->first_block = shift_block;
-        }
-      } 
-      else{
-        // Regular case: Split off block
-        alloc_block_t *new_block = (alloc_block_t *)((char *)curr + aligned_size);
-        new_block->size = curr->size - aligned_size;
-        new_block->next = curr->next;
-
-        alloc_block_t *shift_block = (alloc_block_t *)((char *)curr);
-        shift_block->size = shift_size;
-        shift_block->next = new_block;
-        if (prev) {
-          prev->next = shift_block;
-        } else {
-          alloc->first_block = shift_block;
-        }
-      }
-    }
-
-    // Return block pointer
-    return (void *)((char *)curr+shift_size);
-  } else {
-    // There is no free block large enough
-    return NULL;
-  }
-}
-
-void *domain_malloc_aligned(alloc_t *alloc, const uint32_t size) {
-  // Calculate actually required block size
-  uint32_t data_size = size + sizeof(uint32_t); // add size/metadata
-  uint32_t block_size = ALIGN_UP(data_size, MIN_BLOCK_SIZE); // add alignment
-
-  // 32-bit metadata = 8-bit canary + 24-bit size
-  // i.e. max allowed block_size == (2^24 - 1) bytes
-  if (block_size >= (1 << (sizeof(uint32_t) * 8 - sizeof(uint8_t) * 8))) {
-    printf("Memory allocator: Requested memory exceeds max block size\n");
-    return NULL;
-  }
-
-  // Allocate memory
-  void *block_ptr = allocate_memory_l1_aligned(alloc, block_size);
-  if (!block_ptr) {
-    printf("Memory allocator: No large enough block found (%d)\n", block_size);
-    return NULL;
-  }
-
-  // Store canary and size into first four bytes
-  *((uint32_t *)block_ptr) = canary_encode(block_ptr, block_size);
-
-  // Return data pointer
-  void *data_ptr = (void *)((uint32_t *)block_ptr + 1);
-  printf("[Aligned malloc] addr: %p - size: %d\n", data_ptr, size);
-  return data_ptr;
-}
-
-void *simple_aligned_malloc(const uint32_t size){
-  return domain_malloc_aligned(&alloc_l1, size);
-}
-
 // ------ This function allocate data in Sequential Heap region ------ //
 // Canary system is stored in a seperate linked list
 // void *partition_malloc(alloc_t *alloc, const uint32_t size){
-void *partition_malloc(alloc_t *alloc, const uint32_t size, const uint32_t allocated_size){
-  uint32_t data_size = size;
+void *partition_malloc(alloc_t *alloc, const uint32_t size){
+
+  uint32_t data_size = size > 2*NUM_BANKS*sizeof(uint32_t) ? size : 2*NUM_BANKS*sizeof(uint32_t);
+  uint32_t allocated_size = data_size / (NUM_BANKS * sizeof(uint32_t));
   uint32_t block_size = ALIGN_UP(data_size, MIN_BLOCK_SIZE); // add alignment
 
   // Check if exceed maximum allowed size
@@ -700,4 +567,4 @@ alloc_t *get_alloc_l1() { return &alloc_l1; }
 alloc_t *get_alloc_tile(const uint32_t tile_id) { return &alloc_tile[tile_id]; }
 
 // Dynamic Heap Allocator 
-alloc_t *get_dynamic_heap_alloc(const uint32_t part_id) {return &dynamic_heap_alloc[part_id];}
+alloc_t *get_dynamic_heap_alloc() {return &dynamic_heap_alloc;}
