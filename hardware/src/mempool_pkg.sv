@@ -46,6 +46,10 @@ package mempool_pkg;
   localparam integer unsigned NumBanksPerGroup = NumBanks / NumGroups;
   localparam integer unsigned TCDMAddrMemWidth = $clog2(TCDMSizePerBank / mempool_pkg::BeWidth);
   localparam integer unsigned TCDMAddrWidth    = TCDMAddrMemWidth + idx_width(NumBanksPerGroup);
+  // DAS parameters
+  localparam integer unsigned NumDASPartitions = `ifdef NUM_DAS_PARTITIONS `NUM_DAS_PARTITIONS `else 0 `endif;
+  localparam integer unsigned DASMemSize       = `ifdef DAS_MEM_SIZE `DAS_MEM_SIZE `else 0 `endif;
+  localparam integer unsigned DASStartAddr     = (NumBanks * TCDMSizePerBank) - NumCores * DASMemSize;
 
   // L2
   localparam integer unsigned L2Size           = `ifdef L2_SIZE `L2_SIZE `else 0 `endif; // [B]

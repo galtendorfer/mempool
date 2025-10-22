@@ -75,7 +75,8 @@ xDivSqrt ?= 0
 
 # Enable configurable addressing scheme in the heap
 das ?= 1
-# Size for configurable addressing scheme heap
+num_das_partitions ?= 4
+# Size of DAS-heap per core
 das_mem_size ?= 2048
 
 # This parameter is only used for TeraPool configurations

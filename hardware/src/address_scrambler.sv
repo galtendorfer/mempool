@@ -6,7 +6,7 @@
 // sequentially and part is interleaved.
 // Current constraints:
 
-// Author: Samuel Riedel <sriedel@iis.ee.ethz.ch>
+// Author: Marco Bertuletti <mbertuletti@iis.ee.ethz.ch>
 
 module address_scrambler #(
   parameter int unsigned AddrWidth         = 32,
@@ -16,17 +16,16 @@ module address_scrambler #(
   parameter int unsigned NumBanksPerTile   = 2,
   parameter bit          Bypass            = 0,
   parameter int unsigned SeqMemSizePerTile = 4*1024,
-  parameter int unsigned HeapSeqMemSizePerTile = 8*2048,
-  parameter int unsigned MemSizePerTile = 8*4*1024,
-  parameter int unsigned MemSizePerRow  = 4*4*1024,  // 4bytes * 4096 banks
-  parameter int unsigned TCDMSize = 1024*1024
+  parameter int unsigned TCDMSizePerBank   = 1024,
+  parameter int unsigned NumDASPartitions  = 4,
+  parameter int unsigned MemSizePerTile    = NumBanksPerTile*TCDMSizePerBank,
+  parameter int unsigned MemSizePerRow     = (1 << ByteOffset)*NumBanksPerTile*NumTiles
 ) (
-  input  logic [AddrWidth-1:0]      address_i,
-  input  logic [3:0][7:0]           group_factor_i,
-  // For each allocation, the maximum number of rows assigned can be 128 rows
-  input  logic [3:0][7:0]           allocated_size_i,
-  input  logic [3:0][DataWidth-1:0] start_addr_scheme_i,
-  output logic [AddrWidth-1:0]      address_o
+  input  logic [AddrWidth-1:0]                            address_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] group_factor_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] allocated_size_i,
+  input  logic [NumDASPartitions-1:0][DataWidth-1:0]      start_addr_scheme_i,
+  output logic [AddrWidth-1:0]                            address_o
 );
   // Stack Sequential Settings
   localparam int unsigned BankOffsetBits    = $clog2(NumBanksPerTile);
@@ -35,12 +34,6 @@ module address_scrambler #(
   localparam int unsigned SeqTotalBits      = SeqPerTileBits+TileIdBits;
   localparam int unsigned ConstantBitsLSB   = ByteOffset + BankOffsetBits;
   localparam int unsigned ScrambleBits      = SeqPerTileBits-ConstantBitsLSB;
-
-  // Heap Sequential Settings
-  localparam int unsigned HeapSeqPerTileBits = $clog2(MemSizePerTile);             // log2(8*4096) = 15 | RowIndexBits + ConstBits
-  localparam int unsigned HeapSeqTotalBits   = HeapSeqPerTileBits+TileIdBits;      // 15+7=22           | used for address_o assignment 
-  localparam int unsigned RowIndexBits       = HeapSeqPerTileBits-ConstantBitsLSB; // 15-7=8            | RowIndex
-  
 
   if (Bypass || NumTiles < 2) begin
     assign address_o = address_i;
@@ -57,121 +50,53 @@ module address_scrambler #(
 
     // ------ Heap Sequential Signals ------ //
     
-    // `shift_index`   : how many bits to shift for TileID bits in each partition
-    // `shift_index_sc`: how many bits need to swap within Row Index 
-    logic [3:0][2:0] shift_index; 
-    logic [3:0][2:0] shift_index_sc;
-    for (genvar i = 0; i < 4; i++) begin : gen_shift_index
-        always_comb begin
-            case(group_factor_i[i])
-                128: shift_index[i] = 7;
-                64:  shift_index[i] = 6;
-                32:  shift_index[i] = 5;
-                16:  shift_index[i] = 4;
-                8:   shift_index[i] = 3;
-                4:   shift_index[i] = 2;
-                2:   shift_index[i] = 1;
-                default: shift_index[i] = 0;
-            endcase
+    // `tile_index` : how many bits to shift for TileID bits in each partition
+    // `row_index`: how many bits need to swap within Row Index
+    logic [NumDASPartitions-1:0][$clog2(NumTiles):0] tile_index;
+    logic [NumDASPartitions-1:0][$clog2(NumTiles):0] row_index;
 
-            case(allocated_size_i[i])
-                128: shift_index_sc[i] = 7;
-                64:  shift_index_sc[i] = 6;
-                32:  shift_index_sc[i] = 5;
-                16:  shift_index_sc[i] = 4;
-                8:   shift_index_sc[i] = 3;
-                4:   shift_index_sc[i] = 2;
-                2:   shift_index_sc[i] = 1;
-                default: shift_index_sc[i] = 0;
-            endcase
-        end
+    for (genvar i = 0; i < NumDASPartitions; i++) begin : gen_shift_index
+      lzc #(
+        .WIDTH ($clog2(NumTiles)+1),
+        .MODE  (1'b0              )
+      ) i_log_tile_index (
+        .in_i    (group_factor_i[i]),
+        .cnt_o   (tile_index[i]    ),
+        .empty_o (/* Unused */     )
+      );
+      lzc #(
+        .WIDTH ($clog2(NumTiles)),
+        .MODE  (1'b0            )
+      ) i_log_row_index (
+        .in_i    (allocated_size_i[i]),
+        .cnt_o   (row_index[i]       ),
+        .empty_o (/* Unused */       )
+      );
     end
-
-
-    // post-scramble row index
-    logic [RowIndexBits-1:0]      post_scramble_row_index;
-    logic [TileIdBits-1:0]        post_scramble_tile_id;
-
-    logic [3:0][RowIndexBits-1:0] mask_row_index, mask_row_index_n;
-    logic [3:0][TileIdBits-1:0]   mask_tile_id,   mask_tile_id_n;
-
-    logic [TileIdBits-1:0]        heap_tile_id;
-
-    for (genvar j = 0; j < 4; j++) begin : gen_mask
-      assign mask_row_index[j] = (shift_index_sc[j] == 0) ? {RowIndexBits{1'b0}} : ({RowIndexBits{1'b1}} >> (RowIndexBits-shift_index_sc[j]));
-      assign mask_tile_id[j]   = (shift_index[j] == 0)    ? {TileIdBits{1'b0}}   : ({TileIdBits{1'b1}}   >> (TileIdBits  -shift_index[j]));
-      
-      assign mask_row_index_n[j] = ~mask_row_index[j];
-      assign mask_tile_id_n[j]   = ~mask_tile_id[j];
-    end
-
-    assign heap_tile_id = address_i[(TileIdBits+ConstantBitsLSB-1):ConstantBitsLSB];
 
     always_comb begin
       // Default: Unscrambled
       address_o[ConstantBitsLSB-1:0] = address_i[ConstantBitsLSB-1:0];
       address_o[SeqTotalBits-1:ConstantBitsLSB] = {tile_id, scramble};
       address_o[AddrWidth-1:SeqTotalBits] = address_i[AddrWidth-1:SeqTotalBits];
-      post_scramble_row_index  = 'b0;
-      post_scramble_tile_id    = 'b0;
 
       // Stack Region
       if (address_i < (NumTiles * SeqMemSizePerTile)) begin
         address_o[SeqTotalBits-1:ConstantBitsLSB] = {scramble, tile_id};
 
-      // Sequential Heap Region 
-      end else if ( (address_i >= start_addr_scheme_i[0]) && (address_i < start_addr_scheme_i[0]+MemSizePerRow*allocated_size_i[0]) ) begin
+      // DAS address scrambling
+      end else begin
 
-        post_scramble_row_index  = 'b0;
-        post_scramble_tile_id    = 'b0;
-        // 1. `post_scramble_row_index` generation
-        post_scramble_row_index |= (address_i >> (ConstantBitsLSB + shift_index[0])) & mask_row_index[0];
-        post_scramble_row_index |= (address_i >> (ConstantBitsLSB + TileIdBits    )) & mask_row_index_n[0];
+        for (int p = 0; p < NumDASPartitions; p++) begin
+          if ( (address_i >= start_addr_scheme_i[0]) && (address_i < start_addr_scheme_i[0]+MemSizePerRow*allocated_size_i[0]) ) begin
+            address_o = '0;
+            address_o |= address_i & ((1 << (tile_index[0]+ConstantBitsLSB)) - 1);
+            address_o |= ((address_i >> (row_index[0]+tile_index[0]+ConstantBitsLSB)) << (tile_index[0]+ConstantBitsLSB)) & ((1 << (TileIdBits+ConstantBitsLSB)) - 1);
+            address_o |= ((address_i >> (tile_index[0]+ConstantBitsLSB)) << (TileIdBits + ConstantBitsLSB)) & ((1 << (row_index[0]+TileIdBits+ConstantBitsLSB)) - 1);
+            address_o |= address_i & ~((1 << (row_index[0]+TileIdBits+ConstantBitsLSB)) - 1);
+          end
+        end
 
-        // 2. `post_scramble_tile_id` generation
-        post_scramble_tile_id   |= heap_tile_id & mask_tile_id[0];
-        post_scramble_tile_id   |= (address_i >> (ConstantBitsLSB + shift_index_sc[0])) & mask_tile_id_n[0];
-
-        address_o[HeapSeqTotalBits-1:ConstantBitsLSB] = {post_scramble_row_index, post_scramble_tile_id};
-      end else if ( (address_i >= start_addr_scheme_i[1]) && (address_i < start_addr_scheme_i[1]+MemSizePerRow*allocated_size_i[1]) ) begin
-
-        post_scramble_row_index  = 'b0;
-        post_scramble_tile_id    = 'b0;
-        // 1. `post_scramble_row_index` generation
-        post_scramble_row_index |= (address_i >> (ConstantBitsLSB + shift_index[1])) & mask_row_index[1];
-        post_scramble_row_index |= (address_i >> (ConstantBitsLSB + TileIdBits    )) & mask_row_index_n[1];
-
-        // 2. `post_scramble_tile_id` generation
-        post_scramble_tile_id   |= heap_tile_id & mask_tile_id[1];
-        post_scramble_tile_id   |= (address_i >> (ConstantBitsLSB + shift_index_sc[1])) & mask_tile_id_n[1];
-
-        address_o[HeapSeqTotalBits-1:ConstantBitsLSB] = {post_scramble_row_index, post_scramble_tile_id};
-      end else if ( (address_i >= start_addr_scheme_i[2]) && (address_i < start_addr_scheme_i[2]+MemSizePerRow*allocated_size_i[2]) ) begin
-
-        post_scramble_row_index  = 'b0;
-        post_scramble_tile_id    = 'b0;
-        // 1. `post_scramble_row_index` generation
-        post_scramble_row_index |= (address_i >> (ConstantBitsLSB + shift_index[2])) & mask_row_index[2];
-        post_scramble_row_index |= (address_i >> (ConstantBitsLSB + TileIdBits    )) & mask_row_index_n[2];
-
-        // 2. `post_scramble_tile_id` generation
-        post_scramble_tile_id   |= heap_tile_id & mask_tile_id[2];
-        post_scramble_tile_id   |= (address_i >> (ConstantBitsLSB + shift_index_sc[2])) & mask_tile_id_n[2];
-
-        address_o[HeapSeqTotalBits-1:ConstantBitsLSB] = {post_scramble_row_index, post_scramble_tile_id};
-      end else if ( (address_i >= start_addr_scheme_i[3]) && (address_i < start_addr_scheme_i[3]+MemSizePerRow*allocated_size_i[3]) ) begin
-
-        post_scramble_row_index  = 'b0;
-        post_scramble_tile_id    = 'b0;
-        // 1. `post_scramble_row_index` generation
-        post_scramble_row_index |= (address_i >> (ConstantBitsLSB + shift_index[3])) & mask_row_index[3];
-        post_scramble_row_index |= (address_i >> (ConstantBitsLSB + TileIdBits    )) & mask_row_index_n[3];
-
-        // 2. `post_scramble_tile_id` generation
-        post_scramble_tile_id   |= heap_tile_id & mask_tile_id[3];
-        post_scramble_tile_id   |= (address_i >> (ConstantBitsLSB + shift_index_sc[3])) & mask_tile_id_n[3];
-
-        address_o[HeapSeqTotalBits-1:ConstantBitsLSB] = {post_scramble_row_index, post_scramble_tile_id};
       end 
     end
   end

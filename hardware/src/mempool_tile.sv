@@ -901,14 +901,14 @@ module mempool_tile
       .NumBanksPerTile   (NumBanksPerTile  ),
       .Bypass            (0                ),
       .SeqMemSizePerTile (SeqMemSizePerTile),
-      .HeapSeqMemSizePerTile (HeapSeqMemSizePerTile),
-      .TCDMSize          (TCDMSize)
+      .NumDASPartitions  (NumDASPartitions ),
+      .TCDMSizePerBank   (TCDMSizePerBank  )
     ) i_address_scrambler (
-      .address_i (snitch_data_qaddr[c]       ),
-      .group_factor_i(partition_sel_i),
-      .allocated_size_i   (allocated_size_i),
-      .start_addr_scheme_i(start_addr_scheme_i),
-      .address_o (snitch_data_qaddr_scrambled)
+      .address_i          (snitch_data_qaddr[c]),
+      .group_factor_i     (partition_sel_i     ),
+      .allocated_size_i   (allocated_size_i    ),
+      .start_addr_scheme_i(start_addr_scheme_i ),
+      .address_o   (snitch_data_qaddr_scrambled)
     );
 
     if (!TrafficGeneration) begin: gen_tcdm_shim
