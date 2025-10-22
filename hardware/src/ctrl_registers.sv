@@ -102,20 +102,13 @@ module ctrl_registers
     `FFL(ctrl_hw2reg.ro_cache_end[i].d, ctrl_reg2hw.ro_cache_end[i].q, ctrl_reg2hw.ro_cache_end[i].qe, ro_cache_regions[i].end_addr, clk_i, rst_ni)
   end
 
-
-  assign partition_sel_o[0]     = ctrl_reg2hw.partition_sel_0.q[PartitionDataWidth-1:0];
-  assign partition_sel_o[1]     = ctrl_reg2hw.partition_sel_1.q[PartitionDataWidth-1:0];
-  assign partition_sel_o[2]     = ctrl_reg2hw.partition_sel_2.q[PartitionDataWidth-1:0];
-  assign partition_sel_o[3]     = ctrl_reg2hw.partition_sel_3.q[PartitionDataWidth-1:0];
-  assign start_addr_scheme_o[0] = ctrl_reg2hw.start_addr_scheme_0.q;
-  assign start_addr_scheme_o[1] = ctrl_reg2hw.start_addr_scheme_1.q;
-  assign start_addr_scheme_o[2] = ctrl_reg2hw.start_addr_scheme_2.q;
-  assign start_addr_scheme_o[3] = ctrl_reg2hw.start_addr_scheme_3.q;
-  assign allocated_size_o[0]    = ctrl_reg2hw.allocated_size_0.q[PartitionDataWidth-1:0];
-  assign allocated_size_o[1]    = ctrl_reg2hw.allocated_size_1.q[PartitionDataWidth-1:0];
-  assign allocated_size_o[2]    = ctrl_reg2hw.allocated_size_2.q[PartitionDataWidth-1:0];
-  assign allocated_size_o[3]    = ctrl_reg2hw.allocated_size_3.q[PartitionDataWidth-1:0];
-
+  for (genvar i = 0; i < mempool_pkg::NumDASPartitions; i++) begin: gen_das_regs
+    `FFL(ctrl_hw2reg.partition_sel[i].d, ctrl_reg2hw.partition_sel[i].q, ctrl_reg2hw.partition_sel[i].qe, mempool_pkg::NumTiles);
+    `FFL(ctrl_hw2reg.start_addr_scheme[i].d, ctrl_reg2hw.start_addr_scheme[i].q, ctrl_reg2hw.start_addr_scheme[i].qe, mempool_pkg::DASStartAddr);
+     assign partition_sel_o[i]     = ctrl_hw2reg.partition_sel[i].d[PartitionDataWidth-1:0];
+     assign start_addr_scheme_o[i] = ctrl_hw2reg.start_addr_scheme[i].d;
+     assign allocated_size_o[i]    = ctrl_reg2hw.allocated_size[i].q[PartitionDataWidth-1:0];
+  end
 
   /************************
    *  Wakeup Pulse Logic  *

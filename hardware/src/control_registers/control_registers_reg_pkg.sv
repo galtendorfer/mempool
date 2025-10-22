@@ -9,6 +9,7 @@ package control_registers_reg_pkg;
   // Param list
   parameter int ROCacheNumAddrRules = 4;
   parameter int MAX_NumGroups = 8;
+  parameter int NumDASPartitions = 4;
 
   // Address widths within the block
   parameter int BlockAw = 8;
@@ -49,62 +50,17 @@ package control_registers_reg_pkg;
   typedef struct packed {
     logic [31:0] q;
     logic        qe;
-  } control_registers_reg2hw_partition_sel_0_reg_t;
+  } control_registers_reg2hw_partition_sel_mreg_t;
 
   typedef struct packed {
     logic [31:0] q;
     logic        qe;
-  } control_registers_reg2hw_partition_sel_1_reg_t;
+  } control_registers_reg2hw_allocated_size_mreg_t;
 
   typedef struct packed {
     logic [31:0] q;
     logic        qe;
-  } control_registers_reg2hw_partition_sel_2_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_partition_sel_3_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_allocated_size_0_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_allocated_size_1_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_allocated_size_2_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_allocated_size_3_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_start_addr_scheme_0_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_start_addr_scheme_1_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_start_addr_scheme_2_reg_t;
-
-  typedef struct packed {
-    logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_start_addr_scheme_3_reg_t;
+  } control_registers_reg2hw_start_addr_scheme_mreg_t;
 
   typedef struct packed {
     logic [31:0] q;
@@ -123,6 +79,14 @@ package control_registers_reg_pkg;
     logic [31:0] q;
     logic        qe;
   } control_registers_reg2hw_ro_cache_end_mreg_t;
+
+  typedef struct packed {
+    logic [31:0] d;
+  } control_registers_hw2reg_partition_sel_mreg_t;
+
+  typedef struct packed {
+    logic [31:0] d;
+  } control_registers_hw2reg_start_addr_scheme_mreg_t;
 
   typedef struct packed {
     logic [31:0] d;
@@ -152,18 +116,9 @@ package control_registers_reg_pkg;
     control_registers_reg2hw_wake_up_group_reg_t wake_up_group; // [822:790]
     control_registers_reg2hw_wake_up_strd_reg_t wake_up_strd; // [789:757]
     control_registers_reg2hw_wake_up_offst_reg_t wake_up_offst; // [756:724]
-    control_registers_reg2hw_partition_sel_0_reg_t partition_sel_0; // [723:691]
-    control_registers_reg2hw_partition_sel_1_reg_t partition_sel_1; // [690:658]
-    control_registers_reg2hw_partition_sel_2_reg_t partition_sel_2; // [657:625]
-    control_registers_reg2hw_partition_sel_3_reg_t partition_sel_3; // [624:592]
-    control_registers_reg2hw_allocated_size_0_reg_t allocated_size_0; // [591:559]
-    control_registers_reg2hw_allocated_size_1_reg_t allocated_size_1; // [558:526]
-    control_registers_reg2hw_allocated_size_2_reg_t allocated_size_2; // [525:493]
-    control_registers_reg2hw_allocated_size_3_reg_t allocated_size_3; // [492:460]
-    control_registers_reg2hw_start_addr_scheme_0_reg_t start_addr_scheme_0; // [459:427]
-    control_registers_reg2hw_start_addr_scheme_1_reg_t start_addr_scheme_1; // [426:394]
-    control_registers_reg2hw_start_addr_scheme_2_reg_t start_addr_scheme_2; // [393:361]
-    control_registers_reg2hw_start_addr_scheme_3_reg_t start_addr_scheme_3; // [360:328]
+    control_registers_reg2hw_partition_sel_mreg_t [3:0] partition_sel; // [723:592]
+    control_registers_reg2hw_allocated_size_mreg_t [3:0] allocated_size; // [591:460]
+    control_registers_reg2hw_start_addr_scheme_mreg_t [3:0] start_addr_scheme; // [459:328]
     control_registers_reg2hw_ro_cache_enable_reg_t ro_cache_enable; // [327:296]
     control_registers_reg2hw_ro_cache_flush_reg_t ro_cache_flush; // [295:264]
     control_registers_reg2hw_ro_cache_start_mreg_t [3:0] ro_cache_start; // [263:132]
@@ -172,6 +127,8 @@ package control_registers_reg_pkg;
 
   // HW -> register type
   typedef struct packed {
+    control_registers_hw2reg_partition_sel_mreg_t [3:0] partition_sel; // [607:480]
+    control_registers_hw2reg_start_addr_scheme_mreg_t [3:0] start_addr_scheme; // [479:352]
     control_registers_hw2reg_tcdm_start_address_reg_t tcdm_start_address; // [351:320]
     control_registers_hw2reg_tcdm_end_address_reg_t tcdm_end_address; // [319:288]
     control_registers_hw2reg_nr_cores_reg_reg_t nr_cores_reg; // [287:256]
@@ -220,6 +177,14 @@ package control_registers_reg_pkg;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_RO_CACHE_END_3_OFFSET = 8'h 94;
 
   // Reset values for hwext registers and their fields
+  parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_0_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_1_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_2_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_3_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_START_ADDR_SCHEME_0_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_START_ADDR_SCHEME_1_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_START_ADDR_SCHEME_2_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_START_ADDR_SCHEME_3_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_TCDM_START_ADDRESS_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_TCDM_END_ADDRESS_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_NR_CORES_REG_RESVAL = 32'h 0;

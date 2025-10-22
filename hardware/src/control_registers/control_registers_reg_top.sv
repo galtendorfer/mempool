@@ -506,110 +506,74 @@ module control_registers_reg_top #(
   );
 
 
-  // R[partition_sel_0]: V(False)
 
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("WO"),
-    .RESVAL  (32'h80)
+  // Subregister 0 of Multireg partition_sel
+  // R[partition_sel_0]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
   ) u_partition_sel_0 (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
+    .re     (1'b0),
     .we     (partition_sel_0_we),
     .wd     (partition_sel_0_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (reg2hw.partition_sel_0.qe),
-    .q      (reg2hw.partition_sel_0.q ),
-
+    .d      (hw2reg.partition_sel[0].d),
+    .qre    (),
+    .qe     (reg2hw.partition_sel[0].qe),
+    .q      (reg2hw.partition_sel[0].q ),
     .qs     ()
   );
 
+  // Subregister 1 of Multireg partition_sel
+  // R[partition_sel_1]: V(True)
 
-  // R[partition_sel_1]: V(False)
-
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("WO"),
-    .RESVAL  (32'h80)
+  prim_subreg_ext #(
+    .DW    (32)
   ) u_partition_sel_1 (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
+    .re     (1'b0),
     .we     (partition_sel_1_we),
     .wd     (partition_sel_1_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (reg2hw.partition_sel_1.qe),
-    .q      (reg2hw.partition_sel_1.q ),
-
+    .d      (hw2reg.partition_sel[1].d),
+    .qre    (),
+    .qe     (reg2hw.partition_sel[1].qe),
+    .q      (reg2hw.partition_sel[1].q ),
     .qs     ()
   );
 
+  // Subregister 2 of Multireg partition_sel
+  // R[partition_sel_2]: V(True)
 
-  // R[partition_sel_2]: V(False)
-
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("WO"),
-    .RESVAL  (32'h80)
+  prim_subreg_ext #(
+    .DW    (32)
   ) u_partition_sel_2 (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
+    .re     (1'b0),
     .we     (partition_sel_2_we),
     .wd     (partition_sel_2_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (reg2hw.partition_sel_2.qe),
-    .q      (reg2hw.partition_sel_2.q ),
-
+    .d      (hw2reg.partition_sel[2].d),
+    .qre    (),
+    .qe     (reg2hw.partition_sel[2].qe),
+    .q      (reg2hw.partition_sel[2].q ),
     .qs     ()
   );
 
+  // Subregister 3 of Multireg partition_sel
+  // R[partition_sel_3]: V(True)
 
-  // R[partition_sel_3]: V(False)
-
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("WO"),
-    .RESVAL  (32'h80)
+  prim_subreg_ext #(
+    .DW    (32)
   ) u_partition_sel_3 (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
+    .re     (1'b0),
     .we     (partition_sel_3_we),
     .wd     (partition_sel_3_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (reg2hw.partition_sel_3.qe),
-    .q      (reg2hw.partition_sel_3.q ),
-
+    .d      (hw2reg.partition_sel[3].d),
+    .qre    (),
+    .qe     (reg2hw.partition_sel[3].qe),
+    .q      (reg2hw.partition_sel[3].q ),
     .qs     ()
   );
 
 
+
+  // Subregister 0 of Multireg allocated_size
   // R[allocated_size_0]: V(False)
 
   prim_subreg #(
@@ -629,13 +593,13 @@ module control_registers_reg_top #(
     .d      ('0  ),
 
     // to internal hardware
-    .qe     (reg2hw.allocated_size_0.qe),
-    .q      (reg2hw.allocated_size_0.q ),
+    .qe     (reg2hw.allocated_size[0].qe),
+    .q      (reg2hw.allocated_size[0].q ),
 
     .qs     ()
   );
 
-
+  // Subregister 1 of Multireg allocated_size
   // R[allocated_size_1]: V(False)
 
   prim_subreg #(
@@ -655,13 +619,13 @@ module control_registers_reg_top #(
     .d      ('0  ),
 
     // to internal hardware
-    .qe     (reg2hw.allocated_size_1.qe),
-    .q      (reg2hw.allocated_size_1.q ),
+    .qe     (reg2hw.allocated_size[1].qe),
+    .q      (reg2hw.allocated_size[1].q ),
 
     .qs     ()
   );
 
-
+  // Subregister 2 of Multireg allocated_size
   // R[allocated_size_2]: V(False)
 
   prim_subreg #(
@@ -681,13 +645,13 @@ module control_registers_reg_top #(
     .d      ('0  ),
 
     // to internal hardware
-    .qe     (reg2hw.allocated_size_2.qe),
-    .q      (reg2hw.allocated_size_2.q ),
+    .qe     (reg2hw.allocated_size[2].qe),
+    .q      (reg2hw.allocated_size[2].q ),
 
     .qs     ()
   );
 
-
+  // Subregister 3 of Multireg allocated_size
   // R[allocated_size_3]: V(False)
 
   prim_subreg #(
@@ -707,113 +671,75 @@ module control_registers_reg_top #(
     .d      ('0  ),
 
     // to internal hardware
-    .qe     (reg2hw.allocated_size_3.qe),
-    .q      (reg2hw.allocated_size_3.q ),
+    .qe     (reg2hw.allocated_size[3].qe),
+    .q      (reg2hw.allocated_size[3].q ),
 
     .qs     ()
   );
 
 
-  // R[start_addr_scheme_0]: V(False)
 
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("WO"),
-    .RESVAL  (32'h400000)
+  // Subregister 0 of Multireg start_addr_scheme
+  // R[start_addr_scheme_0]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
   ) u_start_addr_scheme_0 (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
+    .re     (1'b0),
     .we     (start_addr_scheme_0_we),
     .wd     (start_addr_scheme_0_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (reg2hw.start_addr_scheme_0.qe),
-    .q      (reg2hw.start_addr_scheme_0.q ),
-
+    .d      (hw2reg.start_addr_scheme[0].d),
+    .qre    (),
+    .qe     (reg2hw.start_addr_scheme[0].qe),
+    .q      (reg2hw.start_addr_scheme[0].q ),
     .qs     ()
   );
 
+  // Subregister 1 of Multireg start_addr_scheme
+  // R[start_addr_scheme_1]: V(True)
 
-  // R[start_addr_scheme_1]: V(False)
-
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("WO"),
-    .RESVAL  (32'h400000)
+  prim_subreg_ext #(
+    .DW    (32)
   ) u_start_addr_scheme_1 (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
+    .re     (1'b0),
     .we     (start_addr_scheme_1_we),
     .wd     (start_addr_scheme_1_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (reg2hw.start_addr_scheme_1.qe),
-    .q      (reg2hw.start_addr_scheme_1.q ),
-
+    .d      (hw2reg.start_addr_scheme[1].d),
+    .qre    (),
+    .qe     (reg2hw.start_addr_scheme[1].qe),
+    .q      (reg2hw.start_addr_scheme[1].q ),
     .qs     ()
   );
 
+  // Subregister 2 of Multireg start_addr_scheme
+  // R[start_addr_scheme_2]: V(True)
 
-  // R[start_addr_scheme_2]: V(False)
-
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("WO"),
-    .RESVAL  (32'h400000)
+  prim_subreg_ext #(
+    .DW    (32)
   ) u_start_addr_scheme_2 (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
+    .re     (1'b0),
     .we     (start_addr_scheme_2_we),
     .wd     (start_addr_scheme_2_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (reg2hw.start_addr_scheme_2.qe),
-    .q      (reg2hw.start_addr_scheme_2.q ),
-
+    .d      (hw2reg.start_addr_scheme[2].d),
+    .qre    (),
+    .qe     (reg2hw.start_addr_scheme[2].qe),
+    .q      (reg2hw.start_addr_scheme[2].q ),
     .qs     ()
   );
 
+  // Subregister 3 of Multireg start_addr_scheme
+  // R[start_addr_scheme_3]: V(True)
 
-  // R[start_addr_scheme_3]: V(False)
-
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("WO"),
-    .RESVAL  (32'h400000)
+  prim_subreg_ext #(
+    .DW    (32)
   ) u_start_addr_scheme_3 (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
+    .re     (1'b0),
     .we     (start_addr_scheme_3_we),
     .wd     (start_addr_scheme_3_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (reg2hw.start_addr_scheme_3.qe),
-    .q      (reg2hw.start_addr_scheme_3.q ),
-
+    .d      (hw2reg.start_addr_scheme[3].d),
+    .qre    (),
+    .qe     (reg2hw.start_addr_scheme[3].qe),
+    .q      (reg2hw.start_addr_scheme[3].q ),
     .qs     ()
   );
 

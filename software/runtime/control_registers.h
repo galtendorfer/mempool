@@ -19,6 +19,9 @@ extern "C" {
 // Maximum number of groups that we support in any configuration
 #define CONTROL_REGISTERS_PARAM_MAX_NUMGROUPS 8
 
+// Supported number of DAS partitions
+#define CONTROL_REGISTERS_PARAM_NUM_D_A_S_PARTITIONS 4
+
 // Register width
 #define CONTROL_REGISTERS_PARAM_REG_WIDTH 32
 
@@ -66,40 +69,55 @@ extern "C" {
 // Wake Up Offst Register
 #define CONTROL_REGISTERS_WAKE_UP_OFFST_REG_OFFSET 0x30
 
-// Tile grouping for partition 1
+// Tile grouping for DAS partition (common parameters)
+#define CONTROL_REGISTERS_PARTITION_SEL_PARTITION_SEL_FIELD_WIDTH 32
+#define CONTROL_REGISTERS_PARTITION_SEL_PARTITION_SEL_FIELDS_PER_REG 1
+#define CONTROL_REGISTERS_PARTITION_SEL_MULTIREG_COUNT 4
+
+// Tile grouping for DAS partition
 #define CONTROL_REGISTERS_PARTITION_SEL_0_REG_OFFSET 0x34
 
-// Tile grouping for partition 2
+// Tile grouping for DAS partition
 #define CONTROL_REGISTERS_PARTITION_SEL_1_REG_OFFSET 0x38
 
-// Tile grouping for partition 3
+// Tile grouping for DAS partition
 #define CONTROL_REGISTERS_PARTITION_SEL_2_REG_OFFSET 0x3c
 
-// Tile grouping for partition 4
+// Tile grouping for DAS partition
 #define CONTROL_REGISTERS_PARTITION_SEL_3_REG_OFFSET 0x40
 
-// Allocated size on partition 0
+// Allocated size on DAS partition (common parameters)
+#define CONTROL_REGISTERS_ALLOCATED_SIZE_ALLOCATED_SIZE_FIELD_WIDTH 32
+#define CONTROL_REGISTERS_ALLOCATED_SIZE_ALLOCATED_SIZE_FIELDS_PER_REG 1
+#define CONTROL_REGISTERS_ALLOCATED_SIZE_MULTIREG_COUNT 4
+
+// Allocated size on DAS partition
 #define CONTROL_REGISTERS_ALLOCATED_SIZE_0_REG_OFFSET 0x44
 
-// Allocated size on partition 1
+// Allocated size on DAS partition
 #define CONTROL_REGISTERS_ALLOCATED_SIZE_1_REG_OFFSET 0x48
 
-// Allocated size on partition 2
+// Allocated size on DAS partition
 #define CONTROL_REGISTERS_ALLOCATED_SIZE_2_REG_OFFSET 0x4c
 
-// Allocated size on partition 3
+// Allocated size on DAS partition
 #define CONTROL_REGISTERS_ALLOCATED_SIZE_3_REG_OFFSET 0x50
 
-// Allocated size on partition 0
+// Start address of DAS partition (common parameters)
+#define CONTROL_REGISTERS_START_ADDR_SCHEME_START_ADDR_SCHEME_FIELD_WIDTH 32
+#define CONTROL_REGISTERS_START_ADDR_SCHEME_START_ADDR_SCHEME_FIELDS_PER_REG 1
+#define CONTROL_REGISTERS_START_ADDR_SCHEME_MULTIREG_COUNT 4
+
+// Start address of DAS partition
 #define CONTROL_REGISTERS_START_ADDR_SCHEME_0_REG_OFFSET 0x54
 
-// Allocated size on partition 1
+// Start address of DAS partition
 #define CONTROL_REGISTERS_START_ADDR_SCHEME_1_REG_OFFSET 0x58
 
-// Allocated size on partition 2
+// Start address of DAS partition
 #define CONTROL_REGISTERS_START_ADDR_SCHEME_2_REG_OFFSET 0x5c
 
-// Allocated size on partition 3
+// Start address of DAS partition
 #define CONTROL_REGISTERS_START_ADDR_SCHEME_3_REG_OFFSET 0x60
 
 // TCDM Start Address Register
