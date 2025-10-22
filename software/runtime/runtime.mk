@@ -111,6 +111,7 @@ ifdef terapool
 	DEFINES += -DNUM_TILES_PER_SUB_GROUP=$(shell awk 'BEGIN{print ($(num_cores)/$(num_groups))/$(num_cores_per_tile)/$(num_sub_groups_per_group)}')
 endif
 ifdef das
+	DEFINES += -DNUM_DAS_PARTITIONS=$(num_das_partitions)
 	DEFINES += -DDAS_MEM_SIZE=$(das_mem_size)
 	DEFINES += -DLOG2_DAS_MEM_SIZE=$(shell awk 'BEGIN{print log($(das_mem_size))/log(2)}')
 endif

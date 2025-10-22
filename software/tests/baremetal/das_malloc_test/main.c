@@ -15,8 +15,6 @@
 #include "synchronization.h"
 
 #define NUM_TILES (NUM_CORES / NUM_CORES_PER_TILE)
-#define NUM_TILES_PER_PARTITION (4)
-#define ARRAY_SIZE (2 * NUM_TILES_PER_PARTITION * BANKING_FACTOR * NUM_CORES_PER_TILE)
 
 int main() {
   uint32_t core_id = mempool_get_core_id();
@@ -26,54 +24,91 @@ int main() {
   mempool_init(core_id);
   mempool_barrier_init(core_id);
 
-  // --------------------------------------------
-  // Verify partition
-  // --------------------------------------------
-
   if (core_id == 0) {
-    printf("Verify partition\n");
+
+    // --------------------------------------------
+    // Verify DAS partitions
+    // --------------------------------------------
+    printf("Verify DAS partitions\n\n");
+
+    uint32_t num_tiles_per_partition = 4;
+    uint32_t array_size = 2 * num_tiles_per_partition * BANKING_FACTOR * NUM_CORES_PER_TILE;
 
     // 1. Init dynamic heap allocator
     mempool_dynamic_heap_alloc_init(core_id);
 
     // 2. Set which partition write to.
-    uint32_t part_id = 0;  // set to allocate in the penultimate partition
-
-    // 3. Get the allocator
-    alloc_t *dynamic_heap_alloc = get_dynamic_heap_alloc();
-    alloc_dump(dynamic_heap_alloc);
-    // 4. Allocate memory
-    uint32_t *array = (uint32_t *)partition_malloc(dynamic_heap_alloc, ARRAY_SIZE*sizeof(uint32_t));
-
-    // 5. Config the hardware registers
-    partition_config(part_id, NUM_TILES_PER_PARTITION);
-    start_addr_scheme_config(part_id, (uint32_t)(*array), ARRAY_SIZE*sizeof(uint32_t));
-
-    // 6. Move data
-    for (uint32_t i = 0; i < ARRAY_SIZE; i++) {
-      array[i] = i;
-    }
-
-    // 7. Change addressing scheme (to fully interleaved)
-    partition_config(part_id, NUM_TILES);
-
-    // 8. check
-    for (uint32_t i = 0; i < ARRAY_SIZE; i++) {
-      uint32_t *fetch_address = &array[0] + \
-        (i % (NUM_TILES_PER_PARTITION * NUM_CORES_PER_TILE * BANKING_FACTOR)) + \
-        (i / (NUM_TILES_PER_PARTITION * NUM_CORES_PER_TILE * BANKING_FACTOR)) * NUM_BANKS;
-      if (i != *fetch_address) {
-        printf("%4d != %4d at address %8X.\n", i, *fetch_address, fetch_address);
+    for (uint32_t part_id = 0; part_id < NUM_DAS_PARTITIONS; part_id++) {
+      // 3. Get the allocator
+      alloc_t *dynamic_heap_alloc = get_dynamic_heap_alloc();
+      alloc_dump(dynamic_heap_alloc);
+      // 4. Allocate memory
+      uint32_t *array = (uint32_t *)partition_malloc(dynamic_heap_alloc, array_size*sizeof(uint32_t));
+      // 5. Config the hardware registers
+      partition_config(part_id, num_tiles_per_partition);
+      start_addr_scheme_config(part_id, (uint32_t)(*array), array_size*sizeof(uint32_t));
+      // 6. Move data
+      for (uint32_t i = 0; i < array_size; i++) {
+        array[i] = i;
       }
+      // 7. Change addressing scheme (to fully interleaved)
+      partition_config(part_id, NUM_TILES);
+      // 8. check
+      for (uint32_t i = 0; i < array_size; i++) {
+        uint32_t *fetch_address = &array[0] + \
+          (i % (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) + \
+          (i / (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) * NUM_BANKS;
+        if (i != *fetch_address) {
+          printf("%4d != %4d at address %8X.\n", i, *fetch_address, fetch_address);
+          return 1;
+        }
+      }
+      // 9. Free array
+      partition_free(dynamic_heap_alloc, array);
+      printf("SUCCESS on partition %d \n\n", part_id);
     }
 
-    // 9. Free array
-    partition_free(dynamic_heap_alloc, array);
+    // --------------------------------------------
+    // Verify DAS per Tile groups
+    // --------------------------------------------
+    printf("Verify DAS per Tile-groups\n\n");
+
+    // 2. Set which partition write to.
+    uint32_t part_id = 0;
+    for (num_tiles_per_partition = 1; num_tiles_per_partition < NUM_TILES; num_tiles_per_partition *= 2) {
+      array_size = 2 * num_tiles_per_partition * BANKING_FACTOR * NUM_CORES_PER_TILE;
+      // 3. Get the allocator
+      alloc_t *dynamic_heap_alloc = get_dynamic_heap_alloc();
+      alloc_dump(dynamic_heap_alloc);
+      // 4. Allocate memory
+      uint32_t *array = (uint32_t *)partition_malloc(dynamic_heap_alloc, array_size*sizeof(uint32_t));
+      // 5. Config the hardware registers
+      partition_config(part_id, num_tiles_per_partition);
+      start_addr_scheme_config(part_id, (uint32_t)(*array), array_size*sizeof(uint32_t));
+      // 6. Move data
+      for (uint32_t i = 0; i < array_size; i++) {
+        array[i] = i;
+      }
+      // 7. Change addressing scheme (to fully interleaved)
+      partition_config(part_id, NUM_TILES);
+      // 8. check
+      for (uint32_t i = 0; i < array_size; i++) {
+        uint32_t *fetch_address = &array[0] + \
+          (i % (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) + \
+          (i / (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) * NUM_BANKS;
+        if (i != *fetch_address) {
+          printf("%4d != %4d at address %8X.\n", i, *fetch_address, fetch_address);
+          return 1;
+        }
+      }
+      // 9. Free array
+      partition_free(dynamic_heap_alloc, array);
+      printf("SUCCESS for groups of %d tiles over the partition \n\n", num_tiles_per_partition);
+    }
+
     printf("All correct!\n");
   }
 
   mempool_barrier(num_cores);
-
-
   return 0;
 }
