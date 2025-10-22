@@ -27,7 +27,6 @@ typedef struct {
   alloc_block_t *first_block;
 } alloc_t;
 
-
 // Initialization
 void alloc_init(alloc_t *alloc, void *base, const uint32_t size);
 

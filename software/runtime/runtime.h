@@ -95,7 +95,6 @@ static uint32_t volatile *allocated_size3_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
                           CONTROL_REGISTERS_ALLOCATED_SIZE_3_REG_OFFSET);
 
-
 typedef uint32_t mempool_id_t;
 typedef uint32_t mempool_timer_t;
 
@@ -144,7 +143,9 @@ static inline void mempool_init(const uint32_t core_id) {
     extern uint32_t __heap_start;
     extern uint32_t __heap_seq_start;
     // Heap Region
-    uint32_t heap_size = (uint32_t)&__heap_seq_start - (uint32_t)&__heap_start; // Downscale interleaved heap size
+    uint32_t heap_size =
+        (uint32_t)&__heap_seq_start -
+        (uint32_t)&__heap_start; // Downscale interleaved heap size
     alloc_init(get_alloc_l1(), &__heap_start, heap_size);
 
     // Initialize L1 Sequential Heap Allocator per Tile
@@ -167,41 +168,47 @@ static inline void mempool_init(const uint32_t core_id) {
   }
 }
 
-// Reconfigure Interleaved Heap region, with explicit 'Dynamic Heap' start address
-// Programmer API for flexible Dynamic Heap region configuration
-static inline void mempool_reset_heap(const uint32_t core_id, uint32_t heap_seq_start) {
+// Reconfigure Interleaved Heap region, with explicit 'Dynamic Heap' start
+// address Programmer API for flexible Dynamic Heap region configuration
+static inline void mempool_reset_heap(const uint32_t core_id,
+                                      uint32_t heap_seq_start) {
   if (core_id == 0) {
     // Initialize L1 Interleaved Heap Allocator
     extern uint32_t __heap_start;
-    uint32_t heap_size = (uint32_t)heap_seq_start - (uint32_t)&__heap_start; // Downscale interleaved heap size
+    uint32_t heap_size =
+        (uint32_t)heap_seq_start -
+        (uint32_t)&__heap_start; // Downscale interleaved heap size
     alloc_init(get_alloc_l1(), &__heap_start, heap_size);
   }
 }
 
 // Initialize Dynamic Heap Allocator, as default specified in the linker script
-static inline void mempool_dynamic_heap_alloc_init(const uint32_t core_id){
-  if (core_id == 0){
+static inline void mempool_dynamic_heap_alloc_init(const uint32_t core_id) {
+  if (core_id == 0) {
     extern uint32_t __heap_seq_start;
     // Dynamic allocator base and size
     uint32_t seq_heap_base = (uint32_t)&__heap_seq_start;
     uint32_t seq_heap_size = NUM_CORES * DAS_MEM_SIZE;
     // Dynamically allocate the space for allocators
     alloc_t *dynamic_heap_allocator = get_dynamic_heap_alloc();
-    alloc_init(dynamic_heap_allocator, (uint32_t *)seq_heap_base, seq_heap_size);
+    alloc_init(dynamic_heap_allocator, (uint32_t *)seq_heap_base,
+               seq_heap_size);
   }
 }
 
 // Reset Dynamic Heap region with explicit start address specification
 // A UNIFIED allocator will be used
-static inline void mempool_dynamic_heap_alloc_reset(const uint32_t core_id, uint32_t heap_seq_start){
-  if (core_id == 0){
+static inline void mempool_dynamic_heap_alloc_reset(const uint32_t core_id,
+                                                    uint32_t heap_seq_start) {
+  if (core_id == 0) {
     extern uint32_t __heap_end;
     // Dynamic allocator base and size
     uint32_t seq_heap_base = heap_seq_start;
     uint32_t seq_heap_size = (uint32_t)&__heap_end - heap_seq_start;
     // Reset the space for allocators
     alloc_t *dynamic_heap_allocator = get_dynamic_heap_alloc();
-    alloc_init(dynamic_heap_allocator, (uint32_t *)seq_heap_base, seq_heap_size);
+    alloc_init(dynamic_heap_allocator, (uint32_t *)seq_heap_base,
+               seq_heap_size);
   }
 }
 
@@ -284,54 +291,58 @@ static inline void set_wake_up_offset(uint32_t offset) {
 }
 
 // Partition Configuration
-static inline void partition_config (uint32_t reg_sel, uint32_t tiles_per_partition){
+static inline void partition_config(uint32_t reg_sel,
+                                    uint32_t tiles_per_partition) {
   asm volatile("" ::: "memory");
-  switch (reg_sel){
-    case 0: 
-      *partition0_reg = tiles_per_partition;
-      break;
-    case 1: 
-      *partition1_reg = tiles_per_partition;
-      break;
-    case 2: 
-      *partition2_reg = tiles_per_partition;
-      break;
-    case 3: 
-      *partition3_reg = tiles_per_partition;
-      break;
-    default:
-      *partition0_reg = tiles_per_partition;
-      break;
+  switch (reg_sel) {
+  case 0:
+    *partition0_reg = tiles_per_partition;
+    break;
+  case 1:
+    *partition1_reg = tiles_per_partition;
+    break;
+  case 2:
+    *partition2_reg = tiles_per_partition;
+    break;
+  case 3:
+    *partition3_reg = tiles_per_partition;
+    break;
+  default:
+    *partition0_reg = tiles_per_partition;
+    break;
   }
   asm volatile("" ::: "memory");
-} 
+}
 
 // reg_sel = {3, 2, 1, 0}
-static inline void start_addr_scheme_config (uint32_t reg_sel, uint32_t addr, uint32_t size){
+static inline void start_addr_scheme_config(uint32_t reg_sel, uint32_t addr,
+                                            uint32_t size) {
   asm volatile("" ::: "memory");
-  uint32_t data_size = size > 2*NUM_BANKS*sizeof(uint32_t) ? size : 2*NUM_BANKS*sizeof(uint32_t);
+  uint32_t data_size = size > 2 * NUM_BANKS * sizeof(uint32_t)
+                           ? size
+                           : 2 * NUM_BANKS * sizeof(uint32_t);
   uint32_t allocated_size = data_size / (NUM_BANKS * sizeof(uint32_t));
-  switch (reg_sel){
-    case 0: 
-      *start_addr_scheme0_reg = addr;
-      *allocated_size0_reg    = allocated_size;
-      break;
-    case 1: 
-      *start_addr_scheme1_reg = addr;
-      *allocated_size1_reg    = allocated_size;
-      break;
-    case 2: 
-      *start_addr_scheme2_reg = addr;
-      *allocated_size2_reg    = allocated_size;
-      break;
-    case 3: 
-      *start_addr_scheme3_reg = addr;
-      *allocated_size3_reg    = allocated_size;
-      break;
-    default:
-      *start_addr_scheme0_reg = addr;
-      *allocated_size0_reg    = allocated_size;
-      break;
+  switch (reg_sel) {
+  case 0:
+    *start_addr_scheme0_reg = addr;
+    *allocated_size0_reg = allocated_size;
+    break;
+  case 1:
+    *start_addr_scheme1_reg = addr;
+    *allocated_size1_reg = allocated_size;
+    break;
+  case 2:
+    *start_addr_scheme2_reg = addr;
+    *allocated_size2_reg = allocated_size;
+    break;
+  case 3:
+    *start_addr_scheme3_reg = addr;
+    *allocated_size3_reg = allocated_size;
+    break;
+  default:
+    *start_addr_scheme0_reg = addr;
+    *allocated_size0_reg = allocated_size;
+    break;
   }
   asm volatile("" ::: "memory");
 }

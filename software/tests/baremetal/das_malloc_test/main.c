@@ -32,7 +32,8 @@ int main() {
     printf("Verify DAS partitions\n\n");
 
     uint32_t num_tiles_per_partition = 4;
-    uint32_t array_size = 2 * num_tiles_per_partition * BANKING_FACTOR * NUM_CORES_PER_TILE;
+    uint32_t array_size =
+        2 * num_tiles_per_partition * BANKING_FACTOR * NUM_CORES_PER_TILE;
 
     // 1. Init dynamic heap allocator
     mempool_dynamic_heap_alloc_init(core_id);
@@ -43,10 +44,12 @@ int main() {
       alloc_t *dynamic_heap_alloc = get_dynamic_heap_alloc();
       alloc_dump(dynamic_heap_alloc);
       // 4. Allocate memory
-      uint32_t *array = (uint32_t *)partition_malloc(dynamic_heap_alloc, array_size*sizeof(uint32_t));
+      uint32_t *array = (uint32_t *)partition_malloc(
+          dynamic_heap_alloc, array_size * sizeof(uint32_t));
       // 5. Config the hardware registers
       partition_config(part_id, num_tiles_per_partition);
-      start_addr_scheme_config(part_id, (uint32_t)(*array), array_size*sizeof(uint32_t));
+      start_addr_scheme_config(part_id, (uint32_t)(*array),
+                               array_size * sizeof(uint32_t));
       // 6. Move data
       for (uint32_t i = 0; i < array_size; i++) {
         array[i] = i;
@@ -55,11 +58,16 @@ int main() {
       partition_config(part_id, NUM_TILES);
       // 8. check
       for (uint32_t i = 0; i < array_size; i++) {
-        uint32_t *fetch_address = &array[0] + \
-          (i % (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) + \
-          (i / (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) * NUM_BANKS;
+        uint32_t *fetch_address =
+            &array[0] +
+            (i %
+             (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) +
+            (i /
+             (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) *
+                NUM_BANKS;
         if (i != *fetch_address) {
-          printf("%4d != %4d at address %8X.\n", i, *fetch_address, fetch_address);
+          printf("%4d != %4d at address %8X.\n", i, *fetch_address,
+                 fetch_address);
           return 1;
         }
       }
@@ -75,16 +83,20 @@ int main() {
 
     // 2. Set which partition write to.
     uint32_t part_id = 0;
-    for (num_tiles_per_partition = 1; num_tiles_per_partition < NUM_TILES; num_tiles_per_partition *= 2) {
-      array_size = 2 * num_tiles_per_partition * BANKING_FACTOR * NUM_CORES_PER_TILE;
+    for (num_tiles_per_partition = 1; num_tiles_per_partition < NUM_TILES;
+         num_tiles_per_partition *= 2) {
+      array_size =
+          2 * num_tiles_per_partition * BANKING_FACTOR * NUM_CORES_PER_TILE;
       // 3. Get the allocator
       alloc_t *dynamic_heap_alloc = get_dynamic_heap_alloc();
       alloc_dump(dynamic_heap_alloc);
       // 4. Allocate memory
-      uint32_t *array = (uint32_t *)partition_malloc(dynamic_heap_alloc, array_size*sizeof(uint32_t));
+      uint32_t *array = (uint32_t *)partition_malloc(
+          dynamic_heap_alloc, array_size * sizeof(uint32_t));
       // 5. Config the hardware registers
       partition_config(part_id, num_tiles_per_partition);
-      start_addr_scheme_config(part_id, (uint32_t)(*array), array_size*sizeof(uint32_t));
+      start_addr_scheme_config(part_id, (uint32_t)(*array),
+                               array_size * sizeof(uint32_t));
       // 6. Move data
       for (uint32_t i = 0; i < array_size; i++) {
         array[i] = i;
@@ -93,17 +105,23 @@ int main() {
       partition_config(part_id, NUM_TILES);
       // 8. check
       for (uint32_t i = 0; i < array_size; i++) {
-        uint32_t *fetch_address = &array[0] + \
-          (i % (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) + \
-          (i / (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) * NUM_BANKS;
+        uint32_t *fetch_address =
+            &array[0] +
+            (i %
+             (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) +
+            (i /
+             (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) *
+                NUM_BANKS;
         if (i != *fetch_address) {
-          printf("%4d != %4d at address %8X.\n", i, *fetch_address, fetch_address);
+          printf("%4d != %4d at address %8X.\n", i, *fetch_address,
+                 fetch_address);
           return 1;
         }
       }
       // 9. Free array
       partition_free(dynamic_heap_alloc, array);
-      printf("SUCCESS for groups of %d tiles over the partition \n\n", num_tiles_per_partition);
+      printf("SUCCESS for groups of %d tiles over the partition \n\n",
+             num_tiles_per_partition);
     }
 
     printf("All correct!\n");
