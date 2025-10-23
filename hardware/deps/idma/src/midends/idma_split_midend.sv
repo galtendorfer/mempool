@@ -3,6 +3,8 @@
 // SPDX-License-Identifier: SHL-0.51
 
 // Samuel Riedel <sriedel@iis.ee.ethz.ch>
+// Bowen Wang <bowwang@student.ethz.ch>
+// Marco Bertuletti <mbertuletti@iis.ee.ethz.ch>
 
 `include "common_cells/registers.svh"
 
@@ -11,11 +13,25 @@ module idma_split_midend #(
   parameter int unsigned DmaRegionStart = 32'h0000_0000,
   parameter int unsigned DmaRegionEnd   = 32'h1000_0000,
   parameter int unsigned AddrWidth      = 32,
+`ifdef DAS
+  parameter int unsigned NumTiles          = 64,
+  parameter int unsigned NumBanksPerTile   = 32,
+  parameter int unsigned TCDMSizePerBank   = 1024,
+  parameter int unsigned NumDASPartitions  = 4,
+  parameter int unsigned DASStartAddr      = 1024,
+`endif
   parameter type         burst_req_t    = logic,
   parameter type         meta_t         = logic
 ) (
   input  logic       clk_i,
   input  logic       rst_ni,
+`ifdef DAS
+  // DAS signals
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] group_factor_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] allocated_size_i,
+  input  logic [NumDASPartitions-1:0][AddrWidth-1:0]      start_addr_scheme_i,
+  output logic [$clog2(NumTiles):0]                       allocated_size_o,
+`endif
   // Slave
   input  burst_req_t burst_req_i,
   input  logic       valid_i,
@@ -28,16 +44,13 @@ module idma_split_midend #(
   input  meta_t      meta_i
 );
 
+  // ------ Parameter Settings ------ //
   localparam DmaRegionAddressBits = $clog2(DmaRegionWidth);
-
   typedef logic [AddrWidth-1:0] addr_t;
 
-  addr_t start_addr, end_addr;
-  logic req_valid;
-
-
-  // Handle Metadata
+  // ------ Handle Metadata ------ //
   // Forward idle signal and count the trans_comlete signal
+  logic req_valid;
   logic [31:0] num_trans_d, num_trans_q;
 
   assign meta_o.backend_idle = meta_i.backend_idle;
@@ -56,16 +69,130 @@ module idma_split_midend #(
   end
   `FF(num_trans_q, num_trans_d, '0, clk_i, rst_ni)
 
-  // Split requests
+`ifdef DAS
+  localparam TileDmaRegionWidth = DmaRegionWidth / NumTiles;
+  logic [AddrWidth-1:0] PartitionDmaRegionWidth;
+  localparam DmaBackendWidth = NumBanksPerTile*NumTiles*4; // 32banks*8Tiles*4bytes
+
+  // ------ Address translation ------ //
+  // Only the address in L1 SPM will be scrambled
+  logic [AddrWidth-1:0] post_scramble_src;
+  logic [AddrWidth-1:0] post_scramble_dst;
+  logic [$clog2(NumTiles):0] group_factor_src,   group_factor_dst,   group_factor_sel;
+  logic [$clog2(NumTiles):0] allocated_size_src, allocated_size_dst, allocated_size_sel;
+
+  assign group_factor_sel   = group_factor_src   | group_factor_dst;
+  assign allocated_size_sel = allocated_size_src | allocated_size_dst;
+  assign PartitionDmaRegionWidth = TileDmaRegionWidth * group_factor_sel;
+
+  idma_address_scrambler #(
+    .AddrWidth        (AddrWidth       ),
+    .NumTiles         (NumTiles        ),
+    .NumBanksPerTile  (NumBanksPerTile ),
+    .Bypass           (0               ),
+    .NumDASPartitions (NumDASPartitions),
+    .TCDMSizePerBank  (TCDMSizePerBank )
+  ) i_idma_address_scrambler_src (
+    .address_i          (burst_req_i.src),
+    .num_bytes_i        (burst_req_i.num_bytes),
+    .group_factor_i     (group_factor_i),
+    .allocated_size_i   (allocated_size_i),
+    .start_addr_scheme_i(start_addr_scheme_i),
+    .group_factor_o     (group_factor_src),
+    .allocated_size_o   (allocated_size_src),
+    .address_o          (post_scramble_src)
+  );
+
+  idma_address_scrambler #(
+    .AddrWidth        (AddrWidth       ),
+    .NumTiles         (NumTiles        ),
+    .NumBanksPerTile  (NumBanksPerTile ),
+    .Bypass           (0               ),
+    .NumDASPartitions (NumDASPartitions),
+    .TCDMSizePerBank  (TCDMSizePerBank )
+  ) i_idma_address_scrambler_dst (
+    .address_i          (burst_req_i.dst),
+    .num_bytes_i        (burst_req_i.num_bytes),
+    .group_factor_i     (group_factor_i),
+    .allocated_size_i   (allocated_size_i),
+    .start_addr_scheme_i(start_addr_scheme_i),
+    .group_factor_o     (group_factor_dst),
+    .allocated_size_o   (allocated_size_dst),
+    .address_o          (post_scramble_dst)
+  );
+
+  // ------ Filter out address in L1 SPM ------ //
+  addr_t start_addr;
+  logic  spm2dram;
+  always_comb begin
+    spm2dram = 0;
+    if (($unsigned(burst_req_i.src) >= DmaRegionStart) && ($unsigned(burst_req_i.src) < DmaRegionEnd)) begin
+      start_addr = post_scramble_src;
+      spm2dram = 1;
+    end else begin
+      start_addr = post_scramble_dst;
+      spm2dram = 0;
+    end
+  end
+
+  // ------ Considering Partition Scheme ------ //
+  logic [$clog2(NumTiles):0] shift_index;
+  logic [AddrWidth-1:0]      partition_mask;
+  addr_t                     masked_start_addr;
+
+  always_comb begin
+      case(group_factor_sel)
+          128: shift_index = 7;
+          64:  shift_index = 6;
+          32:  shift_index = 5;
+          16:  shift_index = 4;
+          8:   shift_index = 3;
+          4:   shift_index = 2;
+          2:   shift_index = 1;
+          default: shift_index = 0;
+      endcase
+  end
+
+  assign partition_mask = {DmaRegionAddressBits{1'b1}} >> ($clog2(NumTiles) - shift_index);
+  assign masked_start_addr = start_addr & partition_mask;
+
+  // ------ Beat Counter and Shifter Handler ------ //
+  logic [$clog2(NumTiles):0] beat_cnt_d, beat_cnt_q;
+  `FFARN(beat_cnt_q, beat_cnt_d, '0, clk_i, rst_ni)
+
+  logic [$clog2(NumTiles):0] shift_row, shift_partition;
+  logic [$clog2(NumTiles):0] shift_index_sc;
+  logic [$clog2(NumTiles):0] mask_shift_row;
+
+  always_comb begin
+    case(allocated_size_sel)
+        128: shift_index_sc = 7;
+        64:  shift_index_sc = 6;
+        32:  shift_index_sc = 5;
+        16:  shift_index_sc = 4;
+        8:   shift_index_sc = 3;
+        4:   shift_index_sc = 2;
+        2:   shift_index_sc = 1;
+        default: shift_index_sc = 0;
+    endcase
+  end
+
+  assign shift_partition = beat_cnt_q >> shift_index_sc;
+  assign mask_shift_row  = ~( {($clog2(NumTiles) + 1){1'b1}} << shift_index_sc );
+  assign shift_row       = beat_cnt_q & mask_shift_row;
+`else
+  // ------ Filter out address in L1 SPM ------ //
+  addr_t start_addr;
   always_comb begin
     if (($unsigned(burst_req_i.src) >= DmaRegionStart) && ($unsigned(burst_req_i.src) < DmaRegionEnd)) begin
       start_addr = burst_req_i.src;
     end else begin
       start_addr = burst_req_i.dst;
     end
-    end_addr = start_addr + burst_req_i.num_bytes;
   end
+`endif
 
+  // ------ Split requests ------ //
   enum logic {Idle, Busy} state_d, state_q;
   burst_req_t req_d, req_q;
 
@@ -80,9 +207,63 @@ module idma_split_midend #(
     ready_o = 1'b0;
     req_valid = 1'b0;
 
+`ifdef DAS
+    allocated_size_o = allocated_size_sel;
+    beat_cnt_d = beat_cnt_q;
+    if (num_trans_q == 1 && num_trans_d == 0) begin
+      beat_cnt_d = 0;
+    end
+`endif
+
     unique case (state_q)
       Idle: begin
-        if (valid_i) begin // Splitting required.
+        if (valid_i) begin // Splitting required
+`ifdef DAS
+          if ((PartitionDmaRegionWidth-masked_start_addr) >= burst_req_i.num_bytes) begin
+            burst_req_o = burst_req_i;
+            // Address in SPM need to be translated back to physical address
+            if (spm2dram) begin
+              burst_req_o.src = post_scramble_src;
+            end else begin
+              burst_req_o.dst = post_scramble_dst;
+            end
+            valid_o = 1'b1;
+            ready_o = ready_i;
+            req_valid = ready_i;
+          end else begin
+            // Store and acknowledge
+            req_d = burst_req_i;
+            ready_o = 1'b1;
+            burst_req_o = burst_req_i;
+            // Calculate the size for the 1st burst
+            burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
+            // TODO (bowwang): parameterize
+            req_d.num_bytes = (group_factor_sel <= $clog2(NumTiles) + 1) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
+            if (spm2dram) begin
+              burst_req_o.src = post_scramble_src;
+              req_d.src       = post_scramble_src;
+            end else begin
+              burst_req_o.dst = post_scramble_dst;
+              req_d.dst       = post_scramble_dst;
+            end
+            valid_o = 1'b1;
+            // Modify the stored info after first beat sent
+            if (ready_i) begin
+              // TODO (bowwang): May not be mecessary to consider alignment
+              req_d.num_bytes -= PartitionDmaRegionWidth-masked_start_addr;
+              if (spm2dram) begin
+                req_d.src += DmaRegionWidth-masked_start_addr;
+                req_d.dst += PartitionDmaRegionWidth-masked_start_addr;
+              end else begin
+                req_d.src += PartitionDmaRegionWidth-masked_start_addr;
+                req_d.dst += DmaRegionWidth-masked_start_addr;
+              end
+              req_valid  = 1'b1;
+              beat_cnt_d = 1;
+            end
+            state_d = Busy;
+          end
+`else
           if (DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0] >= burst_req_i.num_bytes) begin
             // No splitting required, just forward
             burst_req_o = burst_req_i;
@@ -108,6 +289,7 @@ module idma_split_midend #(
             end
             state_d = Busy;
           end
+`endif
         end
       end
       Busy: begin
@@ -115,7 +297,37 @@ module idma_split_midend #(
         burst_req_o = req_q;
         valid_o = 1'b1;
         req_valid = ready_i;
-        if (req_q.num_bytes <= DmaRegionWidth) begin
+`ifdef DAS
+        if ($unsigned(req_q.num_bytes) <= $unsigned(PartitionDmaRegionWidth)) begin
+          // Last split
+          if (ready_i) begin
+            state_d = Idle;
+            beat_cnt_d = beat_cnt_q + 1;
+          end
+        end else begin
+          burst_req_o.num_bytes = PartitionDmaRegionWidth;
+          if (ready_i) begin
+            req_d.num_bytes = req_q.num_bytes - PartitionDmaRegionWidth;
+            beat_cnt_d = beat_cnt_q + 1;
+            if (spm2dram) begin
+              if (shift_row == allocated_size_sel-1) begin
+                req_d.src = req_q.src + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
+              end else begin
+                req_d.src = req_q.src + DmaRegionWidth;
+              end
+              req_d.dst = req_q.dst + PartitionDmaRegionWidth;
+            end else begin
+              req_d.src = req_q.src + PartitionDmaRegionWidth;
+              if (shift_row == allocated_size_sel-1) begin
+                req_d.dst   = req_q.dst + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
+              end else begin
+                req_d.dst = req_q.dst + DmaRegionWidth;
+              end
+            end// spm2dram
+          end // ready_i
+        end
+`else
+        if ($unsigned(req_q.num_bytes) <= $unsigned(DmaRegionWidth)) begin
           // Last split
           if (ready_i) begin
             state_d = Idle;
@@ -129,6 +341,7 @@ module idma_split_midend #(
             req_d.dst = req_q.dst + DmaRegionWidth;
           end
         end
+`endif
       end
       default: /*do nothing*/;
     endcase
@@ -139,14 +352,14 @@ module idma_split_midend #(
   always_ff @(posedge clk_i or negedge rst_ni) begin
     automatic string str;
     if (rst_ni && valid_i && ready_o) begin
-      str = "[idma_split_midend] Got request\n";
+      str = "\n\n[idma_split_midend] Got request\n";
       str = $sformatf("%sSplit: Request in: From: 0x%8x To: 0x%8x with size %d\n", str, burst_req_i.src, burst_req_i.dst, burst_req_i.num_bytes);
       f = $fopen("dma.log", "a");
       $fwrite(f, str);
       $fclose(f);
     end
     if (rst_ni && valid_o && ready_i) begin
-      str = $sformatf("Split: Out %6d: From: 0x%8x To: 0x%8x with size %d\n", num_trans_q, burst_req_o.src, burst_req_o.dst, burst_req_o.num_bytes);
+      str = $sformatf("Split: Out %6d: From: 0x%8x To: 0x%8x with size %d, start_addr 0x%8x.\n", num_trans_q, burst_req_o.src, burst_req_o.dst, burst_req_o.num_bytes, start_addr);
       f = $fopen("dma.log", "a");
       $fwrite(f, str);
       $fclose(f);

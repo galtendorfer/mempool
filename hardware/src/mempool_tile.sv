@@ -54,9 +54,9 @@ module mempool_tile
   // Wake up interface
   input  logic              [NumCoresPerTile-1:0]                                 wake_up_i,
   // Partition selection  
-  input  logic              [3:0][DataWidth-1:0]                                  start_addr_scheme_i,
-  input  logic              [3:0][PartitionDataWidth-1:0]                         allocated_size_i,
-  input  logic              [3:0][PartitionDataWidth-1:0]                         partition_sel_i
+  input  logic              [NumDASPartitions-1:0][DataWidth-1:0]                 start_addr_scheme_i,
+  input  logic              [NumDASPartitions-1:0][PartitionDataWidth-1:0]        allocated_size_i,
+  input  logic              [NumDASPartitions-1:0][PartitionDataWidth-1:0]        partition_sel_i
 );
 
   /****************
@@ -904,10 +904,16 @@ module mempool_tile
       .SeqMemSizePerTile (SeqMemSizePerTile),
       .NumDASPartitions  (NumDASPartitions )
     ) i_address_scrambler (
-      .address_i          (snitch_data_qaddr[c]),
+`ifdef DAS
       .group_factor_i     (partition_sel_i     ),
       .allocated_size_i   (allocated_size_i    ),
       .start_addr_scheme_i(start_addr_scheme_i ),
+`else
+      .group_factor_i     (NumTiles            ),
+      .allocated_size_i   ('0                  ),
+      .start_addr_scheme_i('0                  ),
+`endif
+      .address_i          (snitch_data_qaddr[c]),
       .address_o   (snitch_data_qaddr_scrambled)
     );
 

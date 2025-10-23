@@ -58,24 +58,26 @@ module mempool_group
     output logic                            [NumGroups-1:1][NumTilesPerGroup-1:0]  tcdm_slave_resp_valid_o,
     input  logic                            [NumGroups-1:1][NumTilesPerGroup-1:0]  tcdm_slave_resp_ready_i,
   `endif
-  // Wake up interface
-  input  logic                            [NumCoresPerGroup-1:0]                 wake_up_i,
+`ifdef DAS
   // Partition selection
-  input  logic                            [3:0][PartitionDataWidth-1:0]          partition_sel_i,
-  input  logic                            [3:0][PartitionDataWidth-1:0]          allocated_size_i,
-  input  logic                            [3:0][DataWidth-1:0]                   start_addr_scheme_i,
+  input  logic                              [NumDASPartitions-1:0][DataWidth-1:0]          start_addr_scheme_i,
+  input  logic                              [NumDASPartitions-1:0][PartitionDataWidth-1:0] allocated_size_i,
+  input  logic                              [NumDASPartitions-1:0][PartitionDataWidth-1:0] partition_sel_i,
+  input  logic                              [PartitionDataWidth-1:0]                       dma_allocated_size_sel_i,
+`endif
+  // Wake up interface
+  input  logic                              [NumCoresPerGroup-1:0]                         wake_up_i,
   // RO-Cache configuration
-  input  `STRUCT_PORT(ro_cache_ctrl_t)                                           ro_cache_ctrl_i,
+  input  `STRUCT_PORT(ro_cache_ctrl_t)                                                     ro_cache_ctrl_i,
   // DMA request
-  input  `STRUCT_PORT(dma_req_t)                                                 dma_req_i,
-  input  logic                                                                   dma_req_valid_i,
-  output logic                                                                   dma_req_ready_o,
-  input  logic                            [7:0]                                  dma_allocated_size_sel_i,
+  input  `STRUCT_PORT(dma_req_t)                                                           dma_req_i,
+  input  logic                                                                             dma_req_valid_i,
+  output logic                                                                             dma_req_ready_o,
   // DMA status
-  output `STRUCT_PORT(dma_meta_t)                                                dma_meta_o,
+  output `STRUCT_PORT(dma_meta_t)                                                          dma_meta_o,
    // AXI Interface
-  output `STRUCT_VECT(axi_tile_req_t,     [NumAXIMastersPerGroup-1:0])           axi_mst_req_o,
-  input  `STRUCT_VECT(axi_tile_resp_t,    [NumAXIMastersPerGroup-1:0])           axi_mst_resp_i
+  output `STRUCT_VECT(axi_tile_req_t,       [NumAXIMastersPerGroup-1:0])                   axi_mst_req_o,
+  input  `STRUCT_VECT(axi_tile_resp_t,      [NumAXIMastersPerGroup-1:0])                   axi_mst_resp_i
 );
 
   /*****************
@@ -337,12 +339,14 @@ module mempool_group
           .axi_mst_resp_i          (axi_mst_resp[sg*NumAXIMastersPerSubGroup +: NumAXIMastersPerSubGroup] ),
           // RO-Cache configuration
           .ro_cache_ctrl_i         (ro_cache_ctrl_q                                                       ),
-          // Wake up interface
-          .wake_up_i      (wake_up_q[sg*NumCoresPerSubGroup +: NumCoresPerSubGroup]                       ),
+`ifdef DAS
           // Partition selection
           .start_addr_scheme_i     (start_addr_scheme_i                                                   ),
           .allocated_size_i        (allocated_size_i                                                      ),
-          .partition_sel_i         (partition_sel_i)
+          .partition_sel_i         (partition_sel_i                                                       ),
+`endif
+          // Wake up interface
+          .wake_up_i      (wake_up_q[sg*NumCoresPerSubGroup +: NumCoresPerSubGroup]                       )
         );
       end else begin: gen_rtl_sg
         mempool_sub_group #(
@@ -393,11 +397,14 @@ module mempool_group
           .axi_mst_resp_i          (axi_mst_resp[sg*NumAXIMastersPerSubGroup +: NumAXIMastersPerSubGroup] ),
           // RO-Cache configuration
           .ro_cache_ctrl_i         (ro_cache_ctrl_q                                                       ),
+`ifdef DAS
+          // Partition selection
+          .start_addr_scheme_i     (start_addr_scheme_i                                                   ),
+          .allocated_size_i        (allocated_size_i                                                      ),
+          .partition_sel_i         (partition_sel_i                                                       ),
+`endif
           // Wake up interface
-          .wake_up_i      (wake_up_q[sg*NumCoresPerSubGroup +: NumCoresPerSubGroup]                       ),
-          .start_addr_scheme_i        (start_addr_scheme_i                                                ),
-          .allocated_size_i           (allocated_size_i                                                   ),
-          .partition_sel_i            (partition_sel_i)
+          .wake_up_i      (wake_up_q[sg*NumCoresPerSubGroup +: NumCoresPerSubGroup]                       )
         );
       end
       // Transpose the group requests
@@ -572,7 +579,7 @@ module mempool_group
 
     `FF(dma_meta_o, dma_meta_cut, '0, clk_i, rst_ni);
 
-    idma_distributed_midend_v2 #(
+    idma_distributed_midend #(
       .NoMstPorts     (NumDmasPerGroup                         ),
       .DmaRegionWidth (NumBanksPerGroup*4/NumDmasPerGroup      ),
       .DmaRegionStart (TCDMBaseAddr                            ),
@@ -580,17 +587,17 @@ module mempool_group
       .TransFifoDepth (8                                       ),
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
-    ) i_idma_distributed_midend_v2 (
+    ) i_idma_distributed_midend (
       .clk_i           (clk_i                   ),
       .rst_ni          (rst_ni                  ),
-      // slave
+`ifdef DAS
+      // partition
+      .allocated_size_i(dma_allocated_size_sel_i),
+`endif
       .burst_req_i     (dma_req_cut             ),
       .valid_i         (dma_req_cut_valid       ),
       .ready_o         (dma_req_cut_ready       ),
       .meta_o          (dma_meta_cut            ),
-      // partition
-      .allocated_size_i(dma_allocated_size_sel_i),
-      // master
       .burst_req_o     (dma_req                 ),
       .valid_o         (dma_req_valid           ),
       .ready_i         (dma_req_ready           ),
@@ -699,11 +706,13 @@ module mempool_group
         // AXI interface
         .axi_mst_req_o           (axi_tile_req[t]                                ),
         .axi_mst_resp_i          (axi_tile_resp[t]                               ),
-        // Wake up interface
-        .wake_up_i               (wake_up_q[t*NumCoresPerTile +: NumCoresPerTile]),
+`ifdef DAS
         .start_addr_scheme_i     (start_addr_scheme_i                            ),
         .allocated_size_i        (allocated_size_i                               ),
-        .partition_sel_i         (partition_sel_i)
+        .partition_sel_i         (partition_sel_i                                ),
+`endif
+        // Wake up interface
+        .wake_up_i               (wake_up_q[t*NumCoresPerTile +: NumCoresPerTile])
       );
 
       // Transpose the group requests
@@ -989,7 +998,7 @@ module mempool_group
     logic      [NumDmasPerGroup-1:0] dma_req_ready;
     dma_meta_t [NumDmasPerGroup-1:0] dma_meta;
 
-    idma_distributed_midend_v2 #(
+    idma_distributed_midend #(
       .NoMstPorts     (NumDmasPerGroup                         ),
       .DmaRegionWidth (NumBanksPerGroup*4/NumDmasPerGroup      ),
       .DmaRegionStart (TCDMBaseAddr                            ),
@@ -997,17 +1006,17 @@ module mempool_group
       .TransFifoDepth (8                                       ),
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
-    ) i_idma_distributed_midend_v2 (
+    ) i_idma_distributed_midend (
       .clk_i           (clk_i                   ),
       .rst_ni          (rst_ni                  ),
-      // slave
+`ifdef DAS
+      // partition
+      .allocated_size_i(dma_allocated_size_sel_i),
+`endif
       .burst_req_i     (dma_req_cut             ),
       .valid_i         (dma_req_cut_valid       ),
       .ready_o         (dma_req_cut_ready       ),
       .meta_o          (dma_meta_cut            ),
-      // partition
-      .allocated_size_i(dma_allocated_size_sel_i),
-      // master
       .burst_req_o     (dma_req                 ),
       .valid_o         (dma_req_valid           ),
       .ready_i         (dma_req_ready           ),

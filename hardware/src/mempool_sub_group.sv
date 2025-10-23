@@ -62,12 +62,14 @@ module mempool_sub_group
   input  `STRUCT_VECT(axi_tile_resp_t,    [NumAXIMastersPerSubGroup-1:0])                      axi_mst_resp_i,
   // RO-Cache configuration
   input  `STRUCT_PORT(ro_cache_ctrl_t)                                                         ro_cache_ctrl_i,
-  // Wake up interface
-  input  logic                            [NumCoresPerSubGroup-1:0]                            wake_up_i,
+`ifdef DAS
   // Partition Selection
-  input  logic                            [3:0][PartitionDataWidth-1:0]                        partition_sel_i,
-  input  logic                            [3:0][PartitionDataWidth-1:0]                        allocated_size_i,
-  input  logic                            [3:0][DataWidth-1:0]                                 start_addr_scheme_i
+  input  logic                            [NumDASPartitions-1:0][DataWidth-1:0]                start_addr_scheme_i,
+  input  logic                            [NumDASPartitions-1:0][PartitionDataWidth-1:0]       allocated_size_i,
+  input  logic                            [NumDASPartitions-1:0][PartitionDataWidth-1:0]       partition_sel_i,
+`endif
+  // Wake up interface
+  input  logic                            [NumCoresPerSubGroup-1:0]                            wake_up_i
 );
 
   /*****************
@@ -202,12 +204,13 @@ module mempool_sub_group
       // AXI interface
       .axi_mst_req_o           (axi_tile_req[t]                                ),
       .axi_mst_resp_i          (axi_tile_resp[t]                               ),
+`ifdef DAS
+        .start_addr_scheme_i   (start_addr_scheme_i                            ),
+        .allocated_size_i      (allocated_size_i                               ),
+        .partition_sel_i       (partition_sel_i                                ),
+`endif
       // Wake up interface
-      .wake_up_i               (wake_up_q[t*NumCoresPerTile +: NumCoresPerTile]),
-      // Partition selection
-      .start_addr_scheme_i     (start_addr_scheme_i                            ),
-      .allocated_size_i        (allocated_size_i                               ),
-      .partition_sel_i         (partition_sel_i)
+      .wake_up_i               (wake_up_q[t*NumCoresPerTile +: NumCoresPerTile])
     );
 
     // Transpose the sub_group requests
