@@ -6,18 +6,20 @@
 // sequentially and part is interleaved.
 // Current constraints:
 
+// Author: Samuel Riedel <sriedel@iis.ee.ethz.ch>
 // Author: Marco Bertuletti <mbertuletti@iis.ee.ethz.ch>
 
 module address_scrambler #(
   parameter int unsigned AddrWidth         = 32,
   parameter int unsigned DataWidth         = 32,
   parameter int unsigned ByteOffset        = 2,
+  parameter bit          Bypass            = 0,
   parameter int unsigned NumTiles          = 2,
   parameter int unsigned NumBanksPerTile   = 2,
-  parameter bit          Bypass            = 0,
-  parameter int unsigned SeqMemSizePerTile = 4*1024,
   parameter int unsigned TCDMSizePerBank   = 1024,
+  parameter int unsigned SeqMemSizePerTile = 4096,
   parameter int unsigned NumDASPartitions  = 4,
+  // Dependant parameters, do not change
   parameter int unsigned MemSizePerTile    = NumBanksPerTile*TCDMSizePerBank,
   parameter int unsigned MemSizePerRow     = (1 << ByteOffset)*NumBanksPerTile*NumTiles
 ) (
@@ -52,8 +54,8 @@ module address_scrambler #(
     
     // `tile_index` : how many bits to shift for TileID bits in each partition
     // `row_index`: how many bits need to swap within Row Index
-    logic [NumDASPartitions-1:0][$clog2(NumTiles):0] tile_index;
-    logic [NumDASPartitions-1:0][$clog2(NumTiles):0] row_index;
+    logic [NumDASPartitions-1:0][$clog2($clog2(NumTiles)+1)-1:0] tile_index;
+    logic [NumDASPartitions-1:0][$clog2($clog2(NumTiles)+1)-1:0] row_index;
 
     for (genvar i = 0; i < NumDASPartitions; i++) begin : gen_shift_index
       lzc #(
@@ -65,12 +67,12 @@ module address_scrambler #(
         .empty_o (/* Unused */     )
       );
       lzc #(
-        .WIDTH ($clog2(NumTiles)),
+        .WIDTH ($clog2(NumTiles)+1),
         .MODE  (1'b0            )
       ) i_log_row_index (
-        .in_i    (allocated_size_i[i]),
-        .cnt_o   (row_index[i]       ),
-        .empty_o (/* Unused */       )
+        .in_i    (allocated_size_i[i][$clog2(NumTiles):0]),
+        .cnt_o   (row_index[i]                           ),
+        .empty_o (/* Unused */                           )
       );
     end
 

@@ -897,12 +897,12 @@ module mempool_tile
     address_scrambler #(
       .AddrWidth         (AddrWidth        ),
       .ByteOffset        (ByteOffset       ),
+      .Bypass            (0                ),
       .NumTiles          (NumTiles         ),
       .NumBanksPerTile   (NumBanksPerTile  ),
-      .Bypass            (0                ),
+      .TCDMSizePerBank   (TCDMSizePerBank  ),
       .SeqMemSizePerTile (SeqMemSizePerTile),
-      .NumDASPartitions  (NumDASPartitions ),
-      .TCDMSizePerBank   (TCDMSizePerBank  )
+      .NumDASPartitions  (NumDASPartitions )
     ) i_address_scrambler (
       .address_i          (snitch_data_qaddr[c]),
       .group_factor_i     (partition_sel_i     ),
