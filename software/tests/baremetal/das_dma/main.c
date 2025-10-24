@@ -74,10 +74,10 @@ int main() {
       uint32_t *fetch_address = &array[0] +
           (i % (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) +
           (i / (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) * NUM_BANKS;
-//      if (l2_array[i] != *fetch_address) {
-//        printf("%4d != %4d at address %8X.\n", i, *fetch_address,
-//               fetch_address);
-//      }
+     if (l2_array[i] != *fetch_address) {
+       printf("%4d != %4d at address %8X.\n", i, *fetch_address,
+              fetch_address);
+     }
     }
 
     // 9. Free array

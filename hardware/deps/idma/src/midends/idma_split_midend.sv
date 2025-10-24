@@ -238,7 +238,7 @@ module idma_split_midend #(
             // Calculate the size for the 1st burst
             burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
             // TODO (bowwang): parameterize
-            req_d.num_bytes = (group_factor_sel <= $clog2(NumTiles) + 1) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
+            // req_d.num_bytes = (group_factor_sel <= $clog2(NumTiles) + 1) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
             if (spm2dram) begin
               burst_req_o.src = post_scramble_src;
               req_d.src       = post_scramble_src;
