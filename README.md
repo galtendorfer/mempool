@@ -4,9 +4,9 @@
 
 # MemPool
 
-MemPool is a many-core system targeting image processing applications. It implements 256 RISC-V cores that can access a large, shared L1 memory in at most five cycles.
+MemPool is a many-core system targeting image processing and wireless applications. It implements 256 RISC-V cores that can access a large, shared L1 memory in at most five cycles. TeraPool and MinPool, respectively a 1024 RISC-V cores scaled-up and a 16 RISC-V cores scaled-down parametrizations of MemPool are also supported.
 
-This repository contains the software and hardware of MemPool, as well as infrastructure for compilation and simulation.
+This repository contains the software and hardware of MinPool, MemPool, and TeraPool, as well as infrastructure for compilation and simulation.
 
 ## Structure
 
@@ -187,6 +187,22 @@ To get a visualization of the traces, check out the `scripts/tracevis.py` script
 
 We also provide Synopsys Spyglass linting scripts in the `hardware/spyglass`. Run `make lint` in the `hardware` folder, with a specific MemPool configuration, to run the tests associated with the `lint_rtl` target.
 
+## Hardware Configurations
+
+MemPool's core-count is parametrizable. In `./config`, the `config.mk` file includes other configuration files, which represent specific parametrizations of MemPool. We currently support three parametrizations:
+- `terapool`: 1024 cores, organized into 128 tiles with eight cores each
+- `mempool`: 256 cores, organized into 64 tiles with four cores each (default)
+- `minpool`: 16 cores, organized into 4 tiles with four cores each
+
+The software and the hardware for different MemPool configurations can be compiled specifying the desired configuration on the command line. For example, to compile and simulate the `hello_world` app for TeraPool:
+```bash
+cd hardware
+# Compile the hello_world for TeraPool configuration
+config=terapool make COMPILER=gcc hello_world
+# Run the simulation with the *hello_world* binary loaded
+config=terapool app=baremetal/hello_world make sim
+```
+
 ## DRAMsys Co-Simulation
 
 The MemPool system supports both on-chip SRAM or off-chip DRAM co-simulation for higher hierarchy memory transfering. For off-chip DRAM co-simulation, it incorporates the `dram_rtl_sim` tool as a submodule, build at `hardware/deps/dram_rtl_sim`. Leveraging DRAMSys5.0, it facilitates an effective co-simulation environment between RTL models and DRAMSys5.0 for the simulation of DRAM + CTRL models, with contemporary off-chip DRAM technologies (e.g., LPDDR, DDR, HBM).
@@ -221,7 +237,7 @@ For data transfer testing between the MemPool system and higher hierarchy memory
 **Note:** Currently, the simulation crafting tool for off-chip DRAM co-simulation is not open-sourced. We utilize the `Questasim` simulator exclusively.
 
 ## Publications
-If you use MemPool in your work or research, you can cite us:
+If you use MemPool or TeraPool in your work or research, you can cite us:
 
 **MemPool: A Scalable Manycore Architecture with a Low-Latency Shared L1 Memory**
 
@@ -240,8 +256,23 @@ If you use MemPool in your work or research, you can cite us:
 ```
 This paper was published on [IEEE Xplore](https://ieeexplore.ieee.org/document/10227739) and is also available on [arXiv:2303.17742 [cs.AR]](https://arxiv.org/abs/2303.17742) and the [ETH Research Collection](https://doi.org/10.3929/ethz-b-000643341).
 
+**TeraPool: A Physical Design Aware, 1024 RISC-V Cores Shared-L1-Memory Scaled-Up Cluster Design With High Bandwidth Main Memory Link**
 
-The following publications give more details about MemPool, its extensions, and use cases:
+```
+@article{Zhang2025TeraPool,
+  title={TeraPool: A Physical Design Aware, 1024 RISC-V Cores Shared-L1-Memory Scaled-Up Cluster Design With High Bandwidth Main Memory Link},
+  author={Zhang, Yichao and Bertuletti, Marco and Zhang, Chi and Riedel, Samuel and Shen, Diyou and Wang, Bowen and Vanelli-Coralli, Alessandro and Benini, Luca},
+  journal={IEEE Transactions on Computers},
+  year={2025},
+  volume={74},
+  number={11},
+  pages={3667-3681},
+  doi={10.1109/TC.2025.3603692}
+}
+```
+This paper was published on [IEEE Xplore](https://ieeexplore.ieee.org/document/11145329).
+
+The following publications give more details about MemPool, TeraPool, its extensions, and use cases:
 
 ### 2021
 
@@ -626,6 +657,29 @@ This paper is available on [IEEE Xplore](https://ieeexplore.ieee.org/document/10
 }
 ```
 This paper is available on [ACM DIGITAL LIBRARY](https://dl.acm.org/doi/10.1145/3649476.3658735).
+
+### 2025
+
+</p>
+</details>
+
+<details>
+<summary><i>A 66-Gb/s/5.5-W RISC-V Many-Core Cluster for 5G+ Software-Defined Radio Uplinks</i></summary>
+<p>
+
+```
+@article{Bertuletti2025TeraPool,
+  title={A 66-Gb/s/5.5-W RISC-V Many-Core Cluster for 5G+ Software-Defined Radio Uplinks},
+  author={Bertuletti, Marco and Zhang, Yichao and Vanelli-Coralli, Alessandro and Benini, Luca},
+  journal={IEEE Transactions on Very Large Scale Integration (VLSI) Systems},
+  year={2025},
+  volume={33},
+  number={8},
+  pages={2225-2238},
+  doi={10.1109/TVLSI.2025.3576855}
+}
+```
+This paper is available on [IEEE Xplore](https://ieeexplore.ieee.org/abstract/document/11038837).
 
 </p>
 </details>
