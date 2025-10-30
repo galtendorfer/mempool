@@ -56,44 +56,44 @@ static uint32_t volatile *wake_up_offset_reg =
 
 /* DAS-related regs */
 
-static uint32_t volatile *partition0_reg =
+static uint32_t volatile *partition_0_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
                           CONTROL_REGISTERS_PARTITION_SEL_0_REG_OFFSET);
-static uint32_t volatile *partition1_reg =
+static uint32_t volatile *partition_1_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
                           CONTROL_REGISTERS_PARTITION_SEL_1_REG_OFFSET);
-static uint32_t volatile *partition2_reg =
+static uint32_t volatile *partition_2_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
                           CONTROL_REGISTERS_PARTITION_SEL_2_REG_OFFSET);
-static uint32_t volatile *partition3_reg =
+static uint32_t volatile *partition_3_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
                           CONTROL_REGISTERS_PARTITION_SEL_3_REG_OFFSET);
 
-static uint32_t volatile *start_addr_scheme0_reg =
+static uint32_t volatile *start_das_0_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_START_ADDR_SCHEME_0_REG_OFFSET);
-static uint32_t volatile *start_addr_scheme1_reg =
+                          CONTROL_REGISTERS_START_DAS_0_REG_OFFSET);
+static uint32_t volatile *start_das_1_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_START_ADDR_SCHEME_1_REG_OFFSET);
-static uint32_t volatile *start_addr_scheme2_reg =
+                          CONTROL_REGISTERS_START_DAS_1_REG_OFFSET);
+static uint32_t volatile *start_das_2_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_START_ADDR_SCHEME_2_REG_OFFSET);
-static uint32_t volatile *start_addr_scheme3_reg =
+                          CONTROL_REGISTERS_START_DAS_2_REG_OFFSET);
+static uint32_t volatile *start_das_3_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_START_ADDR_SCHEME_3_REG_OFFSET);
+                          CONTROL_REGISTERS_START_DAS_3_REG_OFFSET);
 
-static uint32_t volatile *allocated_size0_reg =
+static uint32_t volatile *rows_das_0_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_ALLOCATED_SIZE_0_REG_OFFSET);
-static uint32_t volatile *allocated_size1_reg =
+                          CONTROL_REGISTERS_ROWS_DAS_0_REG_OFFSET);
+static uint32_t volatile *rows_das_1_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_ALLOCATED_SIZE_1_REG_OFFSET);
-static uint32_t volatile *allocated_size2_reg =
+                          CONTROL_REGISTERS_ROWS_DAS_1_REG_OFFSET);
+static uint32_t volatile *rows_das_2_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_ALLOCATED_SIZE_2_REG_OFFSET);
-static uint32_t volatile *allocated_size3_reg =
+                          CONTROL_REGISTERS_ROWS_DAS_2_REG_OFFSET);
+static uint32_t volatile *rows_das_3_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_ALLOCATED_SIZE_3_REG_OFFSET);
+                          CONTROL_REGISTERS_ROWS_DAS_3_REG_OFFSET);
 
 typedef uint32_t mempool_id_t;
 typedef uint32_t mempool_timer_t;
@@ -291,57 +291,37 @@ static inline void set_wake_up_offset(uint32_t offset) {
 }
 
 // Partition Configuration
-static inline void partition_config(uint32_t reg_sel,
-                                    uint32_t tiles_per_partition) {
+static inline void das_config(uint32_t reg_sel, uint32_t tiles_per_partition, uint32_t addr, uint32_t size) {
   asm volatile("" ::: "memory");
+  // Compute number of rows
+  uint32_t row_bytes = NUM_BANKS * sizeof(uint32_t);
+  uint32_t rows_das = (size + (row_bytes - 1)) / row_bytes;
+  // Program DAS registers
   switch (reg_sel) {
   case 0:
-    *partition0_reg = tiles_per_partition;
+    *partition_0_reg = tiles_per_partition;
+    *start_das_0_reg = addr;
+    *rows_das_0_reg = rows_das;
     break;
   case 1:
-    *partition1_reg = tiles_per_partition;
+    *partition_1_reg = tiles_per_partition;
+    *start_das_1_reg = addr;
+    *rows_das_1_reg = rows_das;
     break;
   case 2:
-    *partition2_reg = tiles_per_partition;
+    *partition_2_reg = tiles_per_partition;
+    *start_das_2_reg = addr;
+    *rows_das_2_reg = rows_das;
     break;
   case 3:
-    *partition3_reg = tiles_per_partition;
+    *partition_3_reg = tiles_per_partition;
+    *start_das_3_reg = addr;
+    *rows_das_3_reg = rows_das;
     break;
   default:
-    *partition0_reg = tiles_per_partition;
-    break;
-  }
-  asm volatile("" ::: "memory");
-}
-
-// reg_sel = {3, 2, 1, 0}
-static inline void start_addr_scheme_config(uint32_t reg_sel, uint32_t addr,
-                                            uint32_t size) {
-  asm volatile("" ::: "memory");
-  uint32_t data_size = size > 2 * NUM_BANKS * sizeof(uint32_t)
-                           ? size
-                           : 2 * NUM_BANKS * sizeof(uint32_t);
-  uint32_t allocated_size = data_size / (NUM_BANKS * sizeof(uint32_t));
-  switch (reg_sel) {
-  case 0:
-    *start_addr_scheme0_reg = addr;
-    *allocated_size0_reg = allocated_size;
-    break;
-  case 1:
-    *start_addr_scheme1_reg = addr;
-    *allocated_size1_reg = allocated_size;
-    break;
-  case 2:
-    *start_addr_scheme2_reg = addr;
-    *allocated_size2_reg = allocated_size;
-    break;
-  case 3:
-    *start_addr_scheme3_reg = addr;
-    *allocated_size3_reg = allocated_size;
-    break;
-  default:
-    *start_addr_scheme0_reg = addr;
-    *allocated_size0_reg = allocated_size;
+    *partition_0_reg = tiles_per_partition;
+    *start_das_0_reg = addr;
+    *rows_das_0_reg = rows_das;
     break;
   }
   asm volatile("" ::: "memory");
