@@ -20,13 +20,14 @@ module address_scrambler #(
   parameter int unsigned SeqMemSizePerTile = 4096,
   parameter int unsigned NumDASPartitions  = 4,
   // Dependant parameters, do not change
+  parameter int unsigned RowsWidth         = $clog2(TCDMSizePerBank) - ByteOffset + 1,
   parameter int unsigned MemSizePerTile    = NumBanksPerTile*TCDMSizePerBank,
   parameter int unsigned MemSizePerRow     = (1 << ByteOffset)*NumBanksPerTile*NumTiles
 ) (
   input  logic [AddrWidth-1:0]                            address_i,
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] group_factor_i,
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] allocated_size_i,
-  input  logic [NumDASPartitions-1:0][DataWidth-1:0]      start_addr_scheme_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] partition_sel_i,
+  input  logic [NumDASPartitions-1:0][AddrWidth-1:0]      start_das_i,
+  input  logic [NumDASPartitions-1:0][RowsWidth-1:0]      rows_das_i,
   output logic [AddrWidth-1:0]                            address_o
 );
   // Stack Sequential Settings
@@ -37,9 +38,10 @@ module address_scrambler #(
   localparam int unsigned ConstantBitsLSB   = ByteOffset + BankOffsetBits;
   localparam int unsigned ScrambleBits      = SeqPerTileBits-ConstantBitsLSB;
 
-  if (Bypass || NumTiles < 2) begin
+  if (Bypass || NumTiles < 2) begin: gen_bypass
     assign address_o = address_i;
-  end else begin
+
+  end else begin: gen_scrambling
     // ------ Stack Region Logic ------ //
     logic [ScrambleBits-1:0]    scramble;    // Address bits that have to be shuffled around
     logic [TileIdBits-1:0]      tile_id;     // Which tile does  this address region belong to
@@ -52,50 +54,64 @@ module address_scrambler #(
 
     // ------ Heap Sequential Signals ------ //
     
-    // `tile_index` : how many bits to shift for TileID bits in each partition
-    // `row_index`: how many bits need to swap within Row Index
-    logic [NumDASPartitions-1:0][$clog2($clog2(NumTiles)+1)-1:0] tile_index;
-    logic [NumDASPartitions-1:0][$clog2($clog2(NumTiles)+1)-1:0] row_index;
+    // `tile_bits` : how many bits to shift for TileID bits in each partition
+    // `row_bits`: how many bits need to swap within Row Index
+    logic [NumDASPartitions-1:0][$clog2($clog2(NumTiles)+1)-1:0] tile_bits;
+    logic [NumDASPartitions-1:0][$clog2(RowsWidth)-1:0] row_bits;
 
     for (genvar i = 0; i < NumDASPartitions; i++) begin : gen_shift_index
       lzc #(
         .WIDTH ($clog2(NumTiles)+1),
         .MODE  (1'b0              )
-      ) i_log_tile_index (
-        .in_i    (group_factor_i[i]),
-        .cnt_o   (tile_index[i]    ),
-        .empty_o (/* Unused */     )
+      ) i_log_tile_bits (
+        .in_i    (partition_sel_i[i]),
+        .cnt_o   (tile_bits[i]     ),
+        .empty_o (/* Unused */      )
       );
       lzc #(
-        .WIDTH ($clog2(NumTiles)+1),
+        .WIDTH (RowsWidth       ),
         .MODE  (1'b0            )
-      ) i_log_row_index (
-        .in_i    (allocated_size_i[i][$clog2(NumTiles):0]),
-        .cnt_o   (row_index[i]                           ),
-        .empty_o (/* Unused */                           )
+      ) i_log_row_bits (
+        .in_i    (rows_das_i[i][RowsWidth-1:0]),
+        .cnt_o   (row_bits[i]                ),
+        .empty_o (/* Unused */                )
       );
     end
 
+    logic [NumDASPartitions-1:0][AddrWidth-1:0] lsb_addr;
+    logic [NumDASPartitions-1:0][AddrWidth-1:0] start_row_addr;
+    logic [NumDASPartitions-1:0][AddrWidth-1:0] row_addr;
+    logic [NumDASPartitions-1:0][AddrWidth-1:0] prt_addr;
+    logic [NumDASPartitions-1:0][AddrWidth-1:0] msb_addr;
+    logic [NumDASPartitions-1:0][AddrWidth-1:0] aligned_addr;
+
     always_comb begin
+
       // Default: Unscrambled
-      address_o[ConstantBitsLSB-1:0] = address_i[ConstantBitsLSB-1:0];
-      address_o[SeqTotalBits-1:ConstantBitsLSB] = {tile_id, scramble};
-      address_o[AddrWidth-1:SeqTotalBits] = address_i[AddrWidth-1:SeqTotalBits];
+      address_o = address_i;
 
       // Stack Region
-      if (address_i < (NumTiles * SeqMemSizePerTile)) begin
+      if (address_i < (NumTiles * SeqMemSizePerTile)) begin: gen_stack_scrambling
+        address_o[ConstantBitsLSB-1:0] = address_i[ConstantBitsLSB-1:0];
         address_o[SeqTotalBits-1:ConstantBitsLSB] = {scramble, tile_id};
+        address_o[AddrWidth-1:SeqTotalBits] = address_i[AddrWidth-1:SeqTotalBits];
 
       // DAS address scrambling
-      end else begin
+      end else begin: gen_das_scrambling
 
         for (int p = 0; p < NumDASPartitions; p++) begin
-          if ( (address_i >= start_addr_scheme_i[0]) && (address_i < start_addr_scheme_i[0]+MemSizePerRow*allocated_size_i[0]) ) begin
-            address_o = '0;
-            address_o |= address_i & ((1 << (tile_index[0]+ConstantBitsLSB)) - 1);
-            address_o |= ((address_i >> (row_index[0]+tile_index[0]+ConstantBitsLSB)) << (tile_index[0]+ConstantBitsLSB)) & ((1 << (TileIdBits+ConstantBitsLSB)) - 1);
-            address_o |= ((address_i >> (tile_index[0]+ConstantBitsLSB)) << (TileIdBits + ConstantBitsLSB)) & ((1 << (row_index[0]+TileIdBits+ConstantBitsLSB)) - 1);
-            address_o |= address_i & ~((1 << (row_index[0]+TileIdBits+ConstantBitsLSB)) - 1);
+          if ( (address_i >= start_das_i[p]) && (address_i < start_das_i[p]+MemSizePerRow*rows_das_i[p]) ) begin
+
+            lsb_addr[p]       = address_i & ((1 << (tile_bits[p]+ConstantBitsLSB)) - 1);
+            msb_addr[p]       = address_i & ~((1 << (row_bits[p]+TileIdBits+ConstantBitsLSB)) - 1);
+            start_row_addr[p] = start_das_i[p] & (((1 << row_bits[p]) - 1) << (TileIdBits + ConstantBitsLSB));
+            aligned_addr[p]   = address_i - start_row_addr[p];
+
+            prt_addr[p]     = (aligned_addr[p] >> row_bits[p]                )  & (((1 << (TileIdBits - tile_bits[p])) - 1) << (ConstantBitsLSB + tile_bits[p]));
+            row_addr[p]     = (aligned_addr[p] << (TileIdBits - tile_bits[p]))  & (((1 << (row_bits[p])              ) - 1) << (TileIdBits + ConstantBitsLSB  ));
+            address_o       = msb_addr[p] | row_addr[p] | prt_addr[p] | lsb_addr[p];
+            address_o       = address_o + row_addr[p];
+
           end
         end
 
