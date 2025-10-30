@@ -17,32 +17,32 @@ module mempool_cluster
   parameter int    unsigned        NumAXIMasters = NumGroups * NumAXIMastersPerGroup
 ) (
   // Clock and reset
-  input  logic                                         clk_i,
-  input  logic                                         rst_ni,
-  input  logic                                         testmode_i,
+  input  logic                               clk_i,
+  input  logic                               rst_ni,
+  input  logic                               testmode_i,
   // Scan chain
-  input  logic                                         scan_enable_i,
-  input  logic                                         scan_data_i,
-  output logic                                         scan_data_o,
+  input  logic                               scan_enable_i,
+  input  logic                               scan_data_i,
+  output logic                               scan_data_o,
 `ifdef DAS
   // Partition Selection
-  input  logic           [3:0][PartitionDataWidth-1:0] partition_sel_i,
-  input  logic           [3:0][PartitionDataWidth-1:0] allocated_size_i,
-  input  logic           [3:0][DataWidth-1:0]          start_addr_scheme_i,
+  input  logic           [NumDASPartitions-1:0][TileInterleavingWidth-1:0] partition_sel_i,
+  input  logic           [NumDASPartitions-1:0][AddrWidth-1:0]             start_das_i,
+  input  logic           [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das_i,
 `endif
   // Wake up signal
-  input  logic           [NumCores-1:0]                wake_up_i,
+  input  logic           [NumCores-1:0]      wake_up_i,
   // RO-Cache configuration
-  input  ro_cache_ctrl_t                               ro_cache_ctrl_i,
+  input  ro_cache_ctrl_t                     ro_cache_ctrl_i,
   // DMA request
-  input  dma_req_t                                     dma_req_i,
-  input  logic                                         dma_req_valid_i,
-  output logic                                         dma_req_ready_o,
+  input  dma_req_t                           dma_req_i,
+  input  logic                               dma_req_valid_i,
+  output logic                               dma_req_ready_o,
   // DMA status
-  output dma_meta_t                                    dma_meta_o,
+  output dma_meta_t                          dma_meta_o,
   // AXI Interface
-  output axi_tile_req_t  [NumAXIMasters-1:0]           axi_mst_req_o,
-  input  axi_tile_resp_t [NumAXIMasters-1:0]           axi_mst_resp_i
+  output axi_tile_req_t  [NumAXIMasters-1:0] axi_mst_req_o,
+  input  axi_tile_resp_t [NumAXIMasters-1:0] axi_mst_resp_i
 );
 
   /*********************
@@ -88,7 +88,7 @@ module mempool_cluster
   logic      [NumGroups-1:0] dma_req_group_valid, dma_req_group_q_valid;
   logic      [NumGroups-1:0] dma_req_group_ready, dma_req_group_q_ready;
   dma_meta_t [NumGroups-1:0] dma_meta, dma_meta_q;
-  logic       [PartitionDataWidth-1:0] allocated_size_sel;
+  logic      [RowsInterleavingWidth-1:0] dma_rows_das;
 
   `FF(dma_meta_q, dma_meta, '0, clk_i, rst_ni);
 
@@ -105,23 +105,22 @@ module mempool_cluster
     .NumDASPartitions  (NumDASPartitions            ),
     .DASStartAddr      (DASStartAddr                )
   ) i_idma_split_midend (
-    .clk_i      (clk_i              ),
-    .rst_ni     (rst_ni             ),
+    .clk_i           (clk_i              ),
+    .rst_ni          (rst_ni             ),
 `ifdef DAS
-    // partition information
-    .group_factor_i     (partition_sel_i    ),
-    .allocated_size_i   (allocated_size_i   ),
-    .start_addr_scheme_i(start_addr_scheme_i),
-    .allocated_size_o   (allocated_size_sel ),
+    .partition_sel_i (partition_sel_i    ),
+    .start_das_i     (start_das_i        ),
+    .rows_das_i      (rows_das_i         ),
+    .rows_das_o      (dma_rows_das       ),
 `endif
-    .burst_req_i(dma_req_cut        ),
-    .valid_i    (dma_req_cut_valid  ),
-    .ready_o    (dma_req_cut_ready  ),
-    .meta_o     (dma_meta_cut       ),
-    .burst_req_o(dma_req_split      ),
-    .valid_o    (dma_req_split_valid),
-    .ready_i    (dma_req_split_ready),
-    .meta_i     (dma_meta_split     )
+    .burst_req_i     (dma_req_cut        ),
+    .valid_i         (dma_req_cut_valid  ),
+    .ready_o         (dma_req_cut_ready  ),
+    .meta_o          (dma_meta_cut       ),
+    .burst_req_o     (dma_req_split      ),
+    .valid_o         (dma_req_split_valid),
+    .ready_i         (dma_req_split_ready),
+    .meta_i          (dma_meta_split     )
   );
 
   idma_distributed_midend #(
@@ -130,14 +129,15 @@ module mempool_cluster
     .DmaRegionStart (TCDMBaseAddr         ),
     .DmaRegionEnd   (TCDMBaseAddr+TCDMSize),
     .TransFifoDepth (16                   ),
+    .NumTiles       (NumTiles             ),
+    .NumDASPartitions  (NumDASPartitions  ),
     .burst_req_t    (dma_req_t            ),
     .meta_t         (dma_meta_t           )
   ) i_idma_distributed_midend (
     .clk_i       (clk_i              ),
     .rst_ni      (rst_ni             ),
 `ifdef DAS
-    // partition info
-    .allocated_size_i(allocated_size_sel),
+    .rows_das_i  (dma_rows_das       ),
 `endif
     .burst_req_i (dma_req_split      ),
     .valid_i     (dma_req_split_valid),
@@ -320,9 +320,9 @@ module mempool_cluster
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
           .partition_sel_i         (partition_sel_i                                                 ),
-          .start_addr_scheme_i     (start_addr_scheme_i                                             ),
-          .allocated_size_i        (allocated_size_i                                                ),
-          .dma_allocated_size_sel_i(allocated_size_sel                                              ),
+          .start_das_i             (start_das_i                                                     ),
+          .rows_das_i              (rows_das_i                                                      ),
+          .dma_rows_das_i          (dma_rows_das                                                    ),
 `endif
           .wake_up_i               (wake_up_q[g*NumCoresPerGroup +: NumCoresPerGroup]               ),
           .ro_cache_ctrl_i         (ro_cache_ctrl_q[g]                                              ),
@@ -367,9 +367,9 @@ module mempool_cluster
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
           .partition_sel_i         (partition_sel_i                                                 ),
-          .start_addr_scheme_i     (start_addr_scheme_i                                             ),
-          .allocated_size_i        (allocated_size_i                                                ),
-          .dma_allocated_size_sel_i(allocated_size_sel                                              ),
+          .start_das_i             (start_das_i                                                     ),
+          .rows_das_i              (rows_das_i                                                      ),
+          .dma_rows_das_i          (dma_rows_das                                                    ),
 `endif
           .wake_up_i               (wake_up_q[g*NumCoresPerGroup +: NumCoresPerGroup]               ),
           .ro_cache_ctrl_i         (ro_cache_ctrl_q[g]                                              ),
@@ -411,9 +411,9 @@ module mempool_cluster
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
           .partition_sel_i         (partition_sel_i                                                 ),
-          .start_addr_scheme_i     (start_addr_scheme_i                                             ),
-          .allocated_size_i        (allocated_size_i                                                ),
-          .dma_allocated_size_sel_i(allocated_size_sel                                              ),
+          .start_das_i             (start_das_i                                                     ),
+          .rows_das_i              (rows_das_i                                                      ),
+          .dma_rows_das_i          (dma_rows_das                                                    ),
 `endif
           .wake_up_i               (wake_up_q[g*NumCoresPerGroup +: NumCoresPerGroup]               ),
           .ro_cache_ctrl_i         (ro_cache_ctrl_q[g]                                              ),
@@ -499,10 +499,10 @@ module mempool_cluster
         .tcdm_slave_resp_valid_o   (tcdm_slave_resp_valid[g]                                        ),
         .tcdm_slave_resp_ready_i   (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
-          .partition_sel_i         (partition_sel_i                                                 ),
-          .start_addr_scheme_i     (start_addr_scheme_i                                             ),
-          .allocated_size_i        (allocated_size_i                                                ),
-          .dma_allocated_size_sel_i(allocated_size_sel                                              ),
+        .partition_sel_i           (partition_sel_i                                                 ),
+        .start_das_i               (start_das_i                                                     ),
+        .rows_das_i                (rows_das_i                                                      ),
+        .dma_rows_das_i            (dma_rows_das                                                    ),
 `endif
         .wake_up_i                 (wake_up_q[g*NumCoresPerGroup +: NumCoresPerGroup]               ),
         .ro_cache_ctrl_i           (ro_cache_ctrl_q[g]                                              ),

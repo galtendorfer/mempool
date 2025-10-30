@@ -93,19 +93,7 @@
     },
     { multireg:
       {
-        name: "allocated_size"
-        desc: "Allocated size on DAS partition"
-        swaccess: "wo"
-        hwaccess: "hro"
-        hwqe: "true"
-        count: "NumDASPartitions"
-        cname: "allocated_size"
-        fields: [{ bits: "31:0" }]
-      },
-    },
-    { multireg:
-      {
-        name: "start_addr_scheme"
+        name: "start_das"
         desc: "Start address of DAS partition"
         swaccess: "wo"
         hwaccess: "hrw"
@@ -113,7 +101,19 @@
         // External because we want to define the reset from a parameter
         hwext: "true"
         count: "NumDASPartitions"
-        cname: "start_addr_scheme"
+        cname: "start_das"
+        fields: [{ bits: "31:0" }]
+      },
+    },
+    { multireg:
+      {
+        name: "rows_das"
+        desc: "End address of DAS partition"
+        swaccess: "wo"
+        hwaccess: "hro"
+        hwqe: "false"
+        count: "NumDASPartitions"
+        cname: "rows_das"
         fields: [{ bits: "31:0" }]
       },
     },

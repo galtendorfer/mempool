@@ -103,22 +103,22 @@ module control_registers_reg_top #(
   logic partition_sel_2_we;
   logic [31:0] partition_sel_3_wd;
   logic partition_sel_3_we;
-  logic [31:0] allocated_size_0_wd;
-  logic allocated_size_0_we;
-  logic [31:0] allocated_size_1_wd;
-  logic allocated_size_1_we;
-  logic [31:0] allocated_size_2_wd;
-  logic allocated_size_2_we;
-  logic [31:0] allocated_size_3_wd;
-  logic allocated_size_3_we;
-  logic [31:0] start_addr_scheme_0_wd;
-  logic start_addr_scheme_0_we;
-  logic [31:0] start_addr_scheme_1_wd;
-  logic start_addr_scheme_1_we;
-  logic [31:0] start_addr_scheme_2_wd;
-  logic start_addr_scheme_2_we;
-  logic [31:0] start_addr_scheme_3_wd;
-  logic start_addr_scheme_3_we;
+  logic [31:0] start_das_0_wd;
+  logic start_das_0_we;
+  logic [31:0] start_das_1_wd;
+  logic start_das_1_we;
+  logic [31:0] start_das_2_wd;
+  logic start_das_2_we;
+  logic [31:0] start_das_3_wd;
+  logic start_das_3_we;
+  logic [31:0] rows_das_0_wd;
+  logic rows_das_0_we;
+  logic [31:0] rows_das_1_wd;
+  logic rows_das_1_we;
+  logic [31:0] rows_das_2_wd;
+  logic rows_das_2_we;
+  logic [31:0] rows_das_3_wd;
+  logic rows_das_3_we;
   logic [31:0] tcdm_start_address_qs;
   logic tcdm_start_address_re;
   logic [31:0] tcdm_end_address_qs;
@@ -573,173 +573,173 @@ module control_registers_reg_top #(
 
 
 
-  // Subregister 0 of Multireg allocated_size
-  // R[allocated_size_0]: V(False)
+  // Subregister 0 of Multireg start_das
+  // R[start_das_0]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_start_das_0 (
+    .re     (1'b0),
+    .we     (start_das_0_we),
+    .wd     (start_das_0_wd),
+    .d      (hw2reg.start_das[0].d),
+    .qre    (),
+    .qe     (reg2hw.start_das[0].qe),
+    .q      (reg2hw.start_das[0].q ),
+    .qs     ()
+  );
+
+  // Subregister 1 of Multireg start_das
+  // R[start_das_1]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_start_das_1 (
+    .re     (1'b0),
+    .we     (start_das_1_we),
+    .wd     (start_das_1_wd),
+    .d      (hw2reg.start_das[1].d),
+    .qre    (),
+    .qe     (reg2hw.start_das[1].qe),
+    .q      (reg2hw.start_das[1].q ),
+    .qs     ()
+  );
+
+  // Subregister 2 of Multireg start_das
+  // R[start_das_2]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_start_das_2 (
+    .re     (1'b0),
+    .we     (start_das_2_we),
+    .wd     (start_das_2_wd),
+    .d      (hw2reg.start_das[2].d),
+    .qre    (),
+    .qe     (reg2hw.start_das[2].qe),
+    .q      (reg2hw.start_das[2].q ),
+    .qs     ()
+  );
+
+  // Subregister 3 of Multireg start_das
+  // R[start_das_3]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_start_das_3 (
+    .re     (1'b0),
+    .we     (start_das_3_we),
+    .wd     (start_das_3_wd),
+    .d      (hw2reg.start_das[3].d),
+    .qre    (),
+    .qe     (reg2hw.start_das[3].qe),
+    .q      (reg2hw.start_das[3].q ),
+    .qs     ()
+  );
+
+
+
+  // Subregister 0 of Multireg rows_das
+  // R[rows_das_0]: V(False)
 
   prim_subreg #(
     .DW      (32),
     .SWACCESS("WO"),
     .RESVAL  (32'h0)
-  ) u_allocated_size_0 (
+  ) u_rows_das_0 (
     .clk_i   (clk_i    ),
     .rst_ni  (rst_ni  ),
 
     // from register interface
-    .we     (allocated_size_0_we),
-    .wd     (allocated_size_0_wd),
+    .we     (rows_das_0_we),
+    .wd     (rows_das_0_wd),
 
     // from internal hardware
     .de     (1'b0),
     .d      ('0  ),
 
     // to internal hardware
-    .qe     (reg2hw.allocated_size[0].qe),
-    .q      (reg2hw.allocated_size[0].q ),
+    .qe     (),
+    .q      (reg2hw.rows_das[0].q ),
 
     .qs     ()
   );
 
-  // Subregister 1 of Multireg allocated_size
-  // R[allocated_size_1]: V(False)
+  // Subregister 1 of Multireg rows_das
+  // R[rows_das_1]: V(False)
 
   prim_subreg #(
     .DW      (32),
     .SWACCESS("WO"),
     .RESVAL  (32'h0)
-  ) u_allocated_size_1 (
+  ) u_rows_das_1 (
     .clk_i   (clk_i    ),
     .rst_ni  (rst_ni  ),
 
     // from register interface
-    .we     (allocated_size_1_we),
-    .wd     (allocated_size_1_wd),
+    .we     (rows_das_1_we),
+    .wd     (rows_das_1_wd),
 
     // from internal hardware
     .de     (1'b0),
     .d      ('0  ),
 
     // to internal hardware
-    .qe     (reg2hw.allocated_size[1].qe),
-    .q      (reg2hw.allocated_size[1].q ),
+    .qe     (),
+    .q      (reg2hw.rows_das[1].q ),
 
     .qs     ()
   );
 
-  // Subregister 2 of Multireg allocated_size
-  // R[allocated_size_2]: V(False)
+  // Subregister 2 of Multireg rows_das
+  // R[rows_das_2]: V(False)
 
   prim_subreg #(
     .DW      (32),
     .SWACCESS("WO"),
     .RESVAL  (32'h0)
-  ) u_allocated_size_2 (
+  ) u_rows_das_2 (
     .clk_i   (clk_i    ),
     .rst_ni  (rst_ni  ),
 
     // from register interface
-    .we     (allocated_size_2_we),
-    .wd     (allocated_size_2_wd),
+    .we     (rows_das_2_we),
+    .wd     (rows_das_2_wd),
 
     // from internal hardware
     .de     (1'b0),
     .d      ('0  ),
 
     // to internal hardware
-    .qe     (reg2hw.allocated_size[2].qe),
-    .q      (reg2hw.allocated_size[2].q ),
+    .qe     (),
+    .q      (reg2hw.rows_das[2].q ),
 
     .qs     ()
   );
 
-  // Subregister 3 of Multireg allocated_size
-  // R[allocated_size_3]: V(False)
+  // Subregister 3 of Multireg rows_das
+  // R[rows_das_3]: V(False)
 
   prim_subreg #(
     .DW      (32),
     .SWACCESS("WO"),
     .RESVAL  (32'h0)
-  ) u_allocated_size_3 (
+  ) u_rows_das_3 (
     .clk_i   (clk_i    ),
     .rst_ni  (rst_ni  ),
 
     // from register interface
-    .we     (allocated_size_3_we),
-    .wd     (allocated_size_3_wd),
+    .we     (rows_das_3_we),
+    .wd     (rows_das_3_wd),
 
     // from internal hardware
     .de     (1'b0),
     .d      ('0  ),
 
     // to internal hardware
-    .qe     (reg2hw.allocated_size[3].qe),
-    .q      (reg2hw.allocated_size[3].q ),
+    .qe     (),
+    .q      (reg2hw.rows_das[3].q ),
 
-    .qs     ()
-  );
-
-
-
-  // Subregister 0 of Multireg start_addr_scheme
-  // R[start_addr_scheme_0]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_start_addr_scheme_0 (
-    .re     (1'b0),
-    .we     (start_addr_scheme_0_we),
-    .wd     (start_addr_scheme_0_wd),
-    .d      (hw2reg.start_addr_scheme[0].d),
-    .qre    (),
-    .qe     (reg2hw.start_addr_scheme[0].qe),
-    .q      (reg2hw.start_addr_scheme[0].q ),
-    .qs     ()
-  );
-
-  // Subregister 1 of Multireg start_addr_scheme
-  // R[start_addr_scheme_1]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_start_addr_scheme_1 (
-    .re     (1'b0),
-    .we     (start_addr_scheme_1_we),
-    .wd     (start_addr_scheme_1_wd),
-    .d      (hw2reg.start_addr_scheme[1].d),
-    .qre    (),
-    .qe     (reg2hw.start_addr_scheme[1].qe),
-    .q      (reg2hw.start_addr_scheme[1].q ),
-    .qs     ()
-  );
-
-  // Subregister 2 of Multireg start_addr_scheme
-  // R[start_addr_scheme_2]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_start_addr_scheme_2 (
-    .re     (1'b0),
-    .we     (start_addr_scheme_2_we),
-    .wd     (start_addr_scheme_2_wd),
-    .d      (hw2reg.start_addr_scheme[2].d),
-    .qre    (),
-    .qe     (reg2hw.start_addr_scheme[2].qe),
-    .q      (reg2hw.start_addr_scheme[2].q ),
-    .qs     ()
-  );
-
-  // Subregister 3 of Multireg start_addr_scheme
-  // R[start_addr_scheme_3]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_start_addr_scheme_3 (
-    .re     (1'b0),
-    .we     (start_addr_scheme_3_we),
-    .wd     (start_addr_scheme_3_wd),
-    .d      (hw2reg.start_addr_scheme[3].d),
-    .qre    (),
-    .qe     (reg2hw.start_addr_scheme[3].qe),
-    .q      (reg2hw.start_addr_scheme[3].q ),
     .qs     ()
   );
 
@@ -1000,14 +1000,14 @@ module control_registers_reg_top #(
     addr_hit[14] = (reg_addr == CONTROL_REGISTERS_PARTITION_SEL_1_OFFSET);
     addr_hit[15] = (reg_addr == CONTROL_REGISTERS_PARTITION_SEL_2_OFFSET);
     addr_hit[16] = (reg_addr == CONTROL_REGISTERS_PARTITION_SEL_3_OFFSET);
-    addr_hit[17] = (reg_addr == CONTROL_REGISTERS_ALLOCATED_SIZE_0_OFFSET);
-    addr_hit[18] = (reg_addr == CONTROL_REGISTERS_ALLOCATED_SIZE_1_OFFSET);
-    addr_hit[19] = (reg_addr == CONTROL_REGISTERS_ALLOCATED_SIZE_2_OFFSET);
-    addr_hit[20] = (reg_addr == CONTROL_REGISTERS_ALLOCATED_SIZE_3_OFFSET);
-    addr_hit[21] = (reg_addr == CONTROL_REGISTERS_START_ADDR_SCHEME_0_OFFSET);
-    addr_hit[22] = (reg_addr == CONTROL_REGISTERS_START_ADDR_SCHEME_1_OFFSET);
-    addr_hit[23] = (reg_addr == CONTROL_REGISTERS_START_ADDR_SCHEME_2_OFFSET);
-    addr_hit[24] = (reg_addr == CONTROL_REGISTERS_START_ADDR_SCHEME_3_OFFSET);
+    addr_hit[17] = (reg_addr == CONTROL_REGISTERS_START_DAS_0_OFFSET);
+    addr_hit[18] = (reg_addr == CONTROL_REGISTERS_START_DAS_1_OFFSET);
+    addr_hit[19] = (reg_addr == CONTROL_REGISTERS_START_DAS_2_OFFSET);
+    addr_hit[20] = (reg_addr == CONTROL_REGISTERS_START_DAS_3_OFFSET);
+    addr_hit[21] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_0_OFFSET);
+    addr_hit[22] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_1_OFFSET);
+    addr_hit[23] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_2_OFFSET);
+    addr_hit[24] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_3_OFFSET);
     addr_hit[25] = (reg_addr == CONTROL_REGISTERS_TCDM_START_ADDRESS_OFFSET);
     addr_hit[26] = (reg_addr == CONTROL_REGISTERS_TCDM_END_ADDRESS_OFFSET);
     addr_hit[27] = (reg_addr == CONTROL_REGISTERS_NR_CORES_REG_OFFSET);
@@ -1119,29 +1119,29 @@ module control_registers_reg_top #(
   assign partition_sel_3_we = addr_hit[16] & reg_we & !reg_error;
   assign partition_sel_3_wd = reg_wdata[31:0];
 
-  assign allocated_size_0_we = addr_hit[17] & reg_we & !reg_error;
-  assign allocated_size_0_wd = reg_wdata[31:0];
+  assign start_das_0_we = addr_hit[17] & reg_we & !reg_error;
+  assign start_das_0_wd = reg_wdata[31:0];
 
-  assign allocated_size_1_we = addr_hit[18] & reg_we & !reg_error;
-  assign allocated_size_1_wd = reg_wdata[31:0];
+  assign start_das_1_we = addr_hit[18] & reg_we & !reg_error;
+  assign start_das_1_wd = reg_wdata[31:0];
 
-  assign allocated_size_2_we = addr_hit[19] & reg_we & !reg_error;
-  assign allocated_size_2_wd = reg_wdata[31:0];
+  assign start_das_2_we = addr_hit[19] & reg_we & !reg_error;
+  assign start_das_2_wd = reg_wdata[31:0];
 
-  assign allocated_size_3_we = addr_hit[20] & reg_we & !reg_error;
-  assign allocated_size_3_wd = reg_wdata[31:0];
+  assign start_das_3_we = addr_hit[20] & reg_we & !reg_error;
+  assign start_das_3_wd = reg_wdata[31:0];
 
-  assign start_addr_scheme_0_we = addr_hit[21] & reg_we & !reg_error;
-  assign start_addr_scheme_0_wd = reg_wdata[31:0];
+  assign rows_das_0_we = addr_hit[21] & reg_we & !reg_error;
+  assign rows_das_0_wd = reg_wdata[31:0];
 
-  assign start_addr_scheme_1_we = addr_hit[22] & reg_we & !reg_error;
-  assign start_addr_scheme_1_wd = reg_wdata[31:0];
+  assign rows_das_1_we = addr_hit[22] & reg_we & !reg_error;
+  assign rows_das_1_wd = reg_wdata[31:0];
 
-  assign start_addr_scheme_2_we = addr_hit[23] & reg_we & !reg_error;
-  assign start_addr_scheme_2_wd = reg_wdata[31:0];
+  assign rows_das_2_we = addr_hit[23] & reg_we & !reg_error;
+  assign rows_das_2_wd = reg_wdata[31:0];
 
-  assign start_addr_scheme_3_we = addr_hit[24] & reg_we & !reg_error;
-  assign start_addr_scheme_3_wd = reg_wdata[31:0];
+  assign rows_das_3_we = addr_hit[24] & reg_we & !reg_error;
+  assign rows_das_3_wd = reg_wdata[31:0];
 
   assign tcdm_start_address_re = addr_hit[25] & reg_re & !reg_error;
 

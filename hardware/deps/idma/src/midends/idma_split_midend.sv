@@ -27,10 +27,10 @@ module idma_split_midend #(
   input  logic       rst_ni,
 `ifdef DAS
   // DAS signals
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] group_factor_i,
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] allocated_size_i,
-  input  logic [NumDASPartitions-1:0][AddrWidth-1:0]      start_addr_scheme_i,
-  output logic [$clog2(NumTiles):0]                       allocated_size_o,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] partition_sel_i,
+  input  logic [NumDASPartitions-1:0][AddrWidth-1:0]      start_das_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] rows_das_i,
+  output logic [$clog2(NumTiles):0]                       rows_das_o,
 `endif
   // Slave
   input  burst_req_t burst_req_i,
@@ -95,9 +95,9 @@ module idma_split_midend #(
   ) i_idma_address_scrambler_src (
     .address_i          (burst_req_i.src),
     .num_bytes_i        (burst_req_i.num_bytes),
-    .group_factor_i     (group_factor_i),
-    .allocated_size_i   (allocated_size_i),
-    .start_addr_scheme_i(start_addr_scheme_i),
+    .group_factor_i     (partition_sel_i),
+    .allocated_size_i   (rows_das_i),
+    .start_addr_scheme_i(start_das_i),
     .group_factor_o     (group_factor_src),
     .allocated_size_o   (allocated_size_src),
     .address_o          (post_scramble_src)
@@ -113,9 +113,9 @@ module idma_split_midend #(
   ) i_idma_address_scrambler_dst (
     .address_i          (burst_req_i.dst),
     .num_bytes_i        (burst_req_i.num_bytes),
-    .group_factor_i     (group_factor_i),
-    .allocated_size_i   (allocated_size_i),
-    .start_addr_scheme_i(start_addr_scheme_i),
+    .group_factor_i     (partition_sel_i),
+    .allocated_size_i   (rows_das_i),
+    .start_addr_scheme_i(start_das_i),
     .group_factor_o     (group_factor_dst),
     .allocated_size_o   (allocated_size_dst),
     .address_o          (post_scramble_dst)
@@ -208,7 +208,7 @@ module idma_split_midend #(
     req_valid = 1'b0;
 
 `ifdef DAS
-    allocated_size_o = allocated_size_sel;
+    rows_das_o = allocated_size_sel;
     beat_cnt_d = beat_cnt_q;
     if (num_trans_q == 1 && num_trans_d == 0) begin
       beat_cnt_d = 0;

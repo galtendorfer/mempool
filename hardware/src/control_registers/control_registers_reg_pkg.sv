@@ -55,12 +55,11 @@ package control_registers_reg_pkg;
   typedef struct packed {
     logic [31:0] q;
     logic        qe;
-  } control_registers_reg2hw_allocated_size_mreg_t;
+  } control_registers_reg2hw_start_das_mreg_t;
 
   typedef struct packed {
     logic [31:0] q;
-    logic        qe;
-  } control_registers_reg2hw_start_addr_scheme_mreg_t;
+  } control_registers_reg2hw_rows_das_mreg_t;
 
   typedef struct packed {
     logic [31:0] q;
@@ -86,7 +85,7 @@ package control_registers_reg_pkg;
 
   typedef struct packed {
     logic [31:0] d;
-  } control_registers_hw2reg_start_addr_scheme_mreg_t;
+  } control_registers_hw2reg_start_das_mreg_t;
 
   typedef struct packed {
     logic [31:0] d;
@@ -110,15 +109,15 @@ package control_registers_reg_pkg;
 
   // Register -> HW type
   typedef struct packed {
-    control_registers_reg2hw_eoc_reg_t eoc; // [1151:1120]
-    control_registers_reg2hw_wake_up_reg_t wake_up; // [1119:1087]
-    control_registers_reg2hw_wake_up_tile_mreg_t [7:0] wake_up_tile; // [1086:823]
-    control_registers_reg2hw_wake_up_group_reg_t wake_up_group; // [822:790]
-    control_registers_reg2hw_wake_up_strd_reg_t wake_up_strd; // [789:757]
-    control_registers_reg2hw_wake_up_offst_reg_t wake_up_offst; // [756:724]
-    control_registers_reg2hw_partition_sel_mreg_t [3:0] partition_sel; // [723:592]
-    control_registers_reg2hw_allocated_size_mreg_t [3:0] allocated_size; // [591:460]
-    control_registers_reg2hw_start_addr_scheme_mreg_t [3:0] start_addr_scheme; // [459:328]
+    control_registers_reg2hw_eoc_reg_t eoc; // [1147:1116]
+    control_registers_reg2hw_wake_up_reg_t wake_up; // [1115:1083]
+    control_registers_reg2hw_wake_up_tile_mreg_t [7:0] wake_up_tile; // [1082:819]
+    control_registers_reg2hw_wake_up_group_reg_t wake_up_group; // [818:786]
+    control_registers_reg2hw_wake_up_strd_reg_t wake_up_strd; // [785:753]
+    control_registers_reg2hw_wake_up_offst_reg_t wake_up_offst; // [752:720]
+    control_registers_reg2hw_partition_sel_mreg_t [3:0] partition_sel; // [719:588]
+    control_registers_reg2hw_start_das_mreg_t [3:0] start_das; // [587:456]
+    control_registers_reg2hw_rows_das_mreg_t [3:0] rows_das; // [455:328]
     control_registers_reg2hw_ro_cache_enable_reg_t ro_cache_enable; // [327:296]
     control_registers_reg2hw_ro_cache_flush_reg_t ro_cache_flush; // [295:264]
     control_registers_reg2hw_ro_cache_start_mreg_t [3:0] ro_cache_start; // [263:132]
@@ -128,7 +127,7 @@ package control_registers_reg_pkg;
   // HW -> register type
   typedef struct packed {
     control_registers_hw2reg_partition_sel_mreg_t [3:0] partition_sel; // [607:480]
-    control_registers_hw2reg_start_addr_scheme_mreg_t [3:0] start_addr_scheme; // [479:352]
+    control_registers_hw2reg_start_das_mreg_t [3:0] start_das; // [479:352]
     control_registers_hw2reg_tcdm_start_address_reg_t tcdm_start_address; // [351:320]
     control_registers_hw2reg_tcdm_end_address_reg_t tcdm_end_address; // [319:288]
     control_registers_hw2reg_nr_cores_reg_reg_t nr_cores_reg; // [287:256]
@@ -154,14 +153,14 @@ package control_registers_reg_pkg;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_PARTITION_SEL_1_OFFSET = 8'h 38;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_PARTITION_SEL_2_OFFSET = 8'h 3c;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_PARTITION_SEL_3_OFFSET = 8'h 40;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_ALLOCATED_SIZE_0_OFFSET = 8'h 44;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_ALLOCATED_SIZE_1_OFFSET = 8'h 48;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_ALLOCATED_SIZE_2_OFFSET = 8'h 4c;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_ALLOCATED_SIZE_3_OFFSET = 8'h 50;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_ADDR_SCHEME_0_OFFSET = 8'h 54;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_ADDR_SCHEME_1_OFFSET = 8'h 58;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_ADDR_SCHEME_2_OFFSET = 8'h 5c;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_ADDR_SCHEME_3_OFFSET = 8'h 60;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_DAS_0_OFFSET = 8'h 44;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_DAS_1_OFFSET = 8'h 48;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_DAS_2_OFFSET = 8'h 4c;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_DAS_3_OFFSET = 8'h 50;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_ROWS_DAS_0_OFFSET = 8'h 54;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_ROWS_DAS_1_OFFSET = 8'h 58;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_ROWS_DAS_2_OFFSET = 8'h 5c;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_ROWS_DAS_3_OFFSET = 8'h 60;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_TCDM_START_ADDRESS_OFFSET = 8'h 64;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_TCDM_END_ADDRESS_OFFSET = 8'h 68;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_NR_CORES_REG_OFFSET = 8'h 6c;
@@ -181,10 +180,10 @@ package control_registers_reg_pkg;
   parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_1_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_2_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_3_RESVAL = 32'h 0;
-  parameter logic [31:0] CONTROL_REGISTERS_START_ADDR_SCHEME_0_RESVAL = 32'h 0;
-  parameter logic [31:0] CONTROL_REGISTERS_START_ADDR_SCHEME_1_RESVAL = 32'h 0;
-  parameter logic [31:0] CONTROL_REGISTERS_START_ADDR_SCHEME_2_RESVAL = 32'h 0;
-  parameter logic [31:0] CONTROL_REGISTERS_START_ADDR_SCHEME_3_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_START_DAS_0_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_START_DAS_1_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_START_DAS_2_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_START_DAS_3_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_TCDM_START_ADDRESS_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_TCDM_END_ADDRESS_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_NR_CORES_REG_RESVAL = 32'h 0;
@@ -216,14 +215,14 @@ package control_registers_reg_pkg;
     CONTROL_REGISTERS_PARTITION_SEL_1,
     CONTROL_REGISTERS_PARTITION_SEL_2,
     CONTROL_REGISTERS_PARTITION_SEL_3,
-    CONTROL_REGISTERS_ALLOCATED_SIZE_0,
-    CONTROL_REGISTERS_ALLOCATED_SIZE_1,
-    CONTROL_REGISTERS_ALLOCATED_SIZE_2,
-    CONTROL_REGISTERS_ALLOCATED_SIZE_3,
-    CONTROL_REGISTERS_START_ADDR_SCHEME_0,
-    CONTROL_REGISTERS_START_ADDR_SCHEME_1,
-    CONTROL_REGISTERS_START_ADDR_SCHEME_2,
-    CONTROL_REGISTERS_START_ADDR_SCHEME_3,
+    CONTROL_REGISTERS_START_DAS_0,
+    CONTROL_REGISTERS_START_DAS_1,
+    CONTROL_REGISTERS_START_DAS_2,
+    CONTROL_REGISTERS_START_DAS_3,
+    CONTROL_REGISTERS_ROWS_DAS_0,
+    CONTROL_REGISTERS_ROWS_DAS_1,
+    CONTROL_REGISTERS_ROWS_DAS_2,
+    CONTROL_REGISTERS_ROWS_DAS_3,
     CONTROL_REGISTERS_TCDM_START_ADDRESS,
     CONTROL_REGISTERS_TCDM_END_ADDRESS,
     CONTROL_REGISTERS_NR_CORES_REG,
@@ -258,14 +257,14 @@ package control_registers_reg_pkg;
     4'b 1111, // index[14] CONTROL_REGISTERS_PARTITION_SEL_1
     4'b 1111, // index[15] CONTROL_REGISTERS_PARTITION_SEL_2
     4'b 1111, // index[16] CONTROL_REGISTERS_PARTITION_SEL_3
-    4'b 1111, // index[17] CONTROL_REGISTERS_ALLOCATED_SIZE_0
-    4'b 1111, // index[18] CONTROL_REGISTERS_ALLOCATED_SIZE_1
-    4'b 1111, // index[19] CONTROL_REGISTERS_ALLOCATED_SIZE_2
-    4'b 1111, // index[20] CONTROL_REGISTERS_ALLOCATED_SIZE_3
-    4'b 1111, // index[21] CONTROL_REGISTERS_START_ADDR_SCHEME_0
-    4'b 1111, // index[22] CONTROL_REGISTERS_START_ADDR_SCHEME_1
-    4'b 1111, // index[23] CONTROL_REGISTERS_START_ADDR_SCHEME_2
-    4'b 1111, // index[24] CONTROL_REGISTERS_START_ADDR_SCHEME_3
+    4'b 1111, // index[17] CONTROL_REGISTERS_START_DAS_0
+    4'b 1111, // index[18] CONTROL_REGISTERS_START_DAS_1
+    4'b 1111, // index[19] CONTROL_REGISTERS_START_DAS_2
+    4'b 1111, // index[20] CONTROL_REGISTERS_START_DAS_3
+    4'b 1111, // index[21] CONTROL_REGISTERS_ROWS_DAS_0
+    4'b 1111, // index[22] CONTROL_REGISTERS_ROWS_DAS_1
+    4'b 1111, // index[23] CONTROL_REGISTERS_ROWS_DAS_2
+    4'b 1111, // index[24] CONTROL_REGISTERS_ROWS_DAS_3
     4'b 1111, // index[25] CONTROL_REGISTERS_TCDM_START_ADDRESS
     4'b 1111, // index[26] CONTROL_REGISTERS_TCDM_END_ADDRESS
     4'b 1111, // index[27] CONTROL_REGISTERS_NR_CORES_REG

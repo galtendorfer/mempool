@@ -59,11 +59,10 @@ module mempool_group
     input  logic                            [NumGroups-1:1][NumTilesPerGroup-1:0]  tcdm_slave_resp_ready_i,
   `endif
 `ifdef DAS
-  // Partition selection
-  input  logic                              [NumDASPartitions-1:0][DataWidth-1:0]          start_addr_scheme_i,
-  input  logic                              [NumDASPartitions-1:0][PartitionDataWidth-1:0] allocated_size_i,
-  input  logic                              [NumDASPartitions-1:0][PartitionDataWidth-1:0] partition_sel_i,
-  input  logic                              [PartitionDataWidth-1:0]                       dma_allocated_size_sel_i,
+  input  logic                              [NumDASPartitions-1:0][TileInterleavingWidth-1:0] partition_sel_i,
+  input  logic                              [NumDASPartitions-1:0][AddrWidth-1:0]             start_das_i,
+  input  logic                              [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das_i,
+  input  logic                              [RowsInterleavingWidth-1:0]                       dma_rows_das_i,
 `endif
   // Wake up interface
   input  logic                              [NumCoresPerGroup-1:0]                         wake_up_i,
@@ -340,10 +339,9 @@ module mempool_group
           // RO-Cache configuration
           .ro_cache_ctrl_i         (ro_cache_ctrl_q                                                       ),
 `ifdef DAS
-          // Partition selection
-          .start_addr_scheme_i     (start_addr_scheme_i                                                   ),
-          .allocated_size_i        (allocated_size_i                                                      ),
           .partition_sel_i         (partition_sel_i                                                       ),
+          .start_das_i             (start_das_i                                                           ),
+          .rows_das_i              (rows_das_i                                                            ),
 `endif
           // Wake up interface
           .wake_up_i      (wake_up_q[sg*NumCoresPerSubGroup +: NumCoresPerSubGroup]                       )
@@ -398,10 +396,9 @@ module mempool_group
           // RO-Cache configuration
           .ro_cache_ctrl_i         (ro_cache_ctrl_q                                                       ),
 `ifdef DAS
-          // Partition selection
-          .start_addr_scheme_i     (start_addr_scheme_i                                                   ),
-          .allocated_size_i        (allocated_size_i                                                      ),
           .partition_sel_i         (partition_sel_i                                                       ),
+          .start_das_i             (start_das_i                                                           ),
+          .rows_das_i              (rows_das_i                                                            ),
 `endif
           // Wake up interface
           .wake_up_i      (wake_up_q[sg*NumCoresPerSubGroup +: NumCoresPerSubGroup]                       )
@@ -585,14 +582,15 @@ module mempool_group
       .DmaRegionStart (TCDMBaseAddr                            ),
       .DmaRegionEnd   (TCDMBaseAddr+TCDMSize                   ),
       .TransFifoDepth (8                                       ),
+      .NumTiles       (NumTiles                                ),
+      .NumDASPartitions  (NumDASPartitions                     ),
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
     ) i_idma_distributed_midend (
       .clk_i           (clk_i                   ),
       .rst_ni          (rst_ni                  ),
 `ifdef DAS
-      // partition
-      .allocated_size_i(dma_allocated_size_sel_i),
+      .rows_das_i      (dma_rows_das_i          ),
 `endif
       .burst_req_i     (dma_req_cut             ),
       .valid_i         (dma_req_cut_valid       ),
@@ -707,9 +705,9 @@ module mempool_group
         .axi_mst_req_o           (axi_tile_req[t]                                ),
         .axi_mst_resp_i          (axi_tile_resp[t]                               ),
 `ifdef DAS
-        .start_addr_scheme_i     (start_addr_scheme_i                            ),
-        .allocated_size_i        (allocated_size_i                               ),
         .partition_sel_i         (partition_sel_i                                ),
+        .start_das_i             (start_das_i                                    ),
+        .rows_das_i              (rows_das_i                                     ),
 `endif
         // Wake up interface
         .wake_up_i               (wake_up_q[t*NumCoresPerTile +: NumCoresPerTile])
@@ -1004,14 +1002,15 @@ module mempool_group
       .DmaRegionStart (TCDMBaseAddr                            ),
       .DmaRegionEnd   (TCDMBaseAddr+TCDMSize                   ),
       .TransFifoDepth (8                                       ),
+      .NumTiles       (NumTiles                                ),
+      .NumDASPartitions  (NumDASPartitions                     ),
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
     ) i_idma_distributed_midend (
       .clk_i           (clk_i                   ),
       .rst_ni          (rst_ni                  ),
 `ifdef DAS
-      // partition
-      .allocated_size_i(dma_allocated_size_sel_i),
+      .rows_das_i      (dma_rows_das_i          ),
 `endif
       .burst_req_i     (dma_req_cut             ),
       .valid_i         (dma_req_cut_valid       ),

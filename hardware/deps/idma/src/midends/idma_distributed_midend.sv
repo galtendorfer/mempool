@@ -32,7 +32,7 @@ module idma_distributed_midend #(
   input  logic                            rst_ni,
 `ifdef DAS
   // DAS signals
-  input  logic       [$clog2(NumTiles):0] allocated_size_i,
+  input  logic       [$clog2(NumTiles):0] rows_das_i,
 `endif
   // Slave
   input  burst_req_t                      burst_req_i,
@@ -174,15 +174,15 @@ module idma_distributed_midend #(
         burst_req_o[i].num_bytes = (burst_req_i.num_bytes<DmaRegionWidth) ? burst_req_i.num_bytes : DmaRegionWidth;
         if (($unsigned(burst_req_i.src) >= DmaRegionStart) && ($unsigned(burst_req_i.src) < DmaRegionEnd)) begin
           burst_req_o[i].src = burst_req_i.src+i*DmaRegionWidth;
-          burst_req_o[i].dst = burst_req_i.dst+i*allocated_size_i*DmaRegionWidth;
+          burst_req_o[i].dst = burst_req_i.dst+i*rows_das_i*DmaRegionWidth;
         end else begin
           // L2 --> L1
           if (burst_req_i.num_bytes<=DmaRegionWidth )begin
-            burst_req_o[i].src = burst_req_i.src+i*allocated_size_i*DmaRegionWidth;
+            burst_req_o[i].src = burst_req_i.src+i*rows_das_i*DmaRegionWidth;
           end else if (i==2) begin
-            burst_req_o[i].src = burst_req_i.src+i*allocated_size_i*DmaRegionWidth;
+            burst_req_o[i].src = burst_req_i.src+i*rows_das_i*DmaRegionWidth;
           end else if (i==3) begin
-            burst_req_o[i].src = burst_req_i.src+(i-1)*allocated_size_i*DmaRegionWidth + DmaRegionWidth;
+            burst_req_o[i].src = burst_req_i.src+(i-1)*rows_das_i*DmaRegionWidth + DmaRegionWidth;
           end
           burst_req_o[i].dst = burst_req_i.dst+i*DmaRegionWidth;
         end
