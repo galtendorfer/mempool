@@ -101,7 +101,7 @@ module address_scrambler #(
       end else begin: gen_das_scrambling
 
         for (int p = 0; p < NumDASPartitions; p++) begin
-          if ( (address_i >= start_das_i[p]) && (address_i < start_das_i[p]+MemSizePerRow*rows_das_i[p]) ) begin
+          if ( (address_i >= start_das_i[p]) && (address_i < start_das_i[p]+MemSizePerRow*rows_das_i[p]) && (partition_sel_i[p] != NumTiles) ) begin
 
             lsb_addr[p]       = address_i & ((1 << (tile_bits[p]+ConstantBitsLSB)) - 1);
             msb_addr[p]       = address_i & ~((1 << (row_bits[p]+TileIdBits+ConstantBitsLSB)) - 1);
