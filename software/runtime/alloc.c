@@ -138,37 +138,19 @@ static void *allocate_memory(alloc_t *alloc, const uint32_t size) {
 }
 
 // ------ Function to calculate the aligned size ------ //
-static uint32_t calc_aligned_size(uint32_t *addr,
-                                  const uint32_t allocated_size) {
-  // interpret the addr
-  uint32_t tmp = allocated_size;
-  uint32_t log = 0; // log2 of 0 is undefined, handled as special case if needed
-  while (tmp >>= 1) { // Shift right until value is 0
-    ++log;
-  }
-  uint32_t mask = (uint32_t)((1 << log) - 1);
-  uint32_t row_id, tile_id, offset;
-  offset = ((uint32_t)addr) & 0x7F;
-  tile_id = ((uint32_t)addr >> 7) & 0x7F;
-  row_id = ((uint32_t)addr >> 14) & 0xFF;
-  row_id &= mask;
+static uint32_t calc_aligned_row_size(uint32_t *addr) {
+  
+  const uint32_t row_bytes = NUM_BANKS * sizeof(uint32_t);
+  const uint32_t mask = (uint32_t)(row_bytes - 1);
+  uint32_t offset = ((uint32_t)addr) & mask;
 
-  uint32_t shift_size = 0;
-  if ((offset == 0) && (row_id == 0) && (tile_id == 0)) {
-    shift_size = 0;
-  } else {
-    uint32_t aligned_boundary = 4096 * 4 * allocated_size;
-    uint32_t modified_curr = (row_id << 14) | (tile_id << 7) | offset;
-    shift_size = aligned_boundary - modified_curr;
-  }
-
-  return shift_size;
+  return (row_bytes - offset) & mask;
 }
+
 // ------ Parameters ------ //
 // size:           Size of the data block need to be allocated
 // allocated_size: How many rows the current partition scheme occupied
-static void *allocate_memory_aligned(alloc_t *alloc, const uint32_t size,
-                                     const uint32_t allocated_size) {
+static void *allocate_memory_aligned(alloc_t *alloc, const uint32_t size) {
   // Get first block of linked list of free blocks
   alloc_block_t *curr = alloc->first_block;
   alloc_block_t *prev = 0;
@@ -176,14 +158,13 @@ static void *allocate_memory_aligned(alloc_t *alloc, const uint32_t size,
   // Search first block large enough in linked list
   // 1. calculate the size aligned to the partition boundary
   uint32_t shift_size = 0;
-  shift_size = calc_aligned_size((uint32_t *)curr, allocated_size);
+  shift_size = calc_aligned_row_size((uint32_t *)curr);
   uint32_t aligned_size = size + shift_size;
 
-  // while (curr && (curr->size < size)) {
   while (curr && (curr->size < aligned_size)) {
     prev = curr;
     curr = curr->next;
-    shift_size = calc_aligned_size((uint32_t *)curr, allocated_size);
+    shift_size = calc_aligned_row_size((uint32_t *)curr);
     aligned_size = size + shift_size;
   }
   printf("Dynamic Allocator >> size [%d] --- shift size [%d] --- aligned size "
@@ -292,7 +273,6 @@ void *partition_malloc(alloc_t *alloc, const uint32_t size) {
   uint32_t data_size = size > 2 * NUM_BANKS * sizeof(uint32_t)
                            ? size
                            : 2 * NUM_BANKS * sizeof(uint32_t);
-  uint32_t allocated_size = data_size / (NUM_BANKS * sizeof(uint32_t));
   uint32_t block_size = ALIGN_UP(data_size, MIN_BLOCK_SIZE); // add alignment
 
   // Check if exceed maximum allowed size
@@ -303,14 +283,9 @@ void *partition_malloc(alloc_t *alloc, const uint32_t size) {
 
   // allocate
   void *block_ptr = NULL;
-  if (allocated_size < 2) {
-    block_ptr = allocate_memory(alloc, block_size);
-  } else {
-    block_ptr = allocate_memory_aligned(alloc, block_size, allocated_size);
-  }
-  // void *block_ptr = allocate_memory(alloc, block_size);
-  // void *block_ptr = allocate_memory_aligned(alloc, block_size,
-  // allocated_size);
+  block_ptr = allocate_memory_aligned(alloc, block_size);
+
+
   if (!block_ptr) {
     printf("Memory allocator: No large enough block found (%d)\n", block_size);
     return NULL;
