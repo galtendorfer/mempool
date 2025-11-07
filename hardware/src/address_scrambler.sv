@@ -20,15 +20,16 @@ module address_scrambler #(
   parameter int unsigned SeqMemSizePerTile = 4096,
   parameter int unsigned NumDASPartitions  = 4,
   // Dependant parameters, do not change
-  parameter int unsigned RowsWidth         = $clog2(TCDMSizePerBank) - ByteOffset + 1,
-  parameter int unsigned MemSizePerTile    = NumBanksPerTile*TCDMSizePerBank,
-  parameter int unsigned MemSizePerRow     = (1 << ByteOffset)*NumBanksPerTile*NumTiles
+  parameter int unsigned RowsWidth            = $clog2(TCDMSizePerBank) - ByteOffset + 1,
+  parameter int unsigned MaxPartitionRowWidth = $clog2(TCDMSizePerBank) - ByteOffset,     // maximum half of L1 
+  parameter int unsigned MemSizePerTile       = NumBanksPerTile*TCDMSizePerBank,
+  parameter int unsigned MemSizePerRow        = (1 << ByteOffset)*NumBanksPerTile*NumTiles
 ) (
-  input  logic [AddrWidth-1:0]                            address_i,
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] partition_sel_i,
-  input  logic [NumDASPartitions-1:0][AddrWidth-1:0]      start_das_i,
-  input  logic [NumDASPartitions-1:0][RowsWidth-1:0]      rows_das_i,
-  output logic [AddrWidth-1:0]                            address_o
+  input  logic [AddrWidth-1:0]                                       address_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0]            partition_sel_i,
+  input  logic [NumDASPartitions-1:0][AddrWidth-1:0]                 start_das_i,
+  input  logic [NumDASPartitions-1:0][MaxPartitionRowWidth-1:0]      rows_das_i,
+  output logic [AddrWidth-1:0]                                       address_o
 );
   // Stack Sequential Settings
   localparam int unsigned BankOffsetBits    = $clog2(NumBanksPerTile);
@@ -54,27 +55,27 @@ module address_scrambler #(
 
     // ------ Heap Sequential Signals ------ //
     
-    // `tile_bits` : how many bits to shift for TileID bits in each partition
-    // `row_bits`: how many bits need to swap within Row Index
-    logic [NumDASPartitions-1:0][$clog2($clog2(NumTiles)+1)-1:0] tile_bits;
-    logic [NumDASPartitions-1:0][$clog2(RowsWidth)-1:0] row_bits;
+    // `tile_bits` : how many fixed TileID bits
+    // `row_bits`  : how many bits need to swap to the start of Row Index
+    logic [NumDASPartitions-1:0][$clog2($clog2(NumTiles)+1)-1:0]   tile_bits;
+    logic [NumDASPartitions-1:0][$clog2(MaxPartitionRowWidth)-1:0] row_bits;
 
     for (genvar i = 0; i < NumDASPartitions; i++) begin : gen_shift_index
       lzc #(
-        .WIDTH ($clog2(NumTiles)+1),
-        .MODE  (1'b0              )
+        .WIDTH   ($clog2(NumTiles)+1 ),
+        .MODE    (1'b0               )
       ) i_log_tile_bits (
-        .in_i    (partition_sel_i[i]),
-        .cnt_o   (tile_bits[i]     ),
-        .empty_o (/* Unused */      )
+        .in_i    (partition_sel_i[i] ),
+        .cnt_o   (tile_bits[i]       ),
+        .empty_o (/* Unused */       )
       );
       lzc #(
-        .WIDTH (RowsWidth       ),
-        .MODE  (1'b0            )
+        .WIDTH   (MaxPartitionRowWidth ),
+        .MODE    (1'b0                 )
       ) i_log_row_bits (
-        .in_i    (rows_das_i[i][RowsWidth-1:0]),
-        .cnt_o   (row_bits[i]                ),
-        .empty_o (/* Unused */                )
+        .in_i    (rows_das_i[i]        ),
+        .cnt_o   (row_bits[i]          ),
+        .empty_o (/* Unused */         )
       );
     end
 
@@ -110,7 +111,7 @@ module address_scrambler #(
             prt_addr[p]     = (aligned_addr[p] >> row_bits[p]                )  & (((1 << (TileIdBits - tile_bits[p])) - 1) << (ConstantBitsLSB + tile_bits[p]));
             row_addr[p]     = (aligned_addr[p] << (TileIdBits - tile_bits[p]))  & (((1 << (row_bits[p])              ) - 1) << (TileIdBits + ConstantBitsLSB  ));
             address_o       = msb_addr[p] | row_addr[p] | prt_addr[p] | lsb_addr[p];
-            address_o       = address_o + row_addr[p];
+            address_o       = address_o + start_row_addr[p];
 
           end
         end
