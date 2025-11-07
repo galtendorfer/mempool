@@ -47,15 +47,13 @@ int main() {
       uint32_t *array = (uint32_t *)partition_malloc(
           dynamic_heap_alloc, array_size * sizeof(uint32_t));
       // 5. Config the hardware registers
-      partition_config(part_id, num_tiles_per_partition);
-      start_addr_scheme_config(part_id, (uint32_t)(*array),
-                               array_size * sizeof(uint32_t));
+      das_config(part_id, num_tiles_per_partition, (uint32_t)(*array), array_size * sizeof(uint32_t));
       // 6. Move data
       for (uint32_t i = 0; i < array_size; i++) {
         array[i] = i;
       }
       // 7. Change addressing scheme (to fully interleaved)
-      partition_config(part_id, NUM_TILES);
+      das_config(part_id, NUM_TILES, (uint32_t)(*array), array_size * sizeof(uint32_t));
       // 8. check
       for (uint32_t i = 0; i < array_size; i++) {
         uint32_t *fetch_address =
@@ -94,15 +92,14 @@ int main() {
       uint32_t *array = (uint32_t *)partition_malloc(
           dynamic_heap_alloc, array_size * sizeof(uint32_t));
       // 5. Config the hardware registers
-      partition_config(part_id, num_tiles_per_partition);
-      start_addr_scheme_config(part_id, (uint32_t)(*array),
-                               array_size * sizeof(uint32_t));
+      das_config(part_id, num_tiles_per_partition, (uint32_t)(*array), array_size * sizeof(uint32_t));
       // 6. Move data
       for (uint32_t i = 0; i < array_size; i++) {
         array[i] = i;
       }
       // 7. Change addressing scheme (to fully interleaved)
-      partition_config(part_id, NUM_TILES);
+      das_config(part_id, NUM_TILES, (uint32_t)(*array), array_size * sizeof(uint32_t));
+      // partition_config(part_id, NUM_TILES);
       // 8. check
       for (uint32_t i = 0; i < array_size; i++) {
         uint32_t *fetch_address =
