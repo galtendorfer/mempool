@@ -28,7 +28,7 @@ void mempool_bitrevtable_q16s_riscv32(int16_t *pSrc, const uint16_t bitRevLen,
 }
 
 #ifndef ASM
-#define SWAP_ITEMS                                                             \
+#define LOAD_ADDRESSES                                                         \
   addr1 = *(uint32_t *)&pBitRevTab[i];                                         \
   addr2 = *(uint32_t *)&pBitRevTab[i + 2];                                     \
   addr3 = *(uint32_t *)&pBitRevTab[i + 4];                                     \
@@ -44,25 +44,9 @@ void mempool_bitrevtable_q16s_riscv32(int16_t *pSrc, const uint16_t bitRevLen,
   b1 = addr1[0];                                                               \
   b2 = addr2[0];                                                               \
   b3 = addr3[0];                                                               \
-  b4 = addr4[0];                                                               \
-  tmpa1 = *(uint32_t *)&pSrc[a1];                                              \
-  tmpa2 = *(uint32_t *)&pSrc[a2];                                              \
-  tmpa3 = *(uint32_t *)&pSrc[a3];                                              \
-  tmpa4 = *(uint32_t *)&pSrc[a4];                                              \
-  tmpb1 = *(uint32_t *)&pSrc[b1];                                              \
-  tmpb2 = *(uint32_t *)&pSrc[b2];                                              \
-  tmpb3 = *(uint32_t *)&pSrc[b3];                                              \
-  tmpb4 = *(uint32_t *)&pSrc[b4];                                              \
-  *((uint32_t *)&pSrc[a1]) = tmpb1;                                            \
-  *((uint32_t *)&pSrc[a2]) = tmpb2;                                            \
-  *((uint32_t *)&pSrc[a3]) = tmpb3;                                            \
-  *((uint32_t *)&pSrc[a4]) = tmpb4;                                            \
-  *((uint32_t *)&pSrc[b1]) = tmpa1;                                            \
-  *((uint32_t *)&pSrc[b2]) = tmpa2;                                            \
-  *((uint32_t *)&pSrc[b3]) = tmpa3;                                            \
-  *((uint32_t *)&pSrc[b4]) = tmpa4;
+  b4 = addr4[0];
 #else
-#define SWAP_ITEMS                                                             \
+#define LOAD_ADDRESSES                                                         \
   addr1 = *(uint32_t *)&pBitRevTab[i];                                         \
   addr2 = *(uint32_t *)&pBitRevTab[i + 2];                                     \
   addr3 = *(uint32_t *)&pBitRevTab[i + 4];                                     \
@@ -84,24 +68,25 @@ void mempool_bitrevtable_q16s_riscv32(int16_t *pSrc, const uint16_t bitRevLen,
                  [addr1] "+&r"(addr1), [addr2] "+&r"(addr2),                   \
                  [addr3] "+&r"(addr3), [addr4] "+&r"(addr4)                    \
                : [s2] "r"(s2)                                                  \
-               :);                                                             \
-  tmpa1 = *(uint32_t *)&pSrc[a1];                                              \
-  tmpa2 = *(uint32_t *)&pSrc[a2];                                              \
-  tmpa3 = *(uint32_t *)&pSrc[a3];                                              \
-  tmpa4 = *(uint32_t *)&pSrc[a4];                                              \
-  tmpb1 = *(uint32_t *)&pSrc[b1];                                              \
-  tmpb2 = *(uint32_t *)&pSrc[b2];                                              \
-  tmpb3 = *(uint32_t *)&pSrc[b3];                                              \
-  tmpb4 = *(uint32_t *)&pSrc[b4];                                              \
-  *((uint32_t *)&pSrc[a1]) = tmpb1;                                            \
-  *((uint32_t *)&pSrc[a2]) = tmpb2;                                            \
-  *((uint32_t *)&pSrc[a3]) = tmpb3;                                            \
-  *((uint32_t *)&pSrc[a4]) = tmpb4;                                            \
-  *((uint32_t *)&pSrc[b1]) = tmpa1;                                            \
-  *((uint32_t *)&pSrc[b2]) = tmpa2;                                            \
-  *((uint32_t *)&pSrc[b3]) = tmpa3;                                            \
-  *((uint32_t *)&pSrc[b4]) = tmpa4;
+               :);
 #endif
+#define SWAP_ITEMS                                                             \
+  tmpa1 = *(uint32_t *)&p[a1];                                                 \
+  tmpa2 = *(uint32_t *)&p[a2];                                                 \
+  tmpa3 = *(uint32_t *)&p[a3];                                                 \
+  tmpa4 = *(uint32_t *)&p[a4];                                                 \
+  tmpb1 = *(uint32_t *)&p[b1];                                                 \
+  tmpb2 = *(uint32_t *)&p[b2];                                                 \
+  tmpb3 = *(uint32_t *)&p[b3];                                                 \
+  tmpb4 = *(uint32_t *)&p[b4];                                                 \
+  *((uint32_t *)&p[a1]) = tmpb1;                                               \
+  *((uint32_t *)&p[a2]) = tmpb2;                                               \
+  *((uint32_t *)&p[a3]) = tmpb3;                                               \
+  *((uint32_t *)&p[a4]) = tmpb4;                                               \
+  *((uint32_t *)&p[b1]) = tmpa1;                                               \
+  *((uint32_t *)&p[b2]) = tmpa2;                                               \
+  *((uint32_t *)&p[b3]) = tmpa3;                                               \
+  *((uint32_t *)&p[b4]) = tmpa4;
 
 void mempool_bitrevtable_q16s_xpulpimg(int16_t *pSrc, const uint16_t bitRevLen,
                                        const uint16_t *pBitRevTab) {
@@ -112,12 +97,16 @@ void mempool_bitrevtable_q16s_xpulpimg(int16_t *pSrc, const uint16_t bitRevLen,
   int32_t a1, a2, a3, a4;
   int32_t b1, b2, b3, b4;
   for (uint32_t i = 0; i < bitRevLen; i += 8) {
+    int16_t *p = pSrc;
+    LOAD_ADDRESSES;
     SWAP_ITEMS;
   }
 }
 
-void mempool_bitrevtable_q16p_xpulpimg(int16_t *pSrc, const uint16_t bitRevLen,
+void mempool_bitrevtable_q16p_xpulpimg(int16_t *pSrc, const uint32_t fftLen,
+                                       const uint16_t bitRevLen,
                                        const uint16_t *pBitRevTab,
+                                       const uint16_t nffts,
                                        const uint32_t nPE) {
   uint32_t core_id = mempool_get_core_id();
   uint32_t addr1, addr2, addr3, addr4;
@@ -126,25 +115,13 @@ void mempool_bitrevtable_q16p_xpulpimg(int16_t *pSrc, const uint16_t bitRevLen,
   uint32_t tmpb1, tmpb2, tmpb3, tmpb4;
   int32_t a1, a2, a3, a4;
   int32_t b1, b2, b3, b4;
+  int16_t volatile *p;
   for (uint32_t i = 8 * core_id; i < bitRevLen; i += (8 * nPE)) {
-    SWAP_ITEMS;
-  }
-  mempool_log_partial_barrier(2, core_id, nPE);
-}
-
-void mempool_bitrev_q16p_xpulpimg(int16_t *pSrc, int16_t *pDst,
-                                  const uint16_t fftLen, const uint32_t nPE) {
-  uint32_t core_id = mempool_get_core_id();
-  uint32_t idx_result, idx, i, j;
-  for (i = core_id; i < fftLen; i += nPE) {
-    idx_result = 0;
-    idx = i;
-    for (j = 0; j < LOG2; j++) {
-      idx_result = (idx_result << 1U) | (idx & 1U);
-      idx = idx >> 1U;
+    LOAD_ADDRESSES;
+    for (uint32_t idx = 0; idx < nffts; idx++) {
+      p = pSrc + 2U * idx * fftLen;
+      SWAP_ITEMS;
     }
-    pDst[2 * idx_result] = pSrc[2 * i];
-    pDst[2 * idx_result + 1] = pSrc[2 * i + 1];
   }
   mempool_log_partial_barrier(2, core_id, nPE);
 }

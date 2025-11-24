@@ -32,7 +32,7 @@ static inline void radix4_butterfly_first(__fp16 *pIn, __fp16 *pOut,
   v2h A, B, C, D, E, F, G, H;
 
 // LOAD INDEXES
-#if defined(FOLDED) || defined(SCHEDULED)
+#if defined(FOLDED)
   /* index calculation for the input as, */
   /* pIn[i0 + 0], pIn[i0 + fftLen/4], pIn[i0 + fftLen/2], pIn[i0 + 3fftLen/4] */
   i1 = i0 + n2;
@@ -46,7 +46,7 @@ static inline void radix4_butterfly_first(__fp16 *pIn, __fp16 *pOut,
   i3 = i2 + n2;
 #endif
 // STORE INDEXES
-#if defined(FOLDED) || defined(SCHEDULED)
+#if defined(FOLDED)
   uint32_t n2_store = n2 >> 2U;
   i0_store = (i0 % n2_store) + (i0 / n2_store) * NUM_BANKS;
   i1_store = i0_store + n2_store;
@@ -154,7 +154,7 @@ static inline void radix4_butterfly_middle(__fp16 *pIn, __fp16 *pOut,
   v2h A, B, C, D, E, F, G, H;
 
 // LOAD INDEXES
-#if defined(FOLDED) || defined(SCHEDULED)
+#if defined(FOLDED)
   /*  index calculation for the input as, */
   /*  pIn[i0 + 0], pIn[i0 + fftLen/4], pIn[i0 + fftLen/2], pIn[i0 +
    * 3fftLen/4] */
@@ -170,7 +170,7 @@ static inline void radix4_butterfly_middle(__fp16 *pIn, __fp16 *pOut,
   i3 = i2 + n2;
 #endif
 // STORE INDEXES
-#if defined(FOLDED) || defined(SCHEDULED)
+#if defined(FOLDED)
   uint32_t n2_store = n2 >> 2U;
   i0_store =
       (i0 % n2_store) + (i0 / n2) * n2 + ((i0 % n2) / n2_store) * NUM_BANKS;
@@ -274,7 +274,7 @@ static inline void radix4_butterfly_last(__fp16 *pIn, __fp16 *pOut,
   v2h A, B, C, D, E, F, G, H;
 
 // LOAD INDEXES
-#if defined(FOLDED) || defined(SCHEDULED)
+#if defined(FOLDED)
   /*  index calculation for the input as, */
   /*  pIn[i0 + 0], pIn[i0 + fftLen/4],
       pIn[i0 + fftLen/2], pIn[i0 + 3fftLen/4] */
@@ -290,7 +290,7 @@ static inline void radix4_butterfly_last(__fp16 *pIn, __fp16 *pOut,
   i3 = i2 + 1U;
 #endif
 // STORE INDEXES
-#if defined(FOLDED) || (defined(SCHEDULED) && defined(BITREVERSETABLE))
+#if defined(FOLDED)
   i0_store = i0 * 4;
   i1_store = i0_store + 1;
   i2_store = i1_store + 1;

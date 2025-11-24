@@ -318,7 +318,7 @@ void mempool_radix4_cfft_q16s_riscv32(int16_t *pIn, uint32_t fftLen,
 ******************************************************************************/
 
 void mempool_radix4_cfft_q16s_xpulpimg(int16_t *pSrc16, uint32_t fftLen,
-                                       int16_t *pCoef16,
+                                       const int16_t *pCoef16,
                                        uint32_t twidCoefModifier) {
 
   v2s CoSi1, CoSi2, CoSi3;
@@ -331,11 +331,11 @@ void mempool_radix4_cfft_q16s_xpulpimg(int16_t *pSrc16, uint32_t fftLen,
 
   /* START OF FIRST STAGE PROCESS */
   for (i0 = 0; i0 < n2; i0++) {
-    CoSi1 = *(v2s *)&pCoef16[2U * i0];
-    CoSi2 = *(v2s *)&pCoef16[2U * i0 * 2U];
-    CoSi3 = *(v2s *)&pCoef16[2U * i0 * 3U];
+    ic = i0 * twidCoefModifier;
+    CoSi1 = *(v2s *)&pCoef16[2U * ic];
+    CoSi2 = *(v2s *)&pCoef16[2U * (ic * 2U)];
+    CoSi3 = *(v2s *)&pCoef16[2U * (ic * 3U)];
     SHUFFLE_TWIDDLEFACT;
-
     radix4_butterfly_first(pSrc16, pSrc16, i0, n2, CoSi1, CoSi2, CoSi3, C1, C2,
                            C3);
   }
@@ -346,16 +346,14 @@ void mempool_radix4_cfft_q16s_xpulpimg(int16_t *pSrc16, uint32_t fftLen,
   for (k = fftLen / 4U; k > 4U; k >>= 2U) {
     n1 = n2;
     n2 >>= 2U;
-    ic = 0U;
-    for (j = 0U; j <= (n2 - 1U); j++) {
+    for (j = 0U; j < n2; j++) {
+      /*  Twiddle coefficients index modifier */
+      ic = twidCoefModifier * j;
       /*  index calculation for the coefficients */
       CoSi1 = *(v2s *)&pCoef16[ic * 2U];
       CoSi2 = *(v2s *)&pCoef16[2U * (ic * 2U)];
       CoSi3 = *(v2s *)&pCoef16[3U * (ic * 2U)];
       SHUFFLE_TWIDDLEFACT;
-
-      /*  Twiddle coefficients index modifier */
-      ic = ic + twidCoefModifier;
       /*  Butterfly implementation */
       for (i0 = j; i0 < fftLen; i0 += n1) {
         radix4_butterfly_middle(pSrc16, pSrc16, i0, n2, CoSi1, CoSi2, CoSi3, C1,
@@ -375,7 +373,7 @@ void mempool_radix4_cfft_q16s_xpulpimg(int16_t *pSrc16, uint32_t fftLen,
   /* END OF LAST STAGE PROCESSING */
 }
 
-void mempool_cfft_radix4by2_q16s_riscv32(int16_t *pSrc, uint32_t fftLen,
+void mempool_radix4by2_cfft_q16s_riscv32(int16_t *pSrc, uint32_t fftLen,
                                          const int16_t *pCoef) {
 
   uint32_t i;
@@ -390,26 +388,21 @@ void mempool_cfft_radix4by2_q16s_riscv32(int16_t *pSrc, uint32_t fftLen,
   for (i = 0; i < n2; i++) {
     cosVal = pCoef[i * 2];
     sinVal = pCoef[(i * 2) + 1];
-
     l = i + n2;
-
     xt = (int16_t)((pSrc[2 * i] >> 1U) - (pSrc[2 * l] >> 1U));
     pSrc[2 * i] = (int16_t)(((pSrc[2 * i] >> 1U) + (pSrc[2 * l] >> 1U)) >> 1U);
-
     yt = (int16_t)((pSrc[2 * i + 1] >> 1U) - (pSrc[2 * l + 1] >> 1U));
     pSrc[2 * i + 1] =
         (int16_t)(((pSrc[2 * l + 1] >> 1U) + (pSrc[2 * i + 1] >> 1U)) >> 1U);
-
     pSrc[2U * l] = (int16_t)(((int16_t)(((int32_t)xt * cosVal) >> 16)) +
                              ((int16_t)(((int32_t)yt * sinVal) >> 16)));
-
     pSrc[2U * l + 1U] = (int16_t)(((int16_t)(((int32_t)yt * cosVal) >> 16)) -
                                   ((int16_t)(((int32_t)xt * sinVal) >> 16)));
   }
 
-  // first col
+  // first half
   mempool_radix4_cfft_q16s_riscv32(pSrc, n2, (int16_t *)pCoef, 2U);
-  // second col
+  // second half
   mempool_radix4_cfft_q16s_riscv32(pSrc + fftLen, n2, (int16_t *)pCoef, 2U);
 
   for (i = 0; i < (fftLen >> 1); i++) {
@@ -430,162 +423,47 @@ void mempool_cfft_radix4by2_q16s_riscv32(int16_t *pSrc, uint32_t fftLen,
   }
 }
 
-void mempool_cfft_radix4by2_q16s_xpulpimg(int16_t *pSrc, uint32_t fftLen,
+void mempool_radix4by2_cfft_q16s_xpulpimg(int16_t *pSrc, uint32_t fftLen,
                                           const int16_t *pCoef) {
 
   uint32_t i;
   uint32_t n2;
-  v2s pa, pb;
+  int16_t pa, pb, pc, pd;
 
-  uint32_t l;
   v2s CoSi;
   v2s a, b, t;
   int16_t testa, testb;
 
   n2 = fftLen >> 1;
-
   for (i = 0; i < n2; i++) {
     CoSi = *(v2s *)&pCoef[i * 2];
-    l = i + n2;
     a = __SRA2(*(v2s *)&pSrc[2 * i], ((v2s){1, 1}));
-    b = __SRA2(*(v2s *)&pSrc[2 * l], ((v2s){1, 1}));
+    b = __SRA2(*(v2s *)&pSrc[2 * (i + n2)], ((v2s){1, 1}));
     t = __SUB2(a, b);
-    *((v2s *)&pSrc[i * 2]) = __SRA2(__ADD2(a, b), ((v2s){1, 1}));
-
     testa = (int16_t)(__DOTP2(t, CoSi) >> 16);
-    testb = (int16_t)(__DOTP2(t, __PACK2(-CoSi[1], CoSi[0])) >> 16);
-    *((v2s *)&pSrc[l * 2]) = __PACK2(testa, testb);
+    testb = (int16_t)(__DOTP2(t, __PACK2(CoSi[0], -CoSi[1])) >> 16);
+    *((v2s *)&pSrc[i * 2]) = __SRA2(__ADD2(a, b), ((v2s){1, 1}));
+    *((v2s *)&pSrc[(i + n2) * 2]) = __PACK2(testb, testa);
   }
 
-  // first col
+  // first half
   mempool_radix4_cfft_q16s_xpulpimg(pSrc, n2, (int16_t *)pCoef, 2U);
-  // second col
+  // second half
   mempool_radix4_cfft_q16s_xpulpimg(pSrc + fftLen, n2, (int16_t *)pCoef, 2U);
 
-  for (i = 0; i < (fftLen >> 1); i++) {
-    pa = *(v2s *)&pSrc[4 * i];
-    pb = *(v2s *)&pSrc[4 * i + 2];
-
-    pa = __SLL2(pa, ((v2s){1, 1}));
-    pb = __SLL2(pb, ((v2s){1, 1}));
-
-    *((v2s *)&pSrc[4 * i]) = pa;
-    *((v2s *)&pSrc[4 * i + 2]) = pb;
+  for (i = 0; i < n2; i++) {
+    pa = *(int16_t *)&pSrc[4 * i + 0];
+    pb = *(int16_t *)&pSrc[4 * i + 1];
+    pc = *(int16_t *)&pSrc[4 * i + 2];
+    pd = *(int16_t *)&pSrc[4 * i + 3];
+    pa = (int16_t)(pa << 1U);
+    pb = (int16_t)(pb << 1U);
+    pc = (int16_t)(pc << 1U);
+    pd = (int16_t)(pd << 1U);
+    pSrc[4 * i + 0] = pa;
+    pSrc[4 * i + 1] = pb;
+    pSrc[4 * i + 2] = pc;
+    pSrc[4 * i + 3] = pd;
   }
-}
-
-void mempool_radix4_cfft_q16s_scheduler(
-    int16_t *pSrc16, uint16_t fftLen, int16_t *pCoef16, uint16_t *pBitRevTable,
-    uint16_t bitReverseLen, uint8_t bitReverseFlag, uint32_t nFFTs) {
-
-  /* Initializations for the first stage */
-  int16_t t0, t1, t2, t3, t4, t5;
-  uint32_t n1, n2, i0, ic, j, k, twidCoefModifier;
-  v2s CoSi1, CoSi2, CoSi3;
-  v2s C1, C2, C3;
-
-  /* FIRST STAGE */
-  n1 = fftLen;
-  n2 = n1 >> 2U;
-  for (i0 = 0; i0 < n2; i0++) {
-    CoSi1 = *(v2s *)&pCoef16[2U * i0];
-    CoSi2 = *(v2s *)&pCoef16[2U * i0 * 2U];
-    CoSi3 = *(v2s *)&pCoef16[2U * i0 * 3U];
-    SHUFFLE_TWIDDLEFACT;
-
-    for (uint32_t idx_fft = 0; idx_fft < nFFTs; idx_fft++) {
-      radix4_butterfly_first(pSrc16 + (int32_t)idx_fft * (2 * fftLen),
-                             pSrc16 + (int32_t)idx_fft * (2 * fftLen), i0, n2,
-                             CoSi1, CoSi2, CoSi3, C1, C2, C3);
-    }
-  }
-
-  /* MIDDLE STAGE */
-  twidCoefModifier = 4;
-  for (k = fftLen / 4U; k > 4U; k >>= 2U) {
-    n1 = n2;
-    n2 >>= 2U;
-    ic = 0U;
-    for (j = 0U; j <= (n2 - 1U); j++) {
-      CoSi1 = *(v2s *)&pCoef16[2U * ic];
-      CoSi2 = *(v2s *)&pCoef16[2U * ic * 2U];
-      CoSi3 = *(v2s *)&pCoef16[2U * ic * 3U];
-      SHUFFLE_TWIDDLEFACT;
-
-      ic = ic + twidCoefModifier;
-      for (i0 = j; i0 < fftLen; i0 += n1) {
-        for (uint32_t idx_fft = 0; idx_fft < nFFTs; idx_fft++) {
-          radix4_butterfly_middle(pSrc16 + (int32_t)idx_fft * (2 * fftLen),
-                                  pSrc16 + (int32_t)idx_fft * (2 * fftLen), i0,
-                                  n2, CoSi1, CoSi2, CoSi3, C1, C2, C3);
-        }
-      }
-    }
-    twidCoefModifier <<= 2U;
-  }
-
-  /* LAST STAGE */
-  n1 = n2;
-  n2 >>= 2U;
-  for (i0 = 0U; i0 < fftLen; i0 += n1) {
-    for (uint32_t idx_fft = 0; idx_fft < nFFTs; idx_fft++) {
-      radix4_butterfly_last(pSrc16 + (int32_t)idx_fft * (2 * fftLen),
-                            pSrc16 + (int32_t)idx_fft * (2 * fftLen), i0);
-    }
-  }
-
-  /* BITREVERSAL */
-  if (bitReverseFlag) {
-    v2s addr1, addr2, addr3, addr4;
-    v2s s2 = (v2s){2, 2};
-    v2s tmpa1, tmpa2, tmpa3, tmpa4;
-    v2s tmpb1, tmpb2, tmpb3, tmpb4;
-    int32_t a1, a2, a3, a4;
-    int32_t b1, b2, b3, b4;
-    uint16_t *ptr;
-    for (uint32_t i = 0; i < bitReverseLen; i += 8) {
-      addr1 = *(v2s *)&pBitRevTable[i];
-      addr2 = *(v2s *)&pBitRevTable[i + 2];
-      addr3 = *(v2s *)&pBitRevTable[i + 4];
-      addr4 = *(v2s *)&pBitRevTable[i + 6];
-      asm volatile("pv.sra.h  %[addr1],%[addr1],%[s2];"
-                   "pv.sra.h  %[addr2],%[addr2],%[s2];"
-                   "pv.sra.h  %[addr3],%[addr3],%[s2];"
-                   "pv.sra.h  %[addr4],%[addr4],%[s2];"
-                   "pv.extract.h  %[a1],%[addr1],0;"
-                   "pv.extract.h  %[a2],%[addr2],0;"
-                   "pv.extract.h  %[a3],%[addr3],0;"
-                   "pv.extract.h  %[a4],%[addr4],0;"
-                   "pv.extract.h  %[b1],%[addr1],1;"
-                   "pv.extract.h  %[b2],%[addr2],1;"
-                   "pv.extract.h  %[b3],%[addr3],1;"
-                   "pv.extract.h  %[b4],%[addr4],1;"
-                   : [a1] "=r"(a1), [a2] "=r"(a2), [a3] "=r"(a3), [a4] "=r"(a4),
-                     [b1] "=r"(b1), [b2] "=r"(b2), [b3] "=r"(b3), [b4] "=r"(b4),
-                     [addr1] "+r"(addr1), [addr2] "+r"(addr2),
-                     [addr3] "+r"(addr3), [addr4] "+r"(addr4)
-                   : [s2] "r"(s2)
-                   :);
-      ptr = (uint16_t *)pSrc16;
-      for (uint32_t idx_fft = 0; idx_fft < nFFTs; idx_fft++) {
-        tmpa1 = *(v2s *)&ptr[a1];
-        tmpa2 = *(v2s *)&ptr[a2];
-        tmpa3 = *(v2s *)&ptr[a3];
-        tmpa4 = *(v2s *)&ptr[a4];
-        tmpb1 = *(v2s *)&ptr[b1];
-        tmpb2 = *(v2s *)&ptr[b2];
-        tmpb3 = *(v2s *)&ptr[b3];
-        tmpb4 = *(v2s *)&ptr[b4];
-        *((v2s *)&ptr[a1]) = tmpb1;
-        *((v2s *)&ptr[a2]) = tmpb2;
-        *((v2s *)&ptr[a3]) = tmpb3;
-        *((v2s *)&ptr[a4]) = tmpb4;
-        *((v2s *)&ptr[b1]) = tmpa1;
-        *((v2s *)&ptr[b2]) = tmpa2;
-        *((v2s *)&ptr[b3]) = tmpa3;
-        *((v2s *)&ptr[b4]) = tmpa4;
-        ptr += (2 * fftLen);
-      }
-    }
-  }
+  return;
 }
