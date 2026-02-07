@@ -154,14 +154,6 @@ ifdef tg
 	cpp_defs  += -DTG_SEQ_PROB=$(tg_seqprob)
 	cpp_defs  += -DTG_NCYCLES=$(tg_ncycles)
 	cpp_defs  += -DNUM_CORES=$(num_cores)
-	# DAS benchmark related
-	cpp_defs  += -DPARTITION=$(partition)
-	cpp_defs  += -DTG_PA=$(tg_pa)
-	cpp_defs  += -DTG_PB=$(tg_pb)
-	cpp_defs  += -DTG_PC=$(tg_pc)
-	cpp_defs  += -DTG_PA_PROB=$(tg_pa_prob)
-	cpp_defs  += -DTG_PB_PROB=$(tg_pb_prob)
-	cpp_defs  += -DTG_PC_PROB=$(tg_pc_prob)
 
 	# How many cycles should we execute?
 	veril_flags := --term-after-cycles=$(tg_ncycles)
@@ -188,6 +180,7 @@ $(bender):
 ################
 # Modelsim     #
 ################
+
 # Library
 .PHONY: lib
 lib: $(buildpath) $(buildpath)/$(library)
@@ -196,7 +189,7 @@ $(buildpath)/$(library):
 
 # Compilation
 .PHONY: compile
-compile: dpi lib $(buildpath) $(buildpath)/compile.tcl update_opcodes
+compile: dpi lib $(buildpath) $(buildpath)/compile.tcl update-opcodes
 $(buildpath)/compile.tcl: $(bender) $(config_mk) Makefile $(MEMPOOL_DIR)/Bender.yml $(shell find {src,tb,deps} -type f)
 	$(bender) script vsim --vlog-arg="$(vlog_args)" $(vlog_defs) -t rtl -t mempool_vsim > $(buildpath)/compile.tcl
 	echo "exit" >> $(buildpath)/compile.tcl
@@ -233,7 +226,7 @@ $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 
 # Elaboration
 .PHONY: elabvcs
-elabvcs: dpivcs $(buildpath) $(buildpath)/compilevcs.sh update_opcodes
+elabvcs: dpivcs $(buildpath) $(buildpath)/compilevcs.sh update-opcodes
 $(buildpath)/compilevcs.sh: $(bender) $(config_mk) Makefile $(MEMPOOL_DIR)/Bender.yml $(shell find {src,tb,deps} -type f)
 	$(bender) script vcs --vlogan-bin="$(vcs_cmd) vlogan" --vlog-arg="$(vlogan_args)" $(vlog_defs) -t rtl -t mempool_vsim > $(buildpath)/compilevcs.sh
 	echo "exit" >> $(buildpath)/compilevcs.sh
@@ -279,6 +272,7 @@ $(buildpath)/$(dpi_library)/mempool_vcs_dpi.so: $(dpi_vcs)
 ################
 # Verilator    #
 ################
+
 VERILATOR_SRC   := $(ROOT_DIR)/tb/verilator
 VERILATOR_LIBS  := $(shell find $(VERILATOR_SRC) -name "*.cc" -print | sort)
 VERILATOR_INCS  := $(shell find $(VERILATOR_SRC) -name "cpp" -print | sort)
@@ -333,6 +327,7 @@ verilate: $(VERILATOR_EXE) $(buildpath) Makefile
 #############
 # Lint      #
 #############
+
 .PHONY: lint spyglass/tmp/files
 
 SNPS_SG ?= spyglass-2022.06
@@ -390,6 +385,7 @@ tracevis:
 ############################
 # Unit tests simulation    #
 ############################
+
 TESTS_DIR := $(abspath $(ROOT_DIR)/../software/riscv-tests/isa)
 include $(TESTS_DIR)/snitch_isa.mk
 
@@ -430,10 +426,10 @@ $(CONTROL_REG_DIR)/control_registers_reg_top.sv: $(CONTROL_REG_DIR)/control_regi
 	make -C $(CONTROL_REG_DIR) all
 
 # Clean targets
-.PHONY: clean clean-dasm clean-trace update_opcodes
+.PHONY: clean clean-dasm clean-trace update-opcodes
 
-update_opcodes:
-	make -C $(MEMPOOL_DIR) update_opcodes
+update-opcodes:
+	make -C $(MEMPOOL_DIR) update-opcodes
 
 clean:
 	@rm -rf $(buildpath)
