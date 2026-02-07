@@ -74,7 +74,7 @@ zquarterinx ?= 0
 xDivSqrt ?= 0
 
 # Enable configurable addressing scheme in the heap
-das ?= 0
+das ?= 1
 num_das_partitions ?= 4
 # Size of DAS-heap per core
 das_mem_size ?= 2048

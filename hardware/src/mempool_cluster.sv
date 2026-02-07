@@ -103,6 +103,7 @@ module mempool_cluster
     .NumBanksPerTile   (NumBanksPerTile             ),
     .TCDMSizePerBank   (TCDMSizePerBank             ),
     .NumDASPartitions  (NumDASPartitions            ),
+    .NumTilesPerDma    (NumTilesPerDma              ),
     .DASStartAddr      (DASStartAddr                )
   ) i_idma_split_midend (
     .clk_i           (clk_i              ),

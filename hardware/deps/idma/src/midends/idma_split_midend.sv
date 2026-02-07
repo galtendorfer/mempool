@@ -19,6 +19,7 @@ module idma_split_midend #(
   parameter int unsigned TCDMSizePerBank   = 1024,
   parameter int unsigned NumDASPartitions  = 4,
   parameter int unsigned DASStartAddr      = 1024,
+  parameter int unsigned NumTilesPerDma    = 16,
 `endif
   parameter type         burst_req_t    = logic,
   parameter type         meta_t         = logic
@@ -72,7 +73,7 @@ module idma_split_midend #(
 `ifdef DAS
   localparam TileDmaRegionWidth = DmaRegionWidth / NumTiles;
   logic [AddrWidth-1:0] PartitionDmaRegionWidth;
-  localparam DmaBackendWidth = NumBanksPerTile*NumTiles*4; // 32banks*8Tiles*4bytes
+  localparam DmaBackendWidth = NumBanksPerTile*NumTilesPerDma*4; // 32banks*8Tiles*4bytes
 
   // ------ Address translation ------ //
   // Only the address in L1 SPM will be scrambled
@@ -238,7 +239,7 @@ module idma_split_midend #(
             // Calculate the size for the 1st burst
             burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
             // TODO (bowwang): parameterize
-            // req_d.num_bytes = (group_factor_sel <= $clog2(NumTiles) + 1) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
+            req_d.num_bytes = (group_factor_sel <= NumTilesPerDma) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
             if (spm2dram) begin
               burst_req_o.src = post_scramble_src;
               req_d.src       = post_scramble_src;
