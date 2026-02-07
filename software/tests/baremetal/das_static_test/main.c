@@ -31,7 +31,7 @@ int main() {
     // --------------------------------------------
     printf("Verify DAS partitions\n\n");
 
-    uint32_t num_tiles_per_partition = 4;
+    uint32_t num_tiles_per_partition = 64;
     uint32_t part_id = 0;
 
     uint32_t num_partitions = NUM_TILES / num_tiles_per_partition;
