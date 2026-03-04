@@ -53,6 +53,11 @@ void print_histogram();
 #define NUM_CORES 256
 #endif
 
+// Deterministic seed (0 = use std::random_device, non-deterministic)
+#ifndef TG_SEED
+#define TG_SEED 0
+#endif
+
 // Runtime parameters (override compile-time defaults via environment variables)
 static float  tg_req_prob = TG_REQ_PROB;
 static float  tg_seq_prob = TG_SEQ_PROB;
@@ -70,9 +75,8 @@ static void init_params() {
   params_initialized = 1;
 }
 
-// Randomizer
-std::random_device r;
-std::default_random_engine e1(r());
+// Randomizer (deterministic seed if TG_SEED != 0)
+std::default_random_engine e1(TG_SEED == 0 ? std::random_device{}() : TG_SEED);
 std::uniform_int_distribution<addr_t> addr_dist(0, INT_MAX);
 std::uniform_real_distribution<float> real_dist(0, 1);
 
