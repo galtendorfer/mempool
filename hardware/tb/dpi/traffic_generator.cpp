@@ -5,6 +5,7 @@
 // Author: Matheus Cavalcante, ETH Zurich
 
 // Includes
+#include <cstdlib>
 #include <iostream>
 #include <limits.h>
 #include <map>
@@ -52,6 +53,23 @@ void print_histogram();
 #define NUM_CORES 256
 #endif
 
+// Runtime parameters (override compile-time defaults via environment variables)
+static float  tg_req_prob = TG_REQ_PROB;
+static float  tg_seq_prob = TG_SEQ_PROB;
+static int    tg_ncycles  = TG_NCYCLES;
+static int    num_cores   = NUM_CORES;
+static int    params_initialized = 0;
+
+static void init_params() {
+  if (params_initialized) return;
+  const char *env;
+  if ((env = std::getenv("TG_REQ_PROB"))) tg_req_prob = std::atof(env);
+  if ((env = std::getenv("TG_SEQ_PROB"))) tg_seq_prob = std::atof(env);
+  if ((env = std::getenv("TG_NCYCLES")))  tg_ncycles  = std::atoi(env);
+  if ((env = std::getenv("NUM_CORES")))   num_cores   = std::atoi(env);
+  params_initialized = 1;
+}
+
 // Randomizer
 std::random_device r;
 std::default_random_engine e1(r());
@@ -86,9 +104,10 @@ extern "C" void create_request(const core_id_t *core_id, const uint32_t *cycle,
   // Lock the function
   std::lock_guard<std::mutex> guard(g_mutex);
 
-  // Initialize the transaction ID queues
+  // Initialize runtime parameters and transaction ID queues
+  init_params();
   if (!tran_id_initialized) {
-    for (int c = 0; c < NUM_CORES; c++)
+    for (int c = 0; c < num_cores; c++)
       for (int id = 0; id < 2048; id++)
         tran_id[c].push(id);
     tran_id_initialized = 1;
@@ -96,7 +115,7 @@ extern "C" void create_request(const core_id_t *core_id, const uint32_t *cycle,
 
   // Generate new request
   if (!tran_id[*core_id].empty()) {
-    if (real_dist(e1) < TG_REQ_PROB) {
+    if (real_dist(e1) < tg_req_prob) {
       // Generate new address
       request_t next_request;
 
@@ -111,7 +130,7 @@ extern "C" void create_request(const core_id_t *core_id, const uint32_t *cycle,
           (next_request.addr & ~(*tcdm_mask)) | (*tcdm_base_addr & *tcdm_mask);
 
       // Should the request be in the sequential region?
-      if (real_dist(e1) < TG_SEQ_PROB) {
+      if (real_dist(e1) < tg_seq_prob) {
         next_request.addr =
             (next_request.addr & ~(*tile_mask)) | (*seq_mask & *tile_mask);
       }
@@ -181,6 +200,6 @@ extern "C" void print_histogram() {
 
   std::cout << "Average latency: " << (1.0 * latency) / tran_counter
             << std::endl;
-  std::cout << "Throughput: " << (1.0 * tran_counter) / (TG_NCYCLES * NUM_CORES)
+  std::cout << "Throughput: " << (1.0 * tran_counter) / (tg_ncycles * num_cores)
             << std::endl;
 }

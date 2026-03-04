@@ -5,6 +5,9 @@
 import "DPI-C" function void read_elf (input string filename);
 import "DPI-C" function byte get_section (output longint address, output longint len);
 import "DPI-C" context function byte read_section(input longint address, inout byte buffer[]);
+`ifdef TRAFFIC_GEN
+import "DPI-C" function void print_histogram();
+`endif
 
 `define wait_for(signal) \
   do \
@@ -308,6 +311,21 @@ module mempool_tb;
     // Start MemPool
     fetch_en = 1'b1;
   end
+
+`ifdef TRAFFIC_GEN
+  // Traffic generator termination: run for tg_ncycles then print results
+  initial begin
+    int tg_ncycles;
+    if (!$value$plusargs("tg_ncycles=%d", tg_ncycles))
+      tg_ncycles = 10000; // default
+    // Wait for reset
+    wait (rst_n);
+    repeat (tg_ncycles) @(posedge clk);
+    print_histogram();
+    $display("[TG] Traffic generation finished after %0d cycles.", tg_ncycles);
+    $finish(0);
+  end
+`endif
 
   /***********************
    *  L2 Initialization  *

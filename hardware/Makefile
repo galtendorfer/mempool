@@ -154,6 +154,8 @@ ifdef tg
 
 	# How many cycles should we execute?
 	veril_flags := --term-after-cycles=$(tg_ncycles)
+	# Pass cycle count to QuestaSim TB via plusarg
+	questa_args += +tg_ncycles=$(tg_ncycles)
 else
 	tg          := 0
 	veril_flags := --meminit=ram,$(preload)
@@ -211,7 +213,7 @@ dpi: $(buildpath)/$(dpi_library)/mempool_dpi.so
 
 $(buildpath)/$(dpi_library)/%.o: tb/dpi/%.cpp
 	mkdir -p $(buildpath)/$(dpi_library)
-	$(CXX) -shared -fPIC -std=c++11 -Bsymbolic -c $< -I$(QUESTASIM_HOME)/include -o $@
+	$(CXX) -shared -fPIC -std=c++11 -Bsymbolic $(cpp_defs) -c $< -I$(QUESTASIM_HOME)/include -o $@
 
 $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 	mkdir -p $(buildpath)/$(dpi_library)
@@ -314,7 +316,7 @@ $(VERILATOR_MK): $(VERILATOR_CONF) $(VERILATOR_WAIVE) $(MEMPOOL_DIR)/Bender.yml 
 	$(verilator) $(VERILATOR_FLAGS) --top-module $(verilator_top)
 
 $(VERILATOR_EXE): $(VERILATOR_MK) $(shell find $(VERILATOR_SRC) -type f) Makefile
-	make -j4 -C $(verilator_build) -f $<
+	make -j10 -C $(verilator_build) -f $<
 
 verilate: $(VERILATOR_EXE) $(buildpath) Makefile
 	cd $(buildpath) && $(VERILATOR_EXE) $(veril_flags) | tee transcript
