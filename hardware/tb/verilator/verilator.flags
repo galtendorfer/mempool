@@ -35,7 +35,7 @@
 --output-split 5000
 
 // Evaluate the performance gain
-// --threads 4
+--threads 10
 
 // Gain more insights on the signals that Verilator failed to optimize
 // --report-unoptflat
