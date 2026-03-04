@@ -192,6 +192,7 @@ module mempool_tb;
 `ifndef TARGET_SYNTHESIS
 `ifndef TARGET_VERILATOR
 `ifndef POSTLAYOUT
+`ifndef TRAFFIC_GEN
 
   // Helper debug signal with the wfi of each core
   logic [NumCores-1:0]          wfi;
@@ -216,6 +217,7 @@ module mempool_tb;
     end: gen_wfi_groups
   `endif
 
+`endif // TRAFFIC_GEN
 `endif
 `endif
 `endif
@@ -413,6 +415,7 @@ module mempool_tb;
 `ifndef TARGET_SYNTHESIS
 `ifndef TARGET_VERILATOR
 `ifndef POSTLAYOUT
+`ifndef TRAFFIC_GEN
 
   // Cores
   logic [NumCores-1:0] instruction_handshake, lsu_request, lsu_handshake;
@@ -496,6 +499,8 @@ module mempool_tb;
     end
   `endif
   end
+
+`endif // TRAFFIC_GEN
 
   // AXI
   logic [NumGroups*NumAXIMastersPerGroup-1:0] w_valid, w_ready, r_ready, r_valid;

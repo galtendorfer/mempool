@@ -143,7 +143,9 @@ vlog_defs += -DDRAM_AXI_WIDTH_INTERLEAVED=${dram_axi_width_interleaved}
 
 # Traffic generation enabled
 ifdef tg
-	tg_ncycles ?= 10000
+	tg_ncycles  ?= 10000
+	tg_reqprob  ?= 0.2
+	tg_seqprob  ?= 0
 
 	vlog_defs += -DTRAFFIC_GEN=1
 	cpp_defs  += -DTRAFFIC_GEN=1
