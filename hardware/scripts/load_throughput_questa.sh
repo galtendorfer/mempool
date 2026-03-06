@@ -15,6 +15,7 @@ MEMPOOL_DIR=$(git rev-parse --show-toplevel 2>/dev/null || echo $MEMPOOL_DIR)
 cd $MEMPOOL_DIR/hardware
 
 tg_ncycles=${TG_NCYCLES:-10000}
+tg_tile_range=${TG_TILE_RANGE:-0}
 max_parallel=${PARALLEL:-1}
 
 # QuestaSim version and command (must match Makefile)
@@ -30,6 +31,7 @@ echo "=========================================="
 echo " Load-Throughput Sweep (QuestaSim)"
 echo " Results: $result_dir"
 echo " Cycles per run: $tg_ncycles"
+echo " Tiles per partition: $tg_tile_range"
 echo " Parallel jobs:  $max_parallel"
 echo "=========================================="
 
@@ -52,12 +54,14 @@ run_one() {
     local result_dir=$3
     local tg_ncycles=$4
     local questa_cmd=$5
+    local tg_tile_range=$6
 
     local transcript=$MEMPOOL_DIR/hardware/$result_dir/transcript_seq${seq_prob}_req${req_prob}
 
     # Run vsim from inside build/ (matching Makefile simc target)
     pushd $MEMPOOL_DIR/hardware/build > /dev/null
     TG_REQ_PROB=${req_prob} TG_SEQ_PROB=${seq_prob} TG_NCYCLES=${tg_ncycles} \
+      TG_TILE_RANGE=${tg_tile_range} \
       $questa_cmd vsim -c \
         "+DRAMSYS_RES=$MEMPOOL_DIR/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/configs" \
         -sv_lib ../deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libsystemc \
@@ -100,7 +104,7 @@ for seq_prob in $(seq 0 0.2 1); do
             pids=("${new_pids[@]}")
         done
 
-        run_one "$seq_prob" "$req_prob" "$result_dir" "$tg_ncycles" "$questa_cmd" &
+        run_one "$seq_prob" "$req_prob" "$result_dir" "$tg_ncycles" "$questa_cmd" "$tg_tile_range" &
         pids+=($!)
     done
 done

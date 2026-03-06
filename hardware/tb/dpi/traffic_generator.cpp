@@ -59,6 +59,7 @@ void print_histogram();
 #endif
 
 // Runtime parameters (override compile-time defaults via environment variables)
+static int    tg_tile_range = 0;
 static float  tg_req_prob = TG_REQ_PROB;
 static float  tg_seq_prob = TG_SEQ_PROB;
 static int    tg_ncycles  = TG_NCYCLES;
@@ -72,6 +73,9 @@ static void init_params() {
   if ((env = std::getenv("TG_SEQ_PROB"))) tg_seq_prob = std::atof(env);
   if ((env = std::getenv("TG_NCYCLES")))  tg_ncycles  = std::atoi(env);
   if ((env = std::getenv("NUM_CORES")))   num_cores   = std::atoi(env);
+  if ((env = std::getenv("TG_TILE_RANGE"))) {
+    tg_tile_range = std::atoi(env);
+  }
   params_initialized = 1;
 }
 
@@ -133,10 +137,28 @@ extern "C" void create_request(const core_id_t *core_id, const uint32_t *cycle,
       next_request.addr =
           (next_request.addr & ~(*tcdm_mask)) | (*tcdm_base_addr & *tcdm_mask);
 
-      // Should the request be in the sequential region?
-      if (real_dist(e1) < tg_seq_prob) {
+      const addr_t local_tile = *seq_mask & *tile_mask;
+      if (tg_tile_range > 0) {
+        const addr_t tile_lsb = *tile_mask & (~(*tile_mask) + 1u);
+        const addr_t partition_mask =
+            (static_cast<addr_t>(tg_tile_range) - 1u) * tile_lsb;
+        addr_t target_tile = local_tile;
+        if ((real_dist(e1) >= tg_seq_prob) && tg_tile_range > 1) {
+          std::uniform_int_distribution<uint32_t> partition_dist(
+              0, tg_tile_range - 2);
+          addr_t target_offset =
+              static_cast<addr_t>(partition_dist(e1)) * tile_lsb;
+          const addr_t local_offset = local_tile & partition_mask;
+          if (target_offset >= local_offset) {
+            target_offset += tile_lsb;
+          }
+          target_tile = (local_tile & ~partition_mask) | target_offset;
+        }
+
         next_request.addr =
-            (next_request.addr & ~(*tile_mask)) | (*seq_mask & *tile_mask);
+            (next_request.addr & ~(*tile_mask)) | (target_tile & *tile_mask);
+      } else if (real_dist(e1) < tg_seq_prob) {
+        next_request.addr = (next_request.addr & ~(*tile_mask)) | local_tile;
       }
 
       // Address is aligned to 32 bits
