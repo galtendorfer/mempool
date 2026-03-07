@@ -1,0 +1,237 @@
+# vsim -c "+DRAMSYS_RES=/home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/configs" -sv_lib /home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libsystemc -sv_lib /home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libDRAMSys_Simulator -sv_lib /scratch/bsc26f10/mempool_questa_builds/pisoc7.ee.ethz.ch/build_tilerange16/work-dpi/mempool_dpi -work work -suppress vsim-12070 "+tg_ncycles=10000" work.mempool_tb -l /home/bsc26f10/thesis/mempool/hardware/load_thru_questa_tilerange16_20260307_034640/transcript_seq0.0_req0.08 -do "run -a" 
+# Start time: 03:46:50 on Mar 07,2026
+# Loading /tmp/bsc26f10@pisoc7.ee.ethz.ch_dpi_3783084/linux_x86_64_gcc-7.4.0/export_tramp.so
+# ** Note: (vsim-3812) Design is being optimized...
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc7.ee.ethz.ch, pid = 3783950". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc7.ee.ethz.ch/build_tilerange16/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc7.ee.ethz.ch, pid = 3784067". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc7.ee.ethz.ch/build_tilerange16/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc7.ee.ethz.ch, pid = 3784105". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc7.ee.ethz.ch/build_tilerange16/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc7.ee.ethz.ch, pid = 3784522". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc7.ee.ethz.ch/build_tilerange16/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc7.ee.ethz.ch, pid = 3784574". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc7.ee.ethz.ch/build_tilerange16/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc7.ee.ethz.ch, pid = 3784794". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc7.ee.ethz.ch/build_tilerange16/work/_lock".
+# ** Note: (vsim-12126) Error and warning message counts have been restored: Errors=0, Warnings=6.
+# //  Questa Sim-64
+# //  Version 2022.3_1 linux_x86_64 Aug 12 2022
+# //
+# //  Copyright 1991-2022 Mentor Graphics Corporation
+# //  All Rights Reserved.
+# //
+# //  QuestaSim and its associated documentation contain trade
+# //  secrets and commercial or financial information that are the property of
+# //  Mentor Graphics Corporation and are privileged, confidential,
+# //  and exempt from disclosure under the Freedom of Information Act,
+# //  5 U.S.C. Section 552. Furthermore, this information
+# //  is prohibited from disclosure under the Trade Secrets Act,
+# //  18 U.S.C. Section 1905.
+# //
+# Loading sv_std.std
+# Loading work.mempool_dma_frontend_reg_pkg(fast)
+# Loading work.control_registers_reg_pkg(fast)
+# Loading work.axi_pkg(fast)
+# Loading work.reqrsp_pkg(fast)
+# Loading work.riscv_instr(fast)
+# Loading work.fpnew_pkg(fast)
+# Loading work.cf_math_pkg(fast)
+# Loading work.snitch_pkg(fast)
+# Loading work.mempool_pkg(fast)
+# Loading work.mempool_tb_sv_unit(fast)
+# Loading work.mempool_tb(fast)
+# Loading work.fifo_v3(fast)
+# Loading work.tcdm_interconnect_pkg(fast)
+# Loading work.mempool_group(fast)
+# Loading work.traffic_generator_sv_unit(fast)
+# Loading work.mempool_tile(fast)
+# Loading work.riscv_instr_branch(fast)
+# Loading work.snitch_icache_pkg(fast)
+# Loading work.snitch_icache(fast)
+# Loading work.rr_arb_tree(fast)
+# Loading work.rr_arb_tree(fast__1)
+# Loading work.tc_sram_impl(fast)
+# Loading work.rr_arb_tree(fast__2)
+# Loading work.spill_register(fast__1)
+# Loading work.spill_register(fast__2)
+# Loading work.spill_register(fast__3)
+# Loading work.spill_register(fast__4)
+# Loading work.spill_register(fast__5)
+# Loading work.stream_xbar(fast)
+# Loading work.stream_xbar(fast__1)
+# Loading work.stream_xbar(fast__2)
+# Loading work.stream_xbar(fast__3)
+# Loading work.spill_register(fast__13)
+# Loading work.rr_arb_tree(fast__8)
+# Loading work.stream_fork(fast__2)
+# Loading work.spill_register(fast__14)
+# Loading work.spill_register(fast__15)
+# Loading work.spill_register(fast__16)
+# Loading work.spill_register(fast__17)
+# Loading work.spill_register(fast__18)
+# Loading work.rr_arb_tree(fast__9)
+# Loading work.rr_arb_tree(fast__10)
+# Loading work.rr_arb_tree(fast__11)
+# Loading work.fifo_v3(fast__7)
+# Loading work.spill_register(fast__19)
+# Loading work.spill_register(fast__20)
+# Loading work.spill_register(fast__21)
+# Loading work.spill_register(fast__22)
+# Loading work.axi_demux_id_counters(fast)
+# Loading work.rr_arb_tree(fast__12)
+# Loading work.axi_id_prepend(fast)
+# Loading work.rr_arb_tree(fast__13)
+# Loading work.fifo_v3(fast__10)
+# Loading work.spill_register(fast__23)
+# Loading work.spill_register(fast__24)
+# Loading work.rr_arb_tree(fast__14)
+# Loading work.spill_register(fast__25)
+# Loading work.spill_register(fast__26)
+# Loading work.full_duplex_xbar(fast)
+# Loading work.full_duplex_xbar(fast__1)
+# Loading work.axi_id_prepend(fast__1)
+# Loading work.rr_arb_tree(fast__17)
+# Loading work.fifo_v3(fast__11)
+# Loading work.spill_register(fast__31)
+# Loading work.spill_register(fast__32)
+# Loading work.spill_register(fast__33)
+# Loading work.rr_arb_tree(fast__18)
+# Loading work.spill_register(fast__34)
+# Loading work.spill_register(fast__35)
+# Loading work.snitch_read_only_cache(fast)
+# Loading work.spill_register(fast__36)
+# Loading work.spill_register(fast__37)
+# Loading work.spill_register(fast__38)
+# Loading work.spill_register(fast__39)
+# Loading work.spill_register(fast__40)
+# Loading work.spill_register(fast__41)
+# Loading work.axi_demux_id_counters(fast__1)
+# Loading work.addr_decode(fast)
+# Loading work.axi_burst_splitter_table(fast)
+# Loading work.id_queue(fast)
+# Loading work.tc_sram_impl(fast__2)
+# Loading work.axi_id_prepend(fast__2)
+# Loading work.rr_arb_tree(fast__19)
+# Loading work.fifo_v3(fast__13)
+# Loading work.spill_register(fast__43)
+# Loading work.spill_register(fast__44)
+# Loading work.rr_arb_tree(fast__20)
+# Loading work.spill_register(fast__45)
+# Loading work.spill_register(fast__46)
+# Loading work.axi_id_remap_table(fast)
+# Loading work.spill_register(fast__47)
+# Loading work.spill_register(fast__48)
+# Loading work.spill_register(fast__49)
+# Loading work.fifo_v3(fast__15)
+# Loading work.fifo_v3(fast__16)
+# Loading work.fifo_v3(fast__17)
+# Loading work.axi_dma_data_path(fast)
+# Loading work.fifo_v3(fast__19)
+# Loading work.axi_xbar(fast)
+# Loading work.addr_decode(fast__1)
+# Loading work.spill_register(fast__50)
+# Loading work.axi_demux_id_counters(fast__2)
+# Loading work.rr_arb_tree(fast__21)
+# Loading work.fifo_v3(fast__20)
+# Loading work.stream_fork(fast__4)
+# Loading work.stream_join(fast__1)
+# Loading work.stream_fork_dynamic(fast)
+# Loading work.addr_decode(fast__2)
+# Loading work.spill_register(fast__51)
+# Loading work.spill_register(fast__52)
+# Loading work.spill_register(fast__53)
+# Loading work.spill_register(fast__54)
+# Loading work.addr_decode(fast__3)
+# Loading work.axi_demux_id_counters(fast__3)
+# Loading work.rr_arb_tree(fast__22)
+# Loading work.axi_id_prepend(fast__3)
+# Loading work.rr_arb_tree(fast__23)
+# Loading work.fifo_v3(fast__26)
+# Loading work.spill_register(fast__55)
+# Loading work.spill_register(fast__56)
+# Loading work.rr_arb_tree(fast__24)
+# Loading work.spill_register(fast__57)
+# Loading work.spill_register(fast__58)
+# Loading work.stream_xbar(fast__4)
+# Loading work.stream_xbar(fast__5)
+# Loading work.fall_through_register(fast__3)
+# Loading work.rr_arb_tree(fast__27)
+# Loading work.rr_arb_tree(fast__28)
+# Loading work.rr_arb_tree(fast__29)
+# Loading work.fifo_v3(fast__33)
+# Loading work.spill_register(fast__62)
+# Loading work.spill_register(fast__63)
+# Loading work.spill_register(fast__64)
+# Loading work.axi_demux_id_counters(fast__4)
+# Loading work.id_queue(fast__1)
+# Loading work.spill_register(fast__65)
+# Loading work.spill_register(fast__66)
+# Loading work.spill_register(fast__67)
+# Loading work.spill_register(fast__68)
+# Loading work.spill_register(fast__69)
+# Loading work.axi_burst_splitter_ax_chan(fast)
+# Loading work.axi_burst_splitter_counters(fast)
+# Loading work.axi_burst_splitter_ax_chan(fast__1)
+# Loading work.fifo_v3(fast__38)
+# Loading work.addr_decode(fast__4)
+# Loading work.spill_register(fast__70)
+# Loading work.spill_register(fast__71)
+# Loading work.spill_register(fast__72)
+# Loading work.spill_register(fast__73)
+# Loading work.spill_register(fast__74)
+# Loading work.spill_register(fast__75)
+# Loading work.stream_arbiter(fast__2)
+# Loading work.rr_arb_tree(fast__30)
+# Loading work.stream_arbiter(fast__3)
+# Loading work.rr_arb_tree(fast__31)
+# Loading work.axi_id_remap_table(fast__1)
+# Loading work.spill_register(fast__76)
+# Loading work.spill_register(fast__77)
+# Loading work.spill_register(fast__78)
+# Loading work.spill_register(fast__79)
+# Loading work.axi_demux_id_counters(fast__5)
+# Loading work.fifo_v3(fast__47)
+# Loading work.spill_register(fast__80)
+# Loading work.spill_register(fast__81)
+# Loading work.spill_register(fast__82)
+# Loading work.spill_register(fast__83)
+# Loading work.spill_register(fast__84)
+# Loading work.axi_id_remap_table(fast__2)
+# Loading work.spill_register(fast__85)
+# Loading work.spill_register(fast__86)
+# Loading work.spill_register(fast__87)
+# Loading work.spill_register(fast__88)
+# Loading work.spill_register(fast__89)
+# Loading work.axi_demux_id_counters(fast__6)
+# Loading work.fifo_v3(fast__49)
+# Loading work.axi_burst_splitter_ax_chan(fast__2)
+# Loading work.axi_burst_splitter_counters(fast__1)
+# Loading work.id_queue(fast__2)
+# Loading work.axi_burst_splitter_ax_chan(fast__3)
+# Loading work.fifo_v3(fast__39)
+# Loading work.stream_arbiter(fast__4)
+# Loading work.rr_arb_tree(fast__32)
+# Compiling /tmp/bsc26f10@pisoc7.ee.ethz.ch_dpi_3783084/linux_x86_64_gcc-7.4.0/exportwrapper.c
+# Loading /tmp/bsc26f10@pisoc7.ee.ethz.ch_dpi_3783084/linux_x86_64_gcc-7.4.0/vsim_auto_compile.so
+# Loading /tmp/bsc26f10@pisoc7.ee.ethz.ch_dpi_3783084/linux_x86_64_gcc-7.4.0/STUB_SYMS_OF_libsystemc.so
+# Loading /home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libsystemc.so
+# Loading /tmp/bsc26f10@pisoc7.ee.ethz.ch_dpi_3783084/linux_x86_64_gcc-7.4.0/STUB_SYMS_OF_libDRAMSys_Simulator.so
+# Loading /home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libDRAMSys_Simulator.so
+# Loading /scratch/bsc26f10/mempool_questa_builds/pisoc7.ee.ethz.ch/build_tilerange16/work-dpi/mempool_dpi.so
+# run -a
+# Latency	Count
+# 3	128067
+# 4	48687
+# 5	18088
+# 6	6524
+# 7	2267
+# 8	890
+# 9	329
+# 10	131
+# 11	55
+# 12	21
+# 13	17
+# 14	9
+# 15	2
+# 16	1
+# 17	1
+# Average latency: 3.59385
+# Throughput: 0.0801129
+# [TG] Traffic generation finished after 10000 cycles.
+# End time: 03:52:52 on Mar 07,2026, Elapsed time: 0:06:02
+# Errors: 0, Warnings: 6, Suppressed Warnings: 66
