@@ -1,0 +1,452 @@
+# vsim -c "+DRAMSYS_RES=/home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/configs" -sv_lib /home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libsystemc -sv_lib /home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libDRAMSys_Simulator -sv_lib /scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work-dpi/mempool_dpi -work work -suppress vsim-12070 "+tg_ncycles=10000" work.mempool_tb -l /home/bsc26f10/thesis/mempool/hardware/load_thru_questa_tilerange2_20260307_023654/transcript_seq0.2_req0.30 -do "run -a" 
+# Start time: 02:37:03 on Mar 07,2026
+# Loading /tmp/bsc26f10@pisoc3.ee.ethz.ch_dpi_1034482/linux_x86_64_gcc-7.4.0/export_tramp.so
+# ** Note: (vsim-3812) Design is being optimized...
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1034206". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036139". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1034204". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1034202". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1034384". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1034893". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035124". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036157". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035417". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035418". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035423". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035420". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035497". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035579". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035582". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035581". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035668". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035742". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035797". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035794". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035750". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035867". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035851". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035834". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035860". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035844". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035988". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035989". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035965". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035990". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035990". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1041685". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035957". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035846". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035846". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035977". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035886". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035886". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035964". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035837". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035837". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036000". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036000". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035980". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035985". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1035985". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036008". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036003". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036003". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036082". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036082". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036016". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036115". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036115". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036075". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036221". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036221". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036220". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036220". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1045357". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036116". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036116". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036160". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036214". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036214". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036255". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036255". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Warning: (vopt-6) -- Waiting for lock by "bsc26f10@pisoc3.ee.ethz.ch, pid = 1036260". Lockfile is "/scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work/_lock".
+# ** Note: (vsim-12126) Error and warning message counts have been restored: Errors=0, Warnings=68.
+# //  Questa Sim-64
+# //  Version 2022.3_1 linux_x86_64 Aug 12 2022
+# //
+# //  Copyright 1991-2022 Mentor Graphics Corporation
+# //  All Rights Reserved.
+# //
+# //  QuestaSim and its associated documentation contain trade
+# //  secrets and commercial or financial information that are the property of
+# //  Mentor Graphics Corporation and are privileged, confidential,
+# //  and exempt from disclosure under the Freedom of Information Act,
+# //  5 U.S.C. Section 552. Furthermore, this information
+# //  is prohibited from disclosure under the Trade Secrets Act,
+# //  18 U.S.C. Section 1905.
+# //
+# Loading sv_std.std
+# Loading work.mempool_dma_frontend_reg_pkg(fast)
+# Loading work.control_registers_reg_pkg(fast)
+# Loading work.axi_pkg(fast)
+# Loading work.reqrsp_pkg(fast)
+# Loading work.riscv_instr(fast)
+# Loading work.fpnew_pkg(fast)
+# Loading work.cf_math_pkg(fast)
+# Loading work.snitch_pkg(fast)
+# Loading work.mempool_pkg(fast)
+# Loading work.mempool_tb_sv_unit(fast)
+# Loading work.mempool_tb(fast)
+# Loading work.fifo_v3(fast)
+# Loading work.tcdm_interconnect_pkg(fast)
+# Loading work.mempool_group(fast)
+# Loading work.traffic_generator_sv_unit(fast)
+# Loading work.mempool_tile(fast)
+# Loading work.riscv_instr_branch(fast)
+# Loading work.snitch_icache_pkg(fast)
+# Loading work.snitch_icache(fast)
+# Loading work.rr_arb_tree(fast)
+# Loading work.rr_arb_tree(fast__1)
+# Loading work.tc_sram_impl(fast)
+# Loading work.rr_arb_tree(fast__2)
+# Loading work.spill_register(fast__1)
+# Loading work.spill_register(fast__2)
+# Loading work.spill_register(fast__3)
+# Loading work.spill_register(fast__4)
+# Loading work.spill_register(fast__5)
+# Loading work.stream_xbar(fast)
+# Loading work.stream_xbar(fast__1)
+# Loading work.stream_xbar(fast__2)
+# Loading work.stream_xbar(fast__3)
+# Loading work.spill_register(fast__13)
+# Loading work.rr_arb_tree(fast__8)
+# Loading work.stream_fork(fast__2)
+# Loading work.spill_register(fast__14)
+# Loading work.spill_register(fast__15)
+# Loading work.spill_register(fast__16)
+# Loading work.spill_register(fast__17)
+# Loading work.spill_register(fast__18)
+# Loading work.rr_arb_tree(fast__9)
+# Loading work.rr_arb_tree(fast__10)
+# Loading work.rr_arb_tree(fast__11)
+# Loading work.fifo_v3(fast__7)
+# Loading work.spill_register(fast__19)
+# Loading work.spill_register(fast__20)
+# Loading work.spill_register(fast__21)
+# Loading work.spill_register(fast__22)
+# Loading work.axi_demux_id_counters(fast)
+# Loading work.rr_arb_tree(fast__12)
+# Loading work.axi_id_prepend(fast)
+# Loading work.rr_arb_tree(fast__13)
+# Loading work.fifo_v3(fast__10)
+# Loading work.spill_register(fast__23)
+# Loading work.spill_register(fast__24)
+# Loading work.rr_arb_tree(fast__14)
+# Loading work.spill_register(fast__25)
+# Loading work.spill_register(fast__26)
+# Loading work.full_duplex_xbar(fast)
+# Loading work.full_duplex_xbar(fast__1)
+# Loading work.axi_id_prepend(fast__1)
+# Loading work.rr_arb_tree(fast__17)
+# Loading work.fifo_v3(fast__11)
+# Loading work.spill_register(fast__31)
+# Loading work.spill_register(fast__32)
+# Loading work.spill_register(fast__33)
+# Loading work.rr_arb_tree(fast__18)
+# Loading work.spill_register(fast__34)
+# Loading work.spill_register(fast__35)
+# Loading work.snitch_read_only_cache(fast)
+# Loading work.spill_register(fast__36)
+# Loading work.spill_register(fast__37)
+# Loading work.spill_register(fast__38)
+# Loading work.spill_register(fast__39)
+# Loading work.spill_register(fast__40)
+# Loading work.spill_register(fast__41)
+# Loading work.axi_demux_id_counters(fast__1)
+# Loading work.addr_decode(fast)
+# Loading work.axi_burst_splitter_table(fast)
+# Loading work.id_queue(fast)
+# Loading work.tc_sram_impl(fast__2)
+# Loading work.axi_id_prepend(fast__2)
+# Loading work.rr_arb_tree(fast__19)
+# Loading work.fifo_v3(fast__13)
+# Loading work.spill_register(fast__43)
+# Loading work.spill_register(fast__44)
+# Loading work.rr_arb_tree(fast__20)
+# Loading work.spill_register(fast__45)
+# Loading work.spill_register(fast__46)
+# Loading work.axi_id_remap_table(fast)
+# Loading work.spill_register(fast__47)
+# Loading work.spill_register(fast__48)
+# Loading work.spill_register(fast__49)
+# Loading work.fifo_v3(fast__15)
+# Loading work.fifo_v3(fast__16)
+# Loading work.fifo_v3(fast__17)
+# Loading work.axi_dma_data_path(fast)
+# Loading work.fifo_v3(fast__19)
+# Loading work.axi_xbar(fast)
+# Loading work.addr_decode(fast__1)
+# Loading work.spill_register(fast__50)
+# Loading work.axi_demux_id_counters(fast__2)
+# Loading work.rr_arb_tree(fast__21)
+# Loading work.fifo_v3(fast__20)
+# Loading work.stream_fork(fast__4)
+# Loading work.stream_join(fast__1)
+# Loading work.stream_fork_dynamic(fast)
+# Loading work.addr_decode(fast__2)
+# Loading work.spill_register(fast__51)
+# Loading work.spill_register(fast__52)
+# Loading work.spill_register(fast__53)
+# Loading work.spill_register(fast__54)
+# Loading work.addr_decode(fast__3)
+# Loading work.axi_demux_id_counters(fast__3)
+# Loading work.rr_arb_tree(fast__22)
+# Loading work.axi_id_prepend(fast__3)
+# Loading work.rr_arb_tree(fast__23)
+# Loading work.fifo_v3(fast__26)
+# Loading work.spill_register(fast__55)
+# Loading work.spill_register(fast__56)
+# Loading work.rr_arb_tree(fast__24)
+# Loading work.spill_register(fast__57)
+# Loading work.spill_register(fast__58)
+# Loading work.stream_xbar(fast__4)
+# Loading work.stream_xbar(fast__5)
+# Loading work.fall_through_register(fast__3)
+# Loading work.rr_arb_tree(fast__27)
+# Loading work.rr_arb_tree(fast__28)
+# Loading work.rr_arb_tree(fast__29)
+# Loading work.fifo_v3(fast__33)
+# Loading work.spill_register(fast__62)
+# Loading work.spill_register(fast__63)
+# Loading work.spill_register(fast__64)
+# Loading work.axi_demux_id_counters(fast__4)
+# Loading work.id_queue(fast__1)
+# Loading work.spill_register(fast__65)
+# Loading work.spill_register(fast__66)
+# Loading work.spill_register(fast__67)
+# Loading work.spill_register(fast__68)
+# Loading work.spill_register(fast__69)
+# Loading work.axi_burst_splitter_ax_chan(fast)
+# Loading work.axi_burst_splitter_counters(fast)
+# Loading work.axi_burst_splitter_ax_chan(fast__1)
+# Loading work.fifo_v3(fast__38)
+# Loading work.addr_decode(fast__4)
+# Loading work.spill_register(fast__70)
+# Loading work.spill_register(fast__71)
+# Loading work.spill_register(fast__72)
+# Loading work.spill_register(fast__73)
+# Loading work.spill_register(fast__74)
+# Loading work.spill_register(fast__75)
+# Loading work.stream_arbiter(fast__2)
+# Loading work.rr_arb_tree(fast__30)
+# Loading work.stream_arbiter(fast__3)
+# Loading work.rr_arb_tree(fast__31)
+# Loading work.axi_id_remap_table(fast__1)
+# Loading work.spill_register(fast__76)
+# Loading work.spill_register(fast__77)
+# Loading work.spill_register(fast__78)
+# Loading work.spill_register(fast__79)
+# Loading work.axi_demux_id_counters(fast__5)
+# Loading work.fifo_v3(fast__47)
+# Loading work.spill_register(fast__80)
+# Loading work.spill_register(fast__81)
+# Loading work.spill_register(fast__82)
+# Loading work.spill_register(fast__83)
+# Loading work.spill_register(fast__84)
+# Loading work.axi_id_remap_table(fast__2)
+# Loading work.spill_register(fast__85)
+# Loading work.spill_register(fast__86)
+# Loading work.spill_register(fast__87)
+# Loading work.spill_register(fast__88)
+# Loading work.spill_register(fast__89)
+# Loading work.axi_demux_id_counters(fast__6)
+# Loading work.fifo_v3(fast__49)
+# Loading work.axi_burst_splitter_ax_chan(fast__2)
+# Loading work.axi_burst_splitter_counters(fast__1)
+# Loading work.id_queue(fast__2)
+# Loading work.axi_burst_splitter_ax_chan(fast__3)
+# Loading work.fifo_v3(fast__39)
+# Loading work.stream_arbiter(fast__4)
+# Loading work.rr_arb_tree(fast__32)
+# Compiling /tmp/bsc26f10@pisoc3.ee.ethz.ch_dpi_1034482/linux_x86_64_gcc-7.4.0/exportwrapper.c
+# Loading /tmp/bsc26f10@pisoc3.ee.ethz.ch_dpi_1034482/linux_x86_64_gcc-7.4.0/vsim_auto_compile.so
+# Loading /tmp/bsc26f10@pisoc3.ee.ethz.ch_dpi_1034482/linux_x86_64_gcc-7.4.0/STUB_SYMS_OF_libsystemc.so
+# Loading /home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libsystemc.so
+# Loading /tmp/bsc26f10@pisoc3.ee.ethz.ch_dpi_1034482/linux_x86_64_gcc-7.4.0/STUB_SYMS_OF_libDRAMSys_Simulator.so
+# Loading /home/bsc26f10/thesis/mempool/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libDRAMSys_Simulator.so
+# Loading /scratch/bsc26f10/mempool_questa_builds/pisoc3.ee.ethz.ch/build_tilerange2/work-dpi/mempool_dpi.so
+# run -a
+# Latency	Count
+# 1	32743
+# 2	19648
+# 3	50814
+# 4	78767
+# 5	64787
+# 6	53224
+# 7	41859
+# 8	36239
+# 9	31846
+# 10	27673
+# 11	25014
+# 12	22227
+# 13	20273
+# 14	18250
+# 15	16529
+# 16	15166
+# 17	14030
+# 18	12965
+# 19	11938
+# 20	10855
+# 21	10095
+# 22	9461
+# 23	8575
+# 24	8167
+# 25	7630
+# 26	7088
+# 27	6741
+# 28	6189
+# 29	5779
+# 30	5518
+# 31	5105
+# 32	4810
+# 33	4347
+# 34	4123
+# 35	3821
+# 36	3609
+# 37	3436
+# 38	3149
+# 39	2942
+# 40	2824
+# 41	2689
+# 42	2514
+# 43	2415
+# 44	2229
+# 45	2147
+# 46	1979
+# 47	1917
+# 48	1738
+# 49	1665
+# 50	1540
+# 51	1437
+# 52	1338
+# 53	1249
+# 54	1253
+# 55	1104
+# 56	1108
+# 57	1010
+# 58	970
+# 59	930
+# 60	874
+# 61	816
+# 62	715
+# 63	750
+# 64	686
+# 65	676
+# 66	619
+# 67	598
+# 68	560
+# 69	537
+# 70	523
+# 71	450
+# 72	492
+# 73	446
+# 74	445
+# 75	382
+# 76	406
+# 77	346
+# 78	376
+# 79	324
+# 80	334
+# 81	309
+# 82	286
+# 83	258
+# 84	235
+# 85	233
+# 86	225
+# 87	180
+# 88	219
+# 89	174
+# 90	176
+# 91	179
+# 92	163
+# 93	138
+# 94	147
+# 95	154
+# 96	103
+# 97	114
+# 98	81
+# 99	97
+# 100	91
+# 101	96
+# 102	80
+# 103	81
+# 104	78
+# 105	86
+# 106	67
+# 107	67
+# 108	57
+# 109	46
+# 110	42
+# 111	33
+# 112	29
+# 113	42
+# 114	31
+# 115	35
+# 116	27
+# 117	41
+# 118	30
+# 119	32
+# 120	39
+# 121	39
+# 122	37
+# 123	35
+# 124	26
+# 125	25
+# 126	26
+# 127	20
+# 128	21
+# 129	20
+# 130	17
+# 131	13
+# 132	17
+# 133	12
+# 134	9
+# 135	8
+# 136	9
+# 137	9
+# 138	8
+# 139	5
+# 140	8
+# 141	8
+# 142	5
+# 143	10
+# 144	8
+# 145	3
+# 146	12
+# 147	5
+# 148	10
+# 149	10
+# 150	8
+# 151	12
+# 152	14
+# 153	6
+# 154	8
+# 155	8
+# 156	9
+# 157	5
+# 158	4
+# 159	4
+# 160	4
+# 161	4
+# 163	5
+# 164	2
+# 165	4
+# 166	1
+# 167	2
+# 168	2
+# 169	1
+# Average latency: 14.0844
+# Throughput: 0.299212
+# [TG] Traffic generation finished after 10000 cycles.
+# End time: 02:53:25 on Mar 07,2026, Elapsed time: 0:16:22
+# Errors: 0, Warnings: 68, Suppressed Warnings: 66
