@@ -34,7 +34,6 @@ int main() {
   uint32_t core_id = mempool_get_core_id();
   uint32_t num_cores = mempool_get_core_count();
   uint32_t redmule_id = mempool_get_redmule_id();
-  uint32_t num_redmules = mempool_get_redmule_count();
   mempool_barrier_init(core_id);
 
 #ifdef SINGLE
@@ -69,6 +68,7 @@ int main() {
 
   uint32_t X_shift;
   uint32_t W_shift;
+  uint32_t num_redmules = mempool_get_redmule_count();
 
   // Transfer
   if (redmule_id == 0) {
@@ -111,7 +111,7 @@ int main() {
   mempool_stop_benchmark();
 #endif
 
-  mempool_check_f16(l1_Y, l2_Z, 10, 0.05f, 0);
+  mempool_check_f16(l1_Y, l2_Z, 10, 0.05f, 1);
   mempool_barrier(num_cores);
   return 0;
 }
