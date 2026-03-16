@@ -2,6 +2,7 @@
 # Licensed under the Apache License, Version 2.0, see LICENSE for details.
 # SPDX-License-Identifier: Apache-2.0
 
+install/
 install/*
 .bender
 .ctags
@@ -16,7 +17,7 @@ gmon.out
 tags
 # Python
 **.idea
-venv
+venv/
 # Visual Studio Code
 .vscode
 *.code-workspace
@@ -26,3 +27,12 @@ venv
 *.fish
 # In general, ignore pdfs
 *.pdf
+.venv/
+toolchain
+
+# Hardware simulation artifacts
+hardware/load_thru_*/
+hardware/load_thru_questa_*/
+hardware/das_sweep_*/
+hardware/modelsim.ini
+hardware/results/

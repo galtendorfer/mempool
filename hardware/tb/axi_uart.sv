@@ -101,6 +101,8 @@ module axi_uart #(
 
   `ifdef VCS
     `define UARTASSIGNOPERATOR =
+  `elsif VERILATOR
+    `define UARTASSIGNOPERATOR =
   `else
     `define UARTASSIGNOPERATOR <=
   `endif
