@@ -88,6 +88,91 @@ module mempool_group
   logic [NumCoresPerGroup-1:0] wake_up_q;
   `FF(wake_up_q, wake_up_i, '0, clk_i, rst_ni);
 
+`ifdef TRAFFIC_GEN
+  logic [63:0] dbg_active_cycles;
+  `ifdef TERAPOOL
+    logic [63:0] dbg_group_boundary_accepts [NumGroups-1:1][NumSubGroupsPerGroup-1:0][NumTilesPerSubGroup-1:0];
+    logic [63:0] dbg_group_boundary_stalls  [NumGroups-1:1][NumSubGroupsPerGroup-1:0][NumTilesPerSubGroup-1:0];
+    logic [63:0] dbg_group_boundary_in_accepts [NumGroups-1:1][NumSubGroupsPerGroup-1:0][NumTilesPerSubGroup-1:0];
+    logic [63:0] dbg_group_boundary_in_stalls  [NumGroups-1:1][NumSubGroupsPerGroup-1:0][NumTilesPerSubGroup-1:0];
+  `else
+    logic [63:0] dbg_group_boundary_accepts [NumGroups-1:1][NumTilesPerGroup-1:0];
+    logic [63:0] dbg_group_boundary_stalls  [NumGroups-1:1][NumTilesPerGroup-1:0];
+    logic [63:0] dbg_group_boundary_in_accepts [NumGroups-1:1][NumTilesPerGroup-1:0];
+    logic [63:0] dbg_group_boundary_in_stalls  [NumGroups-1:1][NumTilesPerGroup-1:0];
+  `endif
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      dbg_active_cycles <= '0;
+      `ifdef TERAPOOL
+        for (int r = 1; r < NumGroups; r++) begin
+          for (int sg = 0; sg < NumSubGroupsPerGroup; sg++) begin
+            for (int t = 0; t < NumTilesPerSubGroup; t++) begin
+              dbg_group_boundary_accepts[r][sg][t] <= '0;
+              dbg_group_boundary_stalls[r][sg][t] <= '0;
+              dbg_group_boundary_in_accepts[r][sg][t] <= '0;
+              dbg_group_boundary_in_stalls[r][sg][t] <= '0;
+            end
+          end
+        end
+      `else
+        for (int r = 1; r < NumGroups; r++) begin
+          for (int t = 0; t < NumTilesPerGroup; t++) begin
+            dbg_group_boundary_accepts[r][t] <= '0;
+            dbg_group_boundary_stalls[r][t] <= '0;
+            dbg_group_boundary_in_accepts[r][t] <= '0;
+            dbg_group_boundary_in_stalls[r][t] <= '0;
+          end
+        end
+      `endif
+    end else begin
+      dbg_active_cycles <= dbg_active_cycles + 1;
+      `ifdef TERAPOOL
+        for (int r = 1; r < NumGroups; r++) begin
+          for (int sg = 0; sg < NumSubGroupsPerGroup; sg++) begin
+            for (int t = 0; t < NumTilesPerSubGroup; t++) begin
+              if (tcdm_master_req_valid_o[r][sg][t]) begin
+                if (tcdm_master_req_ready_i[r][sg][t]) begin
+                  dbg_group_boundary_accepts[r][sg][t] <= dbg_group_boundary_accepts[r][sg][t] + 1;
+                end else begin
+                  dbg_group_boundary_stalls[r][sg][t] <= dbg_group_boundary_stalls[r][sg][t] + 1;
+                end
+              end
+              if (tcdm_slave_req_valid_i[r][sg][t]) begin
+                if (tcdm_slave_req_ready_o[r][sg][t]) begin
+                  dbg_group_boundary_in_accepts[r][sg][t] <= dbg_group_boundary_in_accepts[r][sg][t] + 1;
+                end else begin
+                  dbg_group_boundary_in_stalls[r][sg][t] <= dbg_group_boundary_in_stalls[r][sg][t] + 1;
+                end
+              end
+            end
+          end
+        end
+      `else
+        for (int r = 1; r < NumGroups; r++) begin
+          for (int t = 0; t < NumTilesPerGroup; t++) begin
+            if (tcdm_master_req_valid_o[r][t]) begin
+              if (tcdm_master_req_ready_i[r][t]) begin
+                dbg_group_boundary_accepts[r][t] <= dbg_group_boundary_accepts[r][t] + 1;
+              end else begin
+                dbg_group_boundary_stalls[r][t] <= dbg_group_boundary_stalls[r][t] + 1;
+              end
+            end
+            if (tcdm_slave_req_valid_i[r][t]) begin
+              if (tcdm_slave_req_ready_o[r][t]) begin
+                dbg_group_boundary_in_accepts[r][t] <= dbg_group_boundary_in_accepts[r][t] + 1;
+              end else begin
+                dbg_group_boundary_in_stalls[r][t] <= dbg_group_boundary_in_stalls[r][t] + 1;
+              end
+            end
+          end
+        end
+      `endif
+    end
+  end
+`endif
+
   ro_cache_ctrl_t ro_cache_ctrl_q;
   `FF(ro_cache_ctrl_q, ro_cache_ctrl_i, ro_cache_ctrl_default, clk_i, rst_ni);
 

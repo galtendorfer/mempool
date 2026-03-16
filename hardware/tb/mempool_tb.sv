@@ -39,6 +39,31 @@ module mempool_tb;
 
   localparam PollEoc     = 0;
 
+`ifdef TRAFFIC_GEN
+  logic [63:0] tb_tile_cycles [NumGroups-1:0][NumTilesPerGroup-1:0];
+  logic [63:0] tb_tile_accepts [NumGroups-1:0][NumTilesPerGroup-1:0][NumGroups+NumSubGroupsPerGroup-1-1:0];
+  logic [63:0] tb_tile_stalls [NumGroups-1:0][NumTilesPerGroup-1:0][NumGroups+NumSubGroupsPerGroup-1-1:0];
+  logic [63:0] tb_tile_in_accepts [NumGroups-1:0][NumTilesPerGroup-1:0][NumGroups+NumSubGroupsPerGroup-1-1:0];
+  logic [63:0] tb_tile_in_stalls [NumGroups-1:0][NumTilesPerGroup-1:0][NumGroups+NumSubGroupsPerGroup-1-1:0];
+  logic [63:0] tb_group_cycles [NumGroups-1:0];
+`ifdef TERAPOOL
+  logic [63:0] tb_group_accepts [NumGroups-1:0][NumGroups-1:1][NumSubGroupsPerGroup-1:0][NumTilesPerSubGroup-1:0];
+  logic [63:0] tb_group_stalls [NumGroups-1:0][NumGroups-1:1][NumSubGroupsPerGroup-1:0][NumTilesPerSubGroup-1:0];
+  logic [63:0] tb_group_in_accepts [NumGroups-1:0][NumGroups-1:1][NumSubGroupsPerGroup-1:0][NumTilesPerSubGroup-1:0];
+  logic [63:0] tb_group_in_stalls [NumGroups-1:0][NumGroups-1:1][NumSubGroupsPerGroup-1:0][NumTilesPerSubGroup-1:0];
+  logic [63:0] tb_subgroup_cycles [NumGroups-1:0][NumSubGroupsPerGroup-1:0];
+  logic [63:0] tb_subgroup_accepts [NumGroups-1:0][NumSubGroupsPerGroup-1:0][NumSubGroupsPerGroup-1:1][NumTilesPerSubGroup-1:0];
+  logic [63:0] tb_subgroup_stalls [NumGroups-1:0][NumSubGroupsPerGroup-1:0][NumSubGroupsPerGroup-1:1][NumTilesPerSubGroup-1:0];
+  logic [63:0] tb_subgroup_in_accepts [NumGroups-1:0][NumSubGroupsPerGroup-1:0][NumSubGroupsPerGroup-1:1][NumTilesPerSubGroup-1:0];
+  logic [63:0] tb_subgroup_in_stalls [NumGroups-1:0][NumSubGroupsPerGroup-1:0][NumSubGroupsPerGroup-1:1][NumTilesPerSubGroup-1:0];
+`else
+  logic [63:0] tb_group_accepts [NumGroups-1:0][NumGroups-1:1][NumTilesPerGroup-1:0];
+  logic [63:0] tb_group_stalls [NumGroups-1:0][NumGroups-1:1][NumTilesPerGroup-1:0];
+  logic [63:0] tb_group_in_accepts [NumGroups-1:0][NumGroups-1:1][NumTilesPerGroup-1:0];
+  logic [63:0] tb_group_in_stalls [NumGroups-1:0][NumGroups-1:1][NumTilesPerGroup-1:0];
+`endif
+`endif
+
  /********************************
    *  Clock and Reset Generation  *
    ********************************/
@@ -315,15 +340,192 @@ module mempool_tb;
   end
 
 `ifdef TRAFFIC_GEN
+`ifdef TERAPOOL
+  for (genvar g = 0; g < NumGroups; g++) begin: gen_tg_counter_alias_groups
+    assign tb_group_cycles[g] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.dbg_active_cycles;
+    for (genvar sg = 0; sg < NumSubGroupsPerGroup; sg++) begin: gen_tg_counter_alias_subgroups
+      assign tb_subgroup_cycles[g][sg] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.dbg_active_cycles;
+      for (genvar r = 1; r < NumSubGroupsPerGroup; r++) begin: gen_tg_counter_alias_subgroup_ports
+        for (genvar t = 0; t < NumTilesPerSubGroup; t++) begin: gen_tg_counter_alias_subgroup_tiles
+          assign tb_subgroup_accepts[g][sg][r][t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.dbg_subgroup_boundary_accepts[r][t];
+          assign tb_subgroup_stalls[g][sg][r][t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.dbg_subgroup_boundary_stalls[r][t];
+          assign tb_subgroup_in_accepts[g][sg][r][t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.dbg_subgroup_boundary_in_accepts[r][t];
+          assign tb_subgroup_in_stalls[g][sg][r][t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.dbg_subgroup_boundary_in_stalls[r][t];
+        end
+      end
+      for (genvar t = 0; t < NumTilesPerSubGroup; t++) begin: gen_tg_counter_alias_tiles
+        assign tb_tile_cycles[g][sg*NumTilesPerSubGroup + t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.gen_tiles[t].i_tile.dbg_active_cycles;
+        for (genvar p = 0; p < NumGroups+NumSubGroupsPerGroup-1; p++) begin: gen_tg_counter_alias_tile_ports
+          assign tb_tile_accepts[g][sg*NumTilesPerSubGroup + t][p] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.gen_tiles[t].i_tile.dbg_tile_boundary_accepts[p];
+          assign tb_tile_stalls[g][sg*NumTilesPerSubGroup + t][p] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.gen_tiles[t].i_tile.dbg_tile_boundary_stalls[p];
+          assign tb_tile_in_accepts[g][sg*NumTilesPerSubGroup + t][p] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.gen_tiles[t].i_tile.dbg_tile_boundary_in_accepts[p];
+          assign tb_tile_in_stalls[g][sg*NumTilesPerSubGroup + t][p] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.gen_sub_groups[sg].gen_rtl_sg.i_sub_group.gen_tiles[t].i_tile.dbg_tile_boundary_in_stalls[p];
+        end
+      end
+    end
+    for (genvar r = 1; r < NumGroups; r++) begin: gen_tg_counter_alias_group_ports
+      for (genvar sg = 0; sg < NumSubGroupsPerGroup; sg++) begin: gen_tg_counter_alias_group_port_subgroups
+        for (genvar t = 0; t < NumTilesPerSubGroup; t++) begin: gen_tg_counter_alias_group_port_tiles
+          assign tb_group_accepts[g][r][sg][t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.dbg_group_boundary_accepts[r][sg][t];
+          assign tb_group_stalls[g][r][sg][t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.dbg_group_boundary_stalls[r][sg][t];
+          assign tb_group_in_accepts[g][r][sg][t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.dbg_group_boundary_in_accepts[r][sg][t];
+          assign tb_group_in_stalls[g][r][sg][t] = dut.i_mempool_cluster.gen_groups[g].gen_rtl_group.i_group.dbg_group_boundary_in_stalls[r][sg][t];
+        end
+      end
+    end
+  end
+`else
+  for (genvar g = 0; g < NumGroups; g++) begin: gen_tg_counter_alias_groups
+    assign tb_group_cycles[g] = dut.i_mempool_cluster.gen_groups[g].i_group.dbg_active_cycles;
+    for (genvar t = 0; t < NumTilesPerGroup; t++) begin: gen_tg_counter_alias_tiles
+      assign tb_tile_cycles[g][t] = dut.i_mempool_cluster.gen_groups[g].i_group.gen_tiles[t].i_tile.dbg_active_cycles;
+      for (genvar p = 0; p < NumGroups+NumSubGroupsPerGroup-1; p++) begin: gen_tg_counter_alias_tile_ports
+        assign tb_tile_accepts[g][t][p] = dut.i_mempool_cluster.gen_groups[g].i_group.gen_tiles[t].i_tile.dbg_tile_boundary_accepts[p];
+        assign tb_tile_stalls[g][t][p] = dut.i_mempool_cluster.gen_groups[g].i_group.gen_tiles[t].i_tile.dbg_tile_boundary_stalls[p];
+        assign tb_tile_in_accepts[g][t][p] = dut.i_mempool_cluster.gen_groups[g].i_group.gen_tiles[t].i_tile.dbg_tile_boundary_in_accepts[p];
+        assign tb_tile_in_stalls[g][t][p] = dut.i_mempool_cluster.gen_groups[g].i_group.gen_tiles[t].i_tile.dbg_tile_boundary_in_stalls[p];
+      end
+    end
+    for (genvar r = 1; r < NumGroups; r++) begin: gen_tg_counter_alias_group_ports
+      for (genvar t = 0; t < NumTilesPerGroup; t++) begin: gen_tg_counter_alias_group_port_tiles
+        assign tb_group_accepts[g][r][t] = dut.i_mempool_cluster.gen_groups[g].i_group.dbg_group_boundary_accepts[r][t];
+        assign tb_group_stalls[g][r][t] = dut.i_mempool_cluster.gen_groups[g].i_group.dbg_group_boundary_stalls[r][t];
+        assign tb_group_in_accepts[g][r][t] = dut.i_mempool_cluster.gen_groups[g].i_group.dbg_group_boundary_in_accepts[r][t];
+        assign tb_group_in_stalls[g][r][t] = dut.i_mempool_cluster.gen_groups[g].i_group.dbg_group_boundary_in_stalls[r][t];
+      end
+    end
+  end
+`endif
+
   // Traffic generator termination: run for tg_ncycles then print results
   initial begin
+    int fd;
     int tg_ncycles;
+    string tg_tile_port_util_file;
+    string tg_group_port_util_file;
+    string tg_subgroup_port_util_file;
+    real util_pct;
     if (!$value$plusargs("tg_ncycles=%d", tg_ncycles))
       tg_ncycles = 10000; // default
+    if (!$value$plusargs("tg_tile_port_util_file=%s", tg_tile_port_util_file))
+      tg_tile_port_util_file = "";
+    if (!$value$plusargs("tg_group_port_util_file=%s", tg_group_port_util_file))
+      tg_group_port_util_file = "";
+    if (!$value$plusargs("tg_subgroup_port_util_file=%s", tg_subgroup_port_util_file))
+      tg_subgroup_port_util_file = "";
     // Wait for reset
     wait (rst_n);
     repeat (tg_ncycles) @(posedge clk);
     print_histogram();
+
+    if (tg_tile_port_util_file != "") begin
+      fd = $fopen(tg_tile_port_util_file, "a");
+      if (fd != 0) begin
+        for (int g = 0; g < NumGroups; g++) begin
+          for (int t = 0; t < NumTilesPerGroup; t++) begin
+            for (int p = 0; p < NumGroups+NumSubGroupsPerGroup-1; p++) begin
+              util_pct = (tb_tile_cycles[g][t] != 0)
+                  ? (100.0 * tb_tile_accepts[g][t][p]) / tb_tile_cycles[g][t]
+                  : 0.0;
+              $fwrite(fd, "%0d,%0d,%s,%0d,%0d,%0d,%0.2f\n",
+                      g*NumTilesPerGroup + t, p, "outgoing", tb_tile_cycles[g][t],
+                      tb_tile_accepts[g][t][p], tb_tile_stalls[g][t][p], util_pct);
+              util_pct = (tb_tile_cycles[g][t] != 0)
+                  ? (100.0 * tb_tile_in_accepts[g][t][p]) / tb_tile_cycles[g][t]
+                  : 0.0;
+              $fwrite(fd, "%0d,%0d,%s,%0d,%0d,%0d,%0.2f\n",
+                      g*NumTilesPerGroup + t, p, "incoming", tb_tile_cycles[g][t],
+                      tb_tile_in_accepts[g][t][p], tb_tile_in_stalls[g][t][p], util_pct);
+            end
+          end
+        end
+        $fclose(fd);
+      end
+    end
+
+    if (tg_group_port_util_file != "") begin
+      fd = $fopen(tg_group_port_util_file, "a");
+      if (fd != 0) begin
+`ifdef TERAPOOL
+        for (int g = 0; g < NumGroups; g++) begin
+          for (int r = 1; r < NumGroups; r++) begin
+            for (int sg = 0; sg < NumSubGroupsPerGroup; sg++) begin
+              for (int t = 0; t < NumTilesPerSubGroup; t++) begin
+                util_pct = (tb_group_cycles[g] != 0)
+                    ? (100.0 * tb_group_accepts[g][r][sg][t]) / tb_group_cycles[g]
+                    : 0.0;
+                $fwrite(fd, "%0d,%0d,%0d,%0d,%s,%0d,%0d,%0d,%0.2f\n",
+                        g, r, sg, t, "outgoing", tb_group_cycles[g],
+                        tb_group_accepts[g][r][sg][t],
+                        tb_group_stalls[g][r][sg][t], util_pct);
+                util_pct = (tb_group_cycles[g] != 0)
+                    ? (100.0 * tb_group_in_accepts[g][r][sg][t]) / tb_group_cycles[g]
+                    : 0.0;
+                $fwrite(fd, "%0d,%0d,%0d,%0d,%s,%0d,%0d,%0d,%0.2f\n",
+                        g, r, sg, t, "incoming", tb_group_cycles[g],
+                        tb_group_in_accepts[g][r][sg][t],
+                        tb_group_in_stalls[g][r][sg][t], util_pct);
+              end
+            end
+          end
+        end
+`else
+        for (int g = 0; g < NumGroups; g++) begin
+          for (int r = 1; r < NumGroups; r++) begin
+            for (int t = 0; t < NumTilesPerGroup; t++) begin
+              util_pct = (tb_group_cycles[g] != 0)
+                  ? (100.0 * tb_group_accepts[g][r][t]) / tb_group_cycles[g]
+                  : 0.0;
+              $fwrite(fd, "%0d,%0d,%0d,%0d,%s,%0d,%0d,%0d,%0.2f\n",
+                      g, r, -1, t, "outgoing", tb_group_cycles[g],
+                      tb_group_accepts[g][r][t],
+                      tb_group_stalls[g][r][t], util_pct);
+              util_pct = (tb_group_cycles[g] != 0)
+                  ? (100.0 * tb_group_in_accepts[g][r][t]) / tb_group_cycles[g]
+                  : 0.0;
+              $fwrite(fd, "%0d,%0d,%0d,%0d,%s,%0d,%0d,%0d,%0.2f\n",
+                      g, r, -1, t, "incoming", tb_group_cycles[g],
+                      tb_group_in_accepts[g][r][t],
+                      tb_group_in_stalls[g][r][t], util_pct);
+            end
+          end
+        end
+`endif
+        $fclose(fd);
+      end
+    end
+
+`ifdef TERAPOOL
+    if (tg_subgroup_port_util_file != "") begin
+      fd = $fopen(tg_subgroup_port_util_file, "a");
+      if (fd != 0) begin
+        for (int g = 0; g < NumGroups; g++) begin
+          for (int sg = 0; sg < NumSubGroupsPerGroup; sg++) begin
+            for (int r = 1; r < NumSubGroupsPerGroup; r++) begin
+              for (int t = 0; t < NumTilesPerSubGroup; t++) begin
+                util_pct = (tb_subgroup_cycles[g][sg] != 0)
+                    ? (100.0 * tb_subgroup_accepts[g][sg][r][t]) / tb_subgroup_cycles[g][sg]
+                    : 0.0;
+                $fwrite(fd, "%0d,%0d,%0d,%0d,%s,%0d,%0d,%0d,%0.2f\n",
+                  g, sg, r, t, "outgoing", tb_subgroup_cycles[g][sg],
+                        tb_subgroup_accepts[g][sg][r][t],
+                        tb_subgroup_stalls[g][sg][r][t], util_pct);
+                util_pct = (tb_subgroup_cycles[g][sg] != 0)
+                    ? (100.0 * tb_subgroup_in_accepts[g][sg][r][t]) / tb_subgroup_cycles[g][sg]
+                    : 0.0;
+                $fwrite(fd, "%0d,%0d,%0d,%0d,%s,%0d,%0d,%0d,%0.2f\n",
+                  g, sg, r, t, "incoming", tb_subgroup_cycles[g][sg],
+                        tb_subgroup_in_accepts[g][sg][r][t],
+                        tb_subgroup_in_stalls[g][sg][r][t], util_pct);
+              end
+            end
+          end
+        end
+        $fclose(fd);
+      end
+    end
+`endif
+
     $display("[TG] Traffic generation finished after %0d cycles.", tg_ncycles);
     $finish(0);
   end

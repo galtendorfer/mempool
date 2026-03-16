@@ -7,13 +7,24 @@ result_dir = sys.argv[1]  # e.g., load_thru_20260304_120000
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-for f in sorted(glob.glob(f"{result_dir}/results_seqprob*")):
-    seq_prob = f.split("seqprob")[-1]
+result_files = sorted(glob.glob(f"{result_dir}/results_partitionprob*"))
+if not result_files:
+    result_files = sorted(glob.glob(f"{result_dir}/results_seqprob*"))
+
+for f in result_files:
+    basename = os.path.basename(f)
+    if "partitionprob" in basename:
+        prob = basename.split("partitionprob")[-1]
+        label_prefix = "partition_prob"
+    else:
+        prob = basename.split("seqprob")[-1]
+        label_prefix = "seq_prob"
     data = np.loadtxt(f)
+    data = np.atleast_2d(data)
     req_prob, avg_lat, throughput = data[:, 0], data[:, 1], data[:, 2]
     
-    ax1.plot(throughput, avg_lat, 'o-', label=f"seq_prob={seq_prob}")
-    ax2.plot(req_prob, throughput, 'o-', label=f"seq_prob={seq_prob}")
+    ax1.plot(throughput, avg_lat, 'o-', label=f"{label_prefix}={prob}")
+    ax2.plot(req_prob, throughput, 'o-', label=f"{label_prefix}={prob}")
 
 ax1.set_xlabel("Throughput (req/core/cycle)")
 ax1.set_ylabel("Average latency (cycles)")

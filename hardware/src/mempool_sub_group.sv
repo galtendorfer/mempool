@@ -78,6 +78,48 @@ module mempool_sub_group
   logic [NumCoresPerSubGroup-1:0] wake_up_q;
   `FF(wake_up_q, wake_up_i, '0, clk_i, rst_ni);
 
+`ifdef TRAFFIC_GEN
+  logic [63:0] dbg_active_cycles;
+  logic [63:0] dbg_subgroup_boundary_accepts [NumSubGroupsPerGroup-1:1][NumTilesPerSubGroup-1:0];
+  logic [63:0] dbg_subgroup_boundary_stalls  [NumSubGroupsPerGroup-1:1][NumTilesPerSubGroup-1:0];
+  logic [63:0] dbg_subgroup_boundary_in_accepts [NumSubGroupsPerGroup-1:1][NumTilesPerSubGroup-1:0];
+  logic [63:0] dbg_subgroup_boundary_in_stalls  [NumSubGroupsPerGroup-1:1][NumTilesPerSubGroup-1:0];
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      dbg_active_cycles <= '0;
+      for (int r = 1; r < NumSubGroupsPerGroup; r++) begin
+        for (int t = 0; t < NumTilesPerSubGroup; t++) begin
+          dbg_subgroup_boundary_accepts[r][t] <= '0;
+          dbg_subgroup_boundary_stalls[r][t] <= '0;
+          dbg_subgroup_boundary_in_accepts[r][t] <= '0;
+          dbg_subgroup_boundary_in_stalls[r][t] <= '0;
+        end
+      end
+    end else begin
+      dbg_active_cycles <= dbg_active_cycles + 1;
+      for (int r = 1; r < NumSubGroupsPerGroup; r++) begin
+        for (int t = 0; t < NumTilesPerSubGroup; t++) begin
+          if (tcdm_sg_master_req_valid_o[r][t]) begin
+            if (tcdm_sg_master_req_ready_i[r][t]) begin
+              dbg_subgroup_boundary_accepts[r][t] <= dbg_subgroup_boundary_accepts[r][t] + 1;
+            end else begin
+              dbg_subgroup_boundary_stalls[r][t] <= dbg_subgroup_boundary_stalls[r][t] + 1;
+            end
+          end
+          if (tcdm_sg_slave_req_valid_i[r][t]) begin
+            if (tcdm_sg_slave_req_ready_o[r][t]) begin
+              dbg_subgroup_boundary_in_accepts[r][t] <= dbg_subgroup_boundary_in_accepts[r][t] + 1;
+            end else begin
+              dbg_subgroup_boundary_in_stalls[r][t] <= dbg_subgroup_boundary_in_stalls[r][t] + 1;
+            end
+          end
+        end
+      end
+    end
+  end
+`endif
+
   ro_cache_ctrl_t ro_cache_ctrl_q;
   `FF(ro_cache_ctrl_q, ro_cache_ctrl_i, ro_cache_ctrl_default, clk_i, rst_ni);
 

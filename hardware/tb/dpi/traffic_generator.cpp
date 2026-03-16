@@ -5,6 +5,7 @@
 // Author: Matheus Cavalcante, ETH Zurich
 
 // Includes
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <limits.h>
@@ -139,21 +140,27 @@ extern "C" void create_request(const core_id_t *core_id, const uint32_t *cycle,
 
       const addr_t local_tile = *seq_mask & *tile_mask;
       if (tg_tile_range > 0) {
-        const addr_t tile_lsb = *tile_mask & (~(*tile_mask) + 1u);
-        const addr_t partition_mask =
-            (static_cast<addr_t>(tg_tile_range) - 1u) * tile_lsb;
-        addr_t target_tile = local_tile;
-        if ((real_dist(e1) >= tg_seq_prob) && tg_tile_range > 1) {
+        const addr_t tile_shift = __builtin_ctz(*tile_mask);
+        const addr_t local_tile_id = local_tile >> tile_shift;
+        const addr_t num_tiles = (*tile_mask >> tile_shift) + 1u;
+        const addr_t partition_tiles = std::min(static_cast<addr_t>(tg_tile_range), num_tiles);
+        const addr_t partition_base = (local_tile_id / partition_tiles) * partition_tiles;
+        addr_t target_tile_id = local_tile_id;
+
+        if ((real_dist(e1) < tg_seq_prob) || partition_tiles == num_tiles) {
           std::uniform_int_distribution<uint32_t> partition_dist(
-              0, tg_tile_range - 2);
-          addr_t target_offset =
-              static_cast<addr_t>(partition_dist(e1)) * tile_lsb;
-          const addr_t local_offset = local_tile & partition_mask;
-          if (target_offset >= local_offset) {
-            target_offset += tile_lsb;
+              partition_base, partition_base + partition_tiles - 1u);
+          target_tile_id = static_cast<addr_t>(partition_dist(e1));
+        } else {
+          const addr_t outside_tiles = num_tiles - partition_tiles;
+          std::uniform_int_distribution<uint32_t> outside_dist(0, outside_tiles - 1u);
+          target_tile_id = static_cast<addr_t>(outside_dist(e1));
+          if (target_tile_id >= partition_base) {
+            target_tile_id += partition_tiles;
           }
-          target_tile = (local_tile & ~partition_mask) | target_offset;
         }
+
+        const addr_t target_tile = (target_tile_id << tile_shift) & *tile_mask;
 
         next_request.addr =
             (next_request.addr & ~(*tile_mask)) | (target_tile & *tile_mask);

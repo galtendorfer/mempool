@@ -80,6 +80,45 @@ module mempool_tile
   logic [NumCoresPerTile-1:0] wake_up_q;
   `FF(wake_up_q, wake_up_i, '0, clk_i, rst_ni);
 
+`ifdef TRAFFIC_GEN
+  logic [63:0] dbg_active_cycles;
+  logic [63:0] dbg_tile_boundary_accepts [NumGroups+NumSubGroupsPerGroup-1-1:0];
+  logic [63:0] dbg_tile_boundary_stalls  [NumGroups+NumSubGroupsPerGroup-1-1:0];
+  logic [63:0] dbg_tile_boundary_in_accepts [NumGroups+NumSubGroupsPerGroup-1-1:0];
+  logic [63:0] dbg_tile_boundary_in_stalls  [NumGroups+NumSubGroupsPerGroup-1-1:0];
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      dbg_active_cycles <= '0;
+      for (int h = 0; h < NumGroups+NumSubGroupsPerGroup-1; h++) begin
+        dbg_tile_boundary_accepts[h] <= '0;
+        dbg_tile_boundary_stalls[h] <= '0;
+        dbg_tile_boundary_in_accepts[h] <= '0;
+        dbg_tile_boundary_in_stalls[h] <= '0;
+      end
+    end else begin
+      dbg_active_cycles <= dbg_active_cycles + 1;
+      for (int h = 0; h < NumGroups+NumSubGroupsPerGroup-1; h++) begin
+        if (tcdm_master_req_valid_o[h]) begin
+          if (tcdm_master_req_ready_i[h]) begin
+            dbg_tile_boundary_accepts[h] <= dbg_tile_boundary_accepts[h] + 1;
+          end else begin
+            dbg_tile_boundary_stalls[h] <= dbg_tile_boundary_stalls[h] + 1;
+          end
+        end
+        if (tcdm_slave_req_valid_i[h]) begin
+          if (tcdm_slave_req_ready_o[h]) begin
+            dbg_tile_boundary_in_accepts[h] <= dbg_tile_boundary_in_accepts[h] + 1;
+          end else begin
+            dbg_tile_boundary_in_stalls[h] <= dbg_tile_boundary_in_stalls[h] + 1;
+          end
+        end
+      end
+    end
+  end
+
+`endif
+
   // Group ID
   logic [idx_width(NumGroups)-1:0] group_id;
   if (NumGroups != 1) begin: gen_group_id
