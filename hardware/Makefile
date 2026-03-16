@@ -146,6 +146,7 @@ ifdef tg
 	tg_ncycles  ?= 10000
 	tg_reqprob  ?= 0.2
 	tg_seqprob  ?= 0
+	tg_seed     ?= 0
 
 	vlog_defs += -DTRAFFIC_GEN=1
 	cpp_defs  += -DTRAFFIC_GEN=1
@@ -153,6 +154,7 @@ ifdef tg
 	cpp_defs  += -DTG_SEQ_PROB=$(tg_seqprob)
 	cpp_defs  += -DTG_NCYCLES=$(tg_ncycles)
 	cpp_defs  += -DNUM_CORES=$(num_cores)
+	cpp_defs  += -DTG_SEED=$(tg_seed)
 
 	# How many cycles should we execute?
 	veril_flags := --term-after-cycles=$(tg_ncycles)

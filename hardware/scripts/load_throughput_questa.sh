@@ -12,6 +12,7 @@ MEMPOOL_DIR=$(git rev-parse --show-toplevel 2>/dev/null || echo $MEMPOOL_DIR)
 cd $MEMPOOL_DIR/hardware
 
 tg_ncycles=${TG_NCYCLES:-10000}
+tg_tile_range=${TG_TILE_RANGE:-0}
 max_parallel=${PARALLEL:-1}
 
 # QuestaSim version and command (must match Makefile)
@@ -27,6 +28,7 @@ echo "=========================================="
 echo " Load-Throughput Sweep (QuestaSim)"
 echo " Results: $result_dir"
 echo " Cycles per run: $tg_ncycles"
+echo " Tiles per partition: $tg_tile_range"
 echo " Parallel jobs:  $max_parallel"
 echo "=========================================="
 
@@ -48,23 +50,27 @@ run_seq_prob_sweep() {
     local result_dir=$2
     local tg_ncycles=$3
     local questa_cmd=$4
+    local tg_tile_range=$6
 
     for req_prob in $(seq 0.02 0.02 0.6); do
         local transcript=$result_dir/transcript_seq${seq_prob}_req${req_prob}
 
-        # Run vsim directly (shared compiled work library, unique transcript)
-        TG_REQ_PROB=${req_prob} TG_SEQ_PROB=${seq_prob} TG_NCYCLES=${tg_ncycles} \
-          $questa_cmd vsim -c \
-            "+DRAMSYS_RES=$MEMPOOL_DIR/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/configs" \
-            -sv_lib deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libsystemc \
-            -sv_lib deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libDRAMSys_Simulator \
-            -sv_lib build/work-dpi/mempool_dpi \
-            -work build/work \
-            -suppress vsim-12070 \
-            "+tg_ncycles=${tg_ncycles}" \
-            work.mempool_tb \
-            -l "$transcript" \
-            -do "run -a" &> /dev/null
+                # Run vsim from inside build/ (matching Makefile simc target).
+                pushd $MEMPOOL_DIR/hardware/build > /dev/null
+                TG_REQ_PROB=${req_prob} TG_SEQ_PROB=${seq_prob} TG_NCYCLES=${tg_ncycles} \
+                    TG_TILE_RANGE=${tg_tile_range} \
+                    $questa_cmd vsim -c \
+                        "+DRAMSYS_RES=$MEMPOOL_DIR/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/configs" \
+                        -sv_lib ../deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libsystemc \
+                        -sv_lib ../deps/dram_rtl_sim/dramsys_lib/DRAMSys/build/lib/libDRAMSys_Simulator \
+                        -sv_lib work-dpi/mempool_dpi \
+                        -work work \
+                        -suppress vsim-12070 \
+                        "+tg_ncycles=${tg_ncycles}" \
+                        work.mempool_tb \
+                        -l "$transcript" \
+                        -do "run -a" > /dev/null 2>&1
+                popd > /dev/null
 
         # Parse results
         local avg_lat=$(grep "Average latency" "$transcript" | cut -d: -f2 | tr -d ' ')
@@ -87,7 +93,7 @@ if [ "$max_parallel" -gt 1 ]; then
 
     for seq_prob in $(seq 0 0.2 1); do
         echo "Launching sweep for seq_prob=${seq_prob} ..."
-        run_seq_prob_sweep "$seq_prob" "$result_dir" "$tg_ncycles" "$questa_cmd" &
+    run_seq_prob_sweep "$seq_prob" "$result_dir" "$tg_ncycles" "$questa_cmd" "$tg_tile_range" &
         pids+=($!)
         running=$((running + 1))
 
@@ -108,7 +114,7 @@ else
     for seq_prob in $(seq 0 0.2 1); do
         echo ""
         echo "--- seq_prob = ${seq_prob} ---"
-        run_seq_prob_sweep "$seq_prob" "$result_dir" "$tg_ncycles" "$questa_cmd"
+        run_seq_prob_sweep "$seq_prob" "$result_dir" "$tg_ncycles" "$questa_cmd" "$tg_tile_range"
     done
 fi
 
