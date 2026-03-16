@@ -7,9 +7,33 @@
 MEMPOOL_DIR=$(git rev-parse --show-toplevel 2>/dev/null || echo $MEMPOOL_DIR)
 cd $MEMPOOL_DIR/hardware
 
+resolve_active_config() {
+    if [ -n "$config" ]; then
+        echo "$config"
+        return 0
+    fi
+
+    if [ -n "$MEMPOOL_CONFIGURATION" ]; then
+        echo "$MEMPOOL_CONFIGURATION"
+        return 0
+    fi
+
+    awk '
+        /^[[:space:]]*config[[:space:]]*:=[[:space:]]*/ {
+            if ($3 !~ /^\$\(/) {
+                print $3
+                exit
+            }
+        }
+    ' "$MEMPOOL_DIR/config/config.mk"
+}
+
 # Timestamp
 timestamp=`date +%Y%m%d_%H%M%S`
-mkdir load_thru_$timestamp
+active_config=$(resolve_active_config)
+result_dir="$MEMPOOL_DIR/hardware/results/$active_config/runs/tilerange0/$timestamp"
+data_dir="$result_dir/data"
+mkdir -p "$data_dir"
 
 # Request forced to be in the sequential region
 for seq_prob in `seq 0 0.2 1`; do
@@ -25,7 +49,7 @@ for seq_prob in `seq 0 0.2 1`; do
         tmpfile=`mktemp`
         tg=1 tg_ncycles=10000 tg_reqprob=${req_prob} tg_seqprob=${seq_prob} make verilate &> /dev/null
 
-        echo "$req_prob `cat build/transcript | grep Average | cut -d: -f2` `cat build/transcript | grep Throughput | cut -d: -f2`" >> load_thru_$timestamp/results_seqprob${seq_prob}
+        echo "$req_prob `cat build/transcript | grep Average | cut -d: -f2` `cat build/transcript | grep Throughput | cut -d: -f2`" >> "$data_dir/results_seqprob${seq_prob}"
         echo "Req. Probability: $req_prob | Avg. Latency: `cat build/transcript | grep Average | cut -d: -f2` cycle | Throughput: `cat build/transcript | grep Throughput | cut -d: -f2` req/core/cycle"
     done
 done

@@ -221,18 +221,25 @@ extern "C" void probe_response(const core_id_t *core_id, const uint32_t *cycle,
 }
 
 extern "C" void print_histogram() {
-  uint32_t latency = 0;
-  uint32_t tran_counter = 0;
+  uint64_t latency = 0;
+  uint64_t tran_counter = 0;
 
   std::cout << "Latency\tCount" << std::endl;
   for (const auto &it : latency_histogram) {
     tran_counter += it.second;
-    latency += it.first * it.second;
+    latency += static_cast<uint64_t>(it.first) * static_cast<uint64_t>(it.second);
     std::cout << it.first << "\t" << it.second << std::endl;
   }
 
-  std::cout << "Average latency: " << (1.0 * latency) / tran_counter
-            << std::endl;
-  std::cout << "Throughput: " << (1.0 * tran_counter) / (tg_ncycles * num_cores)
-            << std::endl;
+  const double avg_latency = tran_counter == 0
+                                 ? 0.0
+                                 : static_cast<double>(latency) / static_cast<double>(tran_counter);
+  const double throughput_denominator =
+      static_cast<double>(tg_ncycles) * static_cast<double>(num_cores);
+  const double throughput = throughput_denominator == 0.0
+                                ? 0.0
+                                : static_cast<double>(tran_counter) / throughput_denominator;
+
+  std::cout << "Average latency: " << avg_latency << std::endl;
+  std::cout << "Throughput: " << throughput << std::endl;
 }

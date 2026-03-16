@@ -72,6 +72,30 @@ make_unique_run_dir() {
     echo "$candidate"
 }
 
+replace_dir_copy() {
+    local source_dir=$1
+    local target_dir=$2
+
+    rm -rf "$target_dir"
+    mkdir -p "$(dirname "$target_dir")"
+    cp -a "$source_dir" "$target_dir"
+}
+
+sync_latest_view() {
+    local latest_dir=$1
+
+    mkdir -p "$latest_dir"
+    replace_dir_copy "$data_dir" "$latest_dir/data"
+    replace_dir_copy "$plots_dir" "$latest_dir/plots"
+    replace_dir_copy "$config_dir" "$latest_dir/config"
+    replace_dir_copy "$timing_dir" "$latest_dir/timing"
+    cp -a "$metadata_json" "$latest_dir/metadata.json"
+
+    if [ -d "$audit_dir" ]; then
+        replace_dir_copy "$audit_dir" "$latest_dir/audit"
+    fi
+}
+
 clone_build_dir() {
     local source_dir=$1
     local target_dir=$2
@@ -221,25 +245,29 @@ questa_version=${QUESTA_VERSION:-2022.3-bt}
 questa_cmd="questa-${questa_version}"
 
 # Organized result layout
-results_root="$MEMPOOL_DIR/hardware/results/$active_config/tilerange${tg_tile_range}"
-mkdir -p "$results_root"
-result_dir=$(make_unique_run_dir "$results_root" "$timestamp")
+topology_results_root="$MEMPOOL_DIR/hardware/results/$active_config"
+runs_root="$topology_results_root/runs/tilerange${tg_tile_range}"
+latest_dir="$topology_results_root/latest/tilerange${tg_tile_range}"
+mkdir -p "$runs_root"
+result_dir=$(make_unique_run_dir "$runs_root" "$timestamp")
 result_dir_rel=${result_dir#${MEMPOOL_DIR}/hardware/}
 raw_dir="$result_dir/raw"
 raw_tile_dir="$raw_dir/tile"
 raw_group_dir="$raw_dir/group"
 raw_subgroup_dir="$raw_dir/subgroup"
 raw_transcript_dir="$raw_dir/transcripts"
-summary_dir="$result_dir/summary"
+data_dir="$result_dir/data"
 timing_dir="$result_dir/timing"
 plots_dir="$result_dir/plots"
+audit_dir="$result_dir/audit"
 config_dir="$result_dir/config"
 timing_tmp_dir="$timing_dir/tmp"
-mkdir -p "$raw_tile_dir" "$raw_group_dir" "$raw_subgroup_dir" "$raw_transcript_dir" "$summary_dir/tmp" "$timing_tmp_dir" "$plots_dir" "$config_dir"
+data_tmp_dir="$data_dir/tmp"
+mkdir -p "$raw_tile_dir" "$raw_group_dir" "$raw_subgroup_dir" "$raw_transcript_dir" "$data_tmp_dir" "$timing_tmp_dir" "$plots_dir" "$config_dir"
 total_points=$(((${#heavy_partition_prob_values[@]} + ${#light_partition_prob_values[@]}) * ${#req_prob_values[@]}))
-summary_csv="$summary_dir/run_summary.csv"
-summary_txt="$summary_dir/run_summary.txt"
-summary_transcript="$summary_dir/transcript_summary.txt"
+summary_csv="$data_dir/run_summary.csv"
+summary_txt="$data_dir/run_summary.txt"
+summary_transcript="$data_dir/transcript_summary.txt"
 # Per-job timing stays separate from throughput summaries so we can inspect
 # long-tail behavior without mixing analysis metadata into the main CSVs.
 job_timing_csv="$timing_dir/job_timing.csv"
@@ -410,8 +438,8 @@ run_one() {
     local tile_util_file="$raw_tile_dir/tile_port_util_partition${partition_prob}_req${req_prob}.csv"
     local group_util_file="$raw_group_dir/group_port_util_partition${partition_prob}_req${req_prob}.csv"
     local subgroup_util_file="$raw_subgroup_dir/subgroup_port_util_partition${partition_prob}_req${req_prob}.csv"
-    local summary_tmp="$summary_dir/tmp/summary_partition${partition_prob}_req${req_prob}.csv"
-    local transcript_summary_tmp="$summary_dir/tmp/transcript_summary_partition${partition_prob}_req${req_prob}.txt"
+    local summary_tmp="$data_tmp_dir/summary_partition${partition_prob}_req${req_prob}.csv"
+    local transcript_summary_tmp="$data_tmp_dir/transcript_summary_partition${partition_prob}_req${req_prob}.txt"
     local timing_tmp="$timing_tmp_dir/timing_partition${partition_prob}_req${req_prob}.csv"
     local vsim_status
     local job_start_epoch=$(date +%s)
@@ -453,7 +481,7 @@ run_one() {
     # Parse results → write to per-job temp file (avoids race conditions)
     local avg_lat=$(grep "Average latency" "$transcript" | cut -d: -f2 | tr -d ' ')
     local throughput=$(grep "Throughput" "$transcript" | cut -d: -f2 | tr -d ' ')
-    echo "$req_prob $avg_lat $throughput" > "$summary_dir/tmp/partition${partition_prob}_req${req_prob}.dat"
+    echo "$req_prob $avg_lat $throughput" > "$data_tmp_dir/partition${partition_prob}_req${req_prob}.dat"
     echo "$partition_prob,$req_prob,ok,$avg_lat,$throughput,${transcript#${result_dir}/},${tile_util_file#${result_dir}/},${group_util_file#${result_dir}/},${subgroup_util_file#${result_dir}/}" > "$summary_tmp"
     echo "$partition_prob,$req_prob,$shard_index,ok,$job_start_epoch,$job_end_epoch,$job_duration_seconds,$job_duration_hms" > "$timing_tmp"
     {
@@ -520,13 +548,13 @@ done
 echo ""
 echo "Merging results..."
 for partition_prob in "${heavy_partition_prob_values[@]}" "${light_partition_prob_values[@]}"; do
-    cat "$summary_dir"/tmp/partition${partition_prob}_req*.dat 2>/dev/null | sort -g > "$summary_dir/results_partitionprob${partition_prob}"
+    cat "$data_tmp_dir"/partition${partition_prob}_req*.dat 2>/dev/null | sort -g > "$data_dir/results_partitionprob${partition_prob}"
 done
 
-cat "$summary_dir"/tmp/summary_partition*.csv 2>/dev/null | sort -t, -k1,1g -k2,2g >> "$summary_csv"
+cat "$data_tmp_dir"/summary_partition*.csv 2>/dev/null | sort -t, -k1,1g -k2,2g >> "$summary_csv"
 cat "$timing_tmp_dir"/timing_partition*.csv 2>/dev/null | sort -t, -k1,1g -k2,2g >> "$job_timing_csv"
-cat "$summary_dir"/tmp/transcript_summary_partition*.txt 2>/dev/null | sort >> /dev/null
-for transcript_part in $(printf '%s\n' "$summary_dir"/tmp/transcript_summary_partition*.txt | sort -V); do
+cat "$data_tmp_dir"/transcript_summary_partition*.txt 2>/dev/null | sort >> /dev/null
+for transcript_part in $(printf '%s\n' "$data_tmp_dir"/transcript_summary_partition*.txt | sort -V); do
     [ -f "$transcript_part" ] || continue
     cat "$transcript_part" >> "$summary_transcript"
 done
@@ -576,7 +604,7 @@ write_metadata_json "$duration_seconds" "$duration_hms"
     echo "job_timing_csv=$(basename "$job_timing_csv")"
 } > "$job_timing_summary"
 
-rm -rf "$summary_dir/tmp"
+rm -rf "$data_tmp_dir"
 rm -rf "$timing_tmp_dir"
 
 if [ $overall_status -ne 0 ]; then
@@ -585,6 +613,8 @@ if [ $overall_status -ne 0 ]; then
     echo "WARNING: One or more simulations failed. Partial results in: $result_dir_rel"
     exit 1
 fi
+
+sync_latest_view "$latest_dir"
 
 echo ""
 echo "=========================================="
