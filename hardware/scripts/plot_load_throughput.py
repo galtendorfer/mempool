@@ -2,6 +2,7 @@
 import argparse
 import glob
 import os
+import shutil
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -26,11 +27,42 @@ def find_result_files(results_glob_base: str):
     return result_files
 
 
+def data_dir_for_run(result_dir: Path) -> Path:
+    data_dir = result_dir / "data"
+    if data_dir.is_dir():
+        return data_dir
+
+    summary_dir = result_dir / "summary"
+    if summary_dir.is_dir():
+        return summary_dir
+
+    return result_dir
+
+
+def latest_view_dir(result_dir: Path):
+    if result_dir.parent.parent.name == "runs":
+        return result_dir.parent.parent.parent / "latest" / result_dir.parent.name
+    if result_dir.parent.name == "latest":
+        return result_dir
+    return None
+
+
+def sync_latest_plots(result_dir: Path, plots_dir: Path) -> None:
+    latest_dir = latest_view_dir(result_dir)
+    if latest_dir is None or latest_dir == result_dir:
+        return
+
+    latest_dir.mkdir(parents=True, exist_ok=True)
+    latest_plots_dir = latest_dir / "plots"
+    if latest_plots_dir.exists():
+        shutil.rmtree(latest_plots_dir)
+    shutil.copytree(plots_dir, latest_plots_dir)
+
+
 def main():
     args = parse_args()
     result_dir = Path(args.result_dir)
-    summary_dir = result_dir / "summary"
-    results_glob_base = summary_dir if summary_dir.is_dir() else result_dir
+    results_glob_base = data_dir_for_run(result_dir)
     plots_dir = result_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
@@ -89,6 +121,7 @@ def main():
 
     fig.savefig(plots_dir / "load_throughput.pdf")
     plt.close(fig)
+    sync_latest_plots(result_dir, plots_dir)
 
 
 if __name__ == "__main__":

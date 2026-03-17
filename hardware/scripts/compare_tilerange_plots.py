@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from matplotlib.backends.backend_pdf import PdfPages
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 from PIL import ImageChops
@@ -44,7 +45,7 @@ DEFAULT_SECTIONS = ["throughput", "tile", "group"]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create a single-sheet comparison PDF for tilerange plots.")
-    parser.add_argument("--results-root", default="hardware/results/mempool", help="Root directory containing tilerange result folders.")
+    parser.add_argument("--results-root", default="hardware/results/mempool/latest", help="Root directory containing tilerange result folders.")
     parser.add_argument(
         "--tile-ranges",
         nargs="+",
@@ -54,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default="hardware/results/mempool/comparisons/latest_tilerange_comparison.pdf",
+        default="hardware/results/mempool/latest/comparisons/latest_tilerange_comparison.pdf",
         help="Output comparison PDF path.",
     )
     parser.add_argument(
@@ -81,18 +82,44 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_ROWS_PER_PAGE,
         help="When using --page-per-context, limit each page to this many plot rows before continuing on a new page.",
     )
+    parser.add_argument(
+        "--throughput-relative-pdf",
+        default="plots/load_throughput.pdf",
+        help="Relative path to the per-run throughput plot PDF used by the throughput section.",
+    )
     return parser.parse_args()
 
 
-def get_contexts(sections: list[str]) -> list[tuple[str, str]]:
+def get_contexts(sections: List[str], throughput_relative_pdf: str) -> List[Tuple[str, str]]:
     contexts = []
     for section in sections:
-        contexts.extend(SECTION_CONTEXTS[section])
+        if section == "throughput":
+            contexts.append(("Throughput", throughput_relative_pdf))
+        else:
+            contexts.extend(SECTION_CONTEXTS[section])
     return contexts
 
 
-def latest_run_dir(results_root: Path, tile_range: int) -> Path | None:
-    tilerange_dir = results_root / f"tilerange{tile_range}"
+def tilerange_dir_for_root(results_root: Path, tile_range: int) -> Optional[Path]:
+    candidates = [
+        results_root / f"tilerange{tile_range}",
+        results_root / "latest" / f"tilerange{tile_range}",
+        results_root / "runs" / f"tilerange{tile_range}",
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def latest_run_dir(results_root: Path, tile_range: int) -> Optional[Path]:
+    tilerange_dir = tilerange_dir_for_root(results_root, tile_range)
+    if tilerange_dir is None:
+        return None
+
+    if (tilerange_dir / "plots").is_dir() or (tilerange_dir / "data").is_dir() or (tilerange_dir / "summary").is_dir():
+        return tilerange_dir
+
     if not tilerange_dir.is_dir():
         return None
     run_dirs = sorted(path for path in tilerange_dir.iterdir() if path.is_dir())
@@ -146,7 +173,7 @@ def draw_plot(axis, temp_dir: Path, run_dir: Path, context_title: str, relative_
         axis.set_title(title, fontsize=11, loc="left", pad=2)
 
 
-def add_single_sheet(output_path: Path, run_map: dict[int, Path], temp_dir: Path, columns: int, contexts: list[tuple[str, str]]) -> None:
+def add_single_sheet(output_path: Path, run_map: Dict[int, Path], temp_dir: Path, columns: int, contexts: List[Tuple[str, str]]) -> None:
     ordered_tile_ranges = list(run_map.keys())
     context_columns = columns
     context_rows = math.ceil(len(contexts) / context_columns)
@@ -191,11 +218,11 @@ def add_single_sheet(output_path: Path, run_map: dict[int, Path], temp_dir: Path
 
 def add_context_pages(
     output_path: Path,
-    run_map: dict[int, Path],
+    run_map: Dict[int, Path],
     temp_dir: Path,
     columns: int,
     rows_per_page: int,
-    contexts: list[tuple[str, str]],
+    contexts: List[Tuple[str, str]],
 ) -> None:
     ordered_tile_ranges = list(run_map.keys())
     page_columns = max(1, columns)
@@ -239,7 +266,7 @@ def main() -> None:
     results_root = Path(args.results_root)
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    contexts = get_contexts(args.sections)
+    contexts = get_contexts(args.sections, args.throughput_relative_pdf)
 
     run_map = {}
     for tile_range in args.tile_ranges:

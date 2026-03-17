@@ -3,6 +3,7 @@ import argparse
 import csv
 import os
 import re
+import shutil
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
@@ -99,10 +100,39 @@ def normalized_y_upper(metric, y_max, output_suffix=None):
 
 
 def find_summary_path(result_dir, filename):
+    data_candidate = os.path.join(result_dir, "data", filename)
+    if os.path.exists(data_candidate):
+        return data_candidate
     summary_candidate = os.path.join(result_dir, "summary", filename)
     if os.path.exists(summary_candidate):
         return summary_candidate
     return os.path.join(result_dir, filename)
+
+
+def latest_view_dir(result_dir):
+    result_path = Path(result_dir)
+    if result_path.parent.parent.name == "runs":
+        return result_path.parent.parent.parent / "latest" / result_path.parent.name
+    if result_path.parent.name == "latest":
+        return result_path
+    return None
+
+
+def sync_latest_plots(result_dir):
+    latest_dir = latest_view_dir(result_dir)
+    result_path = Path(result_dir)
+    if latest_dir is None or latest_dir == result_path:
+        return
+
+    source_plots_dir = result_path / "plots"
+    if not source_plots_dir.is_dir():
+        return
+
+    latest_dir.mkdir(parents=True, exist_ok=True)
+    latest_plots_dir = latest_dir / "plots"
+    if latest_plots_dir.exists():
+        shutil.rmtree(latest_plots_dir)
+    shutil.copytree(source_plots_dir, latest_plots_dir)
 
 
 def resolve_run_artifact(result_dir, csv_relpath):
@@ -151,6 +181,20 @@ def get_available_directions(entries):
     return [direction for direction in preferred_order if direction in present]
 
 
+def average_utilization_label(entries):
+    available_directions = get_available_directions(entries)
+    if len(available_directions) > 1:
+        return "average accepted transactions per direction per cycle"
+    return "accepted transactions per cycle"
+
+
+def total_throughput_label(entries):
+    available_directions = get_available_directions(entries)
+    if len(available_directions) > 1:
+        return "total accepted transactions per cycle"
+    return "accepted transactions per cycle"
+
+
 def qualify_output_suffix(direction, available_directions, base_suffix):
     if available_directions == ["outgoing"] and direction == "outgoing":
         return base_suffix
@@ -161,6 +205,12 @@ def qualify_title(direction, available_directions, base_title):
     if available_directions == ["outgoing"] and direction == "outgoing":
         return base_title
     return f"{direction.capitalize()} {base_title}"
+
+
+def filter_entries_by_direction(entries, direction):
+    if direction is None:
+        return entries
+    return [entry for entry in entries if entry.get("direction", "outgoing") == direction]
 
 
 def topology_title(topology_info):
@@ -328,14 +378,18 @@ def build_average_port_entries(entries):
     averaged_entries = []
     for (port_index, partition_prob, req_prob), values in sorted(grouped.items()):
         total_cycles = sum(value["cycles"] for value in values)
+        base_cycles = max(value["cycles"] for value in values)
         total_accepts = sum(value["accepts"] for value in values)
         total_stalls = sum(value["stalls"] for value in values)
         attempts = total_accepts + total_stalls
+        direction_count = len({value.get("direction", "outgoing") for value in values}) or 1
         averaged_entries.append(
             {
                 "port_index": port_index,
                 "partition_prob": partition_prob,
                 "req_prob": req_prob,
+                "direction_count": direction_count,
+                "throughput": (total_accepts / base_cycles) if base_cycles else 0.0,
                 "utilization": (total_accepts / total_cycles) if total_cycles else 0.0,
                 "stalls": float(np.mean([value["stalls"] for value in values])),
                 "backpressure": (total_stalls / attempts) if attempts else 0.0,
@@ -356,6 +410,7 @@ def build_source_group_port_entries(entries):
     averaged_entries = []
     for (source_group, port_index, partition_prob, req_prob), values in sorted(grouped.items()):
         total_cycles = sum(value["cycles"] for value in values)
+        base_cycles = max(value["cycles"] for value in values)
         total_accepts = sum(value["accepts"] for value in values)
         total_stalls = sum(value["stalls"] for value in values)
         attempts = total_accepts + total_stalls
@@ -365,6 +420,7 @@ def build_source_group_port_entries(entries):
                 "port_index": port_index,
                 "partition_prob": partition_prob,
                 "req_prob": req_prob,
+                "throughput": (total_accepts / base_cycles) if base_cycles else 0.0,
                 "utilization": (total_accepts / total_cycles) if total_cycles else 0.0,
                 "backpressure": (total_stalls / attempts) if attempts else 0.0,
             }
@@ -384,6 +440,7 @@ def build_source_group_aggregate_entries(entries):
     aggregate_entries = []
     for (source_group, partition_prob, req_prob), values in sorted(grouped.items()):
         total_cycles = sum(value["cycles"] for value in values)
+        base_cycles = max(value["cycles"] for value in values)
         total_accepts = sum(value["accepts"] for value in values)
         total_stalls = sum(value["stalls"] for value in values)
         attempts = total_accepts + total_stalls
@@ -392,6 +449,7 @@ def build_source_group_aggregate_entries(entries):
                 "source_group": source_group,
                 "partition_prob": partition_prob,
                 "req_prob": req_prob,
+                "throughput": (total_accepts / base_cycles) if base_cycles else 0.0,
                 "utilization": (total_accepts / total_cycles) if total_cycles else 0.0,
                 "backpressure": (total_stalls / attempts) if attempts else 0.0,
             }
@@ -466,6 +524,7 @@ def build_port_class_entries(boundary, entries, topology_info):
                 "partition_prob": partition_prob,
                 "req_prob": req_prob,
                 "port_class": port_class,
+                "throughput": float(np.sum([value["throughput"] for value in values])) / total_ports,
                 "utilization": float(np.sum([value["utilization"] for value in values])) / total_ports,
                 "backpressure": float(np.mean([value["backpressure"] for value in values])),
             }
@@ -1004,7 +1063,22 @@ def main(argv=None):
         entries = load_boundary_data(result_dir, boundary)
         if not entries:
             continue
+        available_directions = get_available_directions(entries)
+        average_util_label = average_utilization_label(entries)
+        throughput_label = total_throughput_label(entries)
         if boundary == "group":
+            generated.append(
+                render_group_aggregate_pdf(
+                    result_dir,
+                    entries,
+                    topology_info,
+                    args.show,
+                    "throughput",
+                    "ports_throughput",
+                    throughput_label,
+                    "Average combined incoming + outgoing group-boundary throughput per group",
+                )
+            )
             generated.append(
                 render_group_aggregate_pdf(
                     result_dir,
@@ -1013,8 +1087,8 @@ def main(argv=None):
                     args.show,
                     "utilization",
                     "ports_utilization",
-                    "average accepted transactions per cycle",
-                    "Average group-boundary utilization per group",
+                    average_util_label,
+                    "Average group-boundary utilization per group across recorded directions",
                 )
             )
         else:
@@ -1025,10 +1099,23 @@ def main(argv=None):
                     entries,
                     topology_info,
                     args.show,
+                    "throughput",
+                    "ports_throughput",
+                    throughput_label,
+                    "Per-port total throughput: combined incoming + outgoing accesses",
+                )
+            )
+            generated.append(
+                render_partition_comparison_pdf(
+                    result_dir,
+                    boundary,
+                    entries,
+                    topology_info,
+                    args.show,
                     "utilization",
                     "ports_utilization",
-                    "accepted transactions per cycle",
-                    "Per-port utilization: which ports are busiest or freest",
+                    average_util_label,
+                    "Per-port utilization averaged across recorded directions",
                 )
             )
         generated.append(
@@ -1038,10 +1125,23 @@ def main(argv=None):
                 entries,
                 topology_info,
                 args.show,
+                "throughput",
+                "split_throughput",
+                throughput_label,
+                "Traffic split: total incoming + outgoing accesses by class",
+            )
+        )
+        generated.append(
+            render_port_class_pdf(
+                result_dir,
+                boundary,
+                entries,
+                topology_info,
+                args.show,
                 "utilization",
                 "split_utilization",
-                "accepted transactions per cycle",
-                "Traffic split: same-group versus remote behavior",
+                average_util_label,
+                "Traffic split: average utilization by direction class",
             )
         )
         generated.append(
@@ -1095,7 +1195,159 @@ def main(argv=None):
                     "Per-port backpressure: which ports are most blocked",
                 )
             )
+
+        if len(available_directions) > 1:
+            for direction in available_directions:
+                directional_entries = filter_entries_by_direction(entries, direction)
+                directional_suffix = lambda stem: qualify_output_suffix(direction, available_directions, stem)
+                directional_title = lambda title: qualify_title(direction, available_directions, title)
+                directional_label = "accepted transactions per cycle"
+
+                if boundary == "group":
+                    generated.append(
+                        render_group_aggregate_pdf(
+                            result_dir,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "throughput",
+                            directional_suffix("ports_throughput"),
+                            directional_label,
+                            directional_title("Average group-boundary throughput per group"),
+                        )
+                    )
+                    generated.append(
+                        render_group_aggregate_pdf(
+                            result_dir,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "utilization",
+                            directional_suffix("ports_utilization"),
+                            directional_label,
+                            directional_title("Average group-boundary utilization per group"),
+                        )
+                    )
+                else:
+                    generated.append(
+                        render_partition_comparison_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "throughput",
+                            directional_suffix("ports_throughput"),
+                            directional_label,
+                            directional_title("Per-port throughput: which ports are busiest or freest"),
+                        )
+                    )
+                    generated.append(
+                        render_partition_comparison_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "utilization",
+                            directional_suffix("ports_utilization"),
+                            directional_label,
+                            directional_title("Per-port utilization: which ports are busiest or freest"),
+                        )
+                    )
+
+                generated.append(
+                    render_port_class_pdf(
+                        result_dir,
+                        boundary,
+                        directional_entries,
+                        topology_info,
+                        args.show,
+                        "throughput",
+                        directional_suffix("split_throughput"),
+                        directional_label,
+                        directional_title("Traffic split: same-group versus remote behavior"),
+                    )
+                )
+                generated.append(
+                    render_port_class_pdf(
+                        result_dir,
+                        boundary,
+                        directional_entries,
+                        topology_info,
+                        args.show,
+                        "utilization",
+                        directional_suffix("split_utilization"),
+                        directional_label,
+                        directional_title("Traffic split: same-group versus remote behavior"),
+                    )
+                )
+                generated.append(
+                    render_port_class_pdf(
+                        result_dir,
+                        boundary,
+                        directional_entries,
+                        topology_info,
+                        args.show,
+                        "backpressure",
+                        directional_suffix("split_backpressure"),
+                        "stall ratio",
+                        directional_title("Traffic split: where blocking concentrates"),
+                    )
+                )
+                generated.append(
+                    render_capacity_breakdown_pdf(
+                        result_dir,
+                        boundary,
+                        directional_entries,
+                        topology_info,
+                        args.show,
+                        directional_suffix("ports_capacity"),
+                        directional_title("Boundary capacity breakdown"),
+                    )
+                )
+                if boundary == "group":
+                    generated.append(
+                        render_group_aggregate_pdf(
+                            result_dir,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "backpressure",
+                            directional_suffix("ports_backpressure"),
+                            "average stall ratio",
+                            directional_title("Average group-boundary backpressure per group"),
+                        )
+                    )
+                else:
+                    generated.append(
+                        render_partition_comparison_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "backpressure",
+                            directional_suffix("ports_backpressure"),
+                            "stall ratio",
+                            directional_title("Per-port backpressure: which ports are most blocked"),
+                        )
+                    )
+
         if args.include_secondary:
+            generated.append(
+                render_boundary_pdf(
+                    result_dir,
+                    boundary,
+                    entries,
+                    topology_info,
+                    args.show,
+                    "throughput",
+                    "ports_by_index_throughput",
+                    throughput_label,
+                    "Per-port total throughput: accepted incoming + outgoing transactions / cycle",
+                )
+            )
             generated.append(
                 render_boundary_pdf(
                     result_dir,
@@ -1105,8 +1357,8 @@ def main(argv=None):
                     args.show,
                     "utilization",
                     "ports_by_index_utilization",
-                    "accepted transactions per cycle",
-                    "Per-port utilization: accepted transactions / cycle",
+                    average_util_label,
+                    "Per-port utilization averaged across recorded directions",
                 )
             )
             generated.append(
@@ -1160,10 +1412,95 @@ def main(argv=None):
                 )
             )
 
+            if len(available_directions) > 1:
+                for direction in available_directions:
+                    directional_entries = filter_entries_by_direction(entries, direction)
+                    directional_suffix = lambda stem: qualify_output_suffix(direction, available_directions, stem)
+                    directional_title = lambda title: qualify_title(direction, available_directions, title)
+                    directional_label = "accepted transactions per cycle"
+                    generated.append(
+                        render_boundary_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "throughput",
+                            directional_suffix("ports_by_index_throughput"),
+                            directional_label,
+                            directional_title("Per-port throughput: accepted transactions / cycle"),
+                        )
+                    )
+                    generated.append(
+                        render_boundary_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "utilization",
+                            directional_suffix("ports_by_index_utilization"),
+                            directional_label,
+                            directional_title("Per-port utilization: accepted transactions / cycle"),
+                        )
+                    )
+                    generated.append(
+                        render_boundary_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "stalls",
+                            directional_suffix("ports_by_index_stalls"),
+                            "avg stalled requests per port",
+                            directional_title("Average stalled requests per port"),
+                        )
+                    )
+                    generated.append(
+                        render_boundary_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            topology_info,
+                            args.show,
+                            "backpressure",
+                            directional_suffix("ports_by_index_backpressure"),
+                            "stall ratio",
+                            directional_title("Backpressure per port: stalls / (accepts + stalls)"),
+                        )
+                    )
+                    generated.append(
+                        render_summary_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            args.show,
+                            "bottleneck_utilization",
+                            directional_suffix("summary_bottleneck_utilization"),
+                            "max port utilization",
+                            directional_title("Bottleneck onset: busiest port utilization"),
+                        )
+                    )
+                    generated.append(
+                        render_summary_pdf(
+                            result_dir,
+                            boundary,
+                            directional_entries,
+                            args.show,
+                            "imbalance",
+                            directional_suffix("summary_port_imbalance"),
+                            "max - mean port utilization",
+                            directional_title("Reroute potential: utilization imbalance across ports"),
+                        )
+                    )
+
     generated = [path for path in generated if path is not None]
 
     if not generated:
         raise SystemExit("No utilization CSV data found to plot.")
+
+    sync_latest_plots(result_dir)
 
     for path in generated:
         print(path)
