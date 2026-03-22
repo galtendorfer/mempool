@@ -8,6 +8,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from _plotting_common import comparable_run_dirs, format_sweep_label, get_shared_axis_upper, latest_view_dir
+
+
+CURVE_EXTREMA_CACHE = {}
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Plot latency/throughput curves from a sweep result directory.")
@@ -39,24 +44,53 @@ def data_dir_for_run(result_dir: Path) -> Path:
     return result_dir
 
 
-def latest_view_dir(result_dir: Path):
-    if result_dir.parent.parent.name == "runs":
-        return result_dir.parent.parent.parent / "latest" / result_dir.parent.name
-    if result_dir.parent.name == "latest":
-        return result_dir
-    return None
+def collect_curve_extrema(result_dir: Path):
+    cache_key = str(result_dir.resolve())
+    if cache_key in CURVE_EXTREMA_CACHE:
+        return CURVE_EXTREMA_CACHE[cache_key]
+
+    data_root = data_dir_for_run(result_dir)
+    result_files = find_result_files(str(data_root))
+    all_latency = []
+    all_throughput = []
+    for result_file in result_files:
+        data = np.loadtxt(result_file)
+        data = np.atleast_2d(data)
+        all_latency.extend(data[:, 1].tolist())
+        all_throughput.extend(data[:, 2].tolist())
+    CURVE_EXTREMA_CACHE[cache_key] = (all_latency, all_throughput)
+    return CURVE_EXTREMA_CACHE[cache_key]
+
+
+def shared_curve_y_uppers(result_dir: Path, fallback_latency, fallback_throughput):
+    latency_values = list(fallback_latency)
+    throughput_values = list(fallback_throughput)
+
+    for comparable_dir in comparable_run_dirs(result_dir):
+        try:
+            latencies, throughputs = collect_curve_extrema(comparable_dir)
+        except Exception:
+            continue
+        latency_values.extend(latencies)
+        throughput_values.extend(throughputs)
+
+    latency_upper = max(latency_values) * 1.05 if latency_values else 1.0
+    throughput_upper = max(throughput_values) * 1.05 if throughput_values else 1.0
+    return latency_upper, throughput_upper
 
 
 def sync_latest_plots(result_dir: Path, plots_dir: Path) -> None:
-    latest_dir = latest_view_dir(result_dir)
-    if latest_dir is None or latest_dir == result_dir:
+    latest_root = latest_view_dir(result_dir)
+    if latest_root is None or latest_root == result_dir:
         return
 
-    latest_dir.mkdir(parents=True, exist_ok=True)
-    latest_plots_dir = latest_dir / "plots"
-    if latest_plots_dir.exists():
-        shutil.rmtree(latest_plots_dir)
-    shutil.copytree(plots_dir, latest_plots_dir)
+    tile_range_tag = result_dir.parent.name
+    throughput_dir = latest_root / "plots" / "throughput"
+    throughput_dir.mkdir(parents=True, exist_ok=True)
+
+    for pdf_path in plots_dir.glob("load_throughput*.pdf"):
+        target_path = throughput_dir / f"{tile_range_tag}_{pdf_path.name}"
+        shutil.copy2(pdf_path, target_path)
 
 
 def main():
@@ -66,7 +100,7 @@ def main():
     plots_dir = result_dir / "plots"
     plots_dir.mkdir(parents=True, exist_ok=True)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12.8, 5.2), constrained_layout=True)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14.4, 6.1), constrained_layout=True)
 
     result_files = find_result_files(str(results_glob_base))
     if not result_files:
@@ -80,10 +114,10 @@ def main():
         basename = os.path.basename(result_file)
         if "partitionprob" in basename:
             prob = basename.split("partitionprob")[-1]
-            label_prefix = "partition_prob"
+            label = format_sweep_label("partition_prob", prob)
         else:
             prob = basename.split("seqprob")[-1]
-            label_prefix = "seq_prob"
+            label = format_sweep_label("seq_prob", prob)
 
         data = np.loadtxt(result_file)
         data = np.atleast_2d(data)
@@ -93,27 +127,30 @@ def main():
         all_latency.extend(avg_lat.tolist())
         all_throughput.extend(throughput.tolist())
 
-        ax1.plot(req_prob, avg_lat, "o-", label=f"{label_prefix}={prob}")
-        ax2.plot(req_prob, throughput, "o-", label=f"{label_prefix}={prob}")
+        ax1.plot(req_prob, avg_lat, "o-", label=label)
+        ax2.plot(req_prob, throughput, "o-", label=label)
 
     x_min = args.x_min if args.x_min is not None else min(all_req_prob)
     x_max = args.x_max if args.x_max is not None else max(all_req_prob)
-    latency_y_upper = args.latency_y_upper if args.latency_y_upper is not None else max(all_latency) * 1.05
-    throughput_y_upper = args.throughput_y_upper if args.throughput_y_upper is not None else max(all_throughput) * 1.05
+    shared_latency_upper, shared_throughput_upper = shared_curve_y_uppers(result_dir, all_latency, all_throughput)
+    manifest_latency_upper = get_shared_axis_upper(result_dir, "throughput", "latency_upper")
+    manifest_throughput_upper = get_shared_axis_upper(result_dir, "throughput", "throughput_upper")
+    latency_y_upper = args.latency_y_upper if args.latency_y_upper is not None else (manifest_latency_upper or shared_latency_upper)
+    throughput_y_upper = args.throughput_y_upper if args.throughput_y_upper is not None else (manifest_throughput_upper or shared_throughput_upper)
 
     ax1.set_xlabel("Offered load (req probability)")
     ax1.set_ylabel("Average latency (cycles)")
     ax1.set_xlim(x_min, x_max)
     ax1.set_ylim(0.0, latency_y_upper)
     ax1.grid(True, alpha=0.3)
-    ax1.legend(fontsize=9)
+    ax1.legend(fontsize=9, title="Sweep")
 
     ax2.set_xlabel("Offered load (req probability)")
     ax2.set_ylabel("Throughput (req/core/cycle)")
     ax2.set_xlim(x_min, x_max)
     ax2.set_ylim(0.0, throughput_y_upper)
     ax2.grid(True, alpha=0.3)
-    ax2.legend(fontsize=9)
+    ax2.legend(fontsize=9, title="Sweep")
 
     if not args.hide_titles:
         ax1.set_title("Load-Latency Curve")

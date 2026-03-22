@@ -81,18 +81,178 @@ replace_dir_copy() {
     cp -a "$source_dir" "$target_dir"
 }
 
+write_curated_throughput_csv() {
+    local output_csv=$1
+
+    python3 - "$data_dir" "$output_csv" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+data_dir = Path(sys.argv[1])
+output_csv = Path(sys.argv[2])
+
+throughput_files = sorted(data_dir.glob("results_partitionprob*"))
+if not throughput_files:
+    throughput_files = sorted(data_dir.glob("results_seqprob*"))
+
+with output_csv.open("w", newline="") as handle:
+    writer = csv.writer(handle)
+    writer.writerow(["sweep_kind", "sweep_value", "req_prob", "avg_latency", "throughput"])
+
+    for throughput_file in throughput_files:
+        name = throughput_file.name
+        if "partitionprob" in name:
+            sweep_kind = "partition_prob"
+            sweep_value = name.split("partitionprob", 1)[1]
+        elif "seqprob" in name:
+            sweep_kind = "seq_prob"
+            sweep_value = name.split("seqprob", 1)[1]
+        else:
+            sweep_kind = "unknown"
+            sweep_value = name
+
+        with throughput_file.open() as source_handle:
+            for raw_line in source_handle:
+                values = raw_line.strip().split()
+                if len(values) < 3:
+                    continue
+                writer.writerow([sweep_kind, sweep_value, values[0], values[1], values[2]])
+PY
+}
+
+write_curated_boundary_csv() {
+    local boundary=$1
+    local output_csv=$2
+    local field_name=
+
+    case "$boundary" in
+        tile)
+            field_name="tile_util_csv"
+            ;;
+        group)
+            field_name="group_util_csv"
+            ;;
+        subgroup)
+            field_name="subgroup_util_csv"
+            ;;
+        *)
+            echo "ERROR: Unknown boundary '$boundary'" >&2
+            return 1
+            ;;
+    esac
+
+    python3 - "$summary_csv" "$result_dir" "$field_name" "$output_csv" <<'PY'
+import csv
+import sys
+from pathlib import Path
+
+summary_csv = Path(sys.argv[1])
+result_dir = Path(sys.argv[2])
+field_name = sys.argv[3]
+output_csv = Path(sys.argv[4])
+
+
+def resolve_run_artifact(base_dir: Path, csv_relpath: str) -> Path:
+    relpath = Path(csv_relpath)
+    if relpath.is_absolute():
+        return relpath
+
+    direct_path = base_dir / relpath
+    if direct_path.exists():
+        return direct_path
+
+    legacy_path = base_dir / relpath.name
+    if legacy_path.exists():
+        return legacy_path
+
+    return direct_path
+
+
+writer = None
+output_csv.parent.mkdir(parents=True, exist_ok=True)
+
+with summary_csv.open(newline="") as summary_handle, output_csv.open("w", newline="") as output_handle:
+    for run in csv.DictReader(summary_handle):
+        if run.get("status") != "ok":
+            continue
+
+        csv_relpath = run.get(field_name, "")
+        if not csv_relpath:
+            continue
+
+        csv_path = resolve_run_artifact(result_dir, csv_relpath)
+        if not csv_path.exists():
+            continue
+
+        with csv_path.open(newline="") as source_handle:
+            reader = csv.DictReader(source_handle)
+            if not reader.fieldnames:
+                continue
+
+            if writer is None:
+                fieldnames = ["partition_prob", "req_prob"] + list(reader.fieldnames)
+                writer = csv.DictWriter(output_handle, fieldnames=fieldnames)
+                writer.writeheader()
+
+            for row in reader:
+                merged_row = {
+                    "partition_prob": run["partition_prob"],
+                    "req_prob": run["req_prob"],
+                }
+                merged_row.update(row)
+                writer.writerow(merged_row)
+
+    if writer is None:
+        output_handle.truncate(0)
+PY
+}
+
 sync_latest_view() {
-    local latest_dir=$1
+    local latest_root=$1
+    local tile_range_tag=$2
+    local latest_data_root="$latest_root/data"
+    local latest_throughput_dir="$latest_data_root/throughput"
+    local latest_tile_dir="$latest_data_root/tile"
+    local latest_group_dir="$latest_data_root/group"
+    local latest_subgroup_dir="$latest_data_root/subgroup"
+    local latest_meta_dir="$latest_data_root/meta"
 
-    mkdir -p "$latest_dir"
-    replace_dir_copy "$data_dir" "$latest_dir/data"
-    replace_dir_copy "$plots_dir" "$latest_dir/plots"
-    replace_dir_copy "$config_dir" "$latest_dir/config"
-    replace_dir_copy "$timing_dir" "$latest_dir/timing"
-    cp -a "$metadata_json" "$latest_dir/metadata.json"
+    mkdir -p "$latest_throughput_dir" "$latest_tile_dir" "$latest_group_dir" "$latest_subgroup_dir" "$latest_meta_dir"
 
-    if [ -d "$audit_dir" ]; then
-        replace_dir_copy "$audit_dir" "$latest_dir/audit"
+    rm -rf "$latest_root/$tile_range_tag"
+    rm -rf "$latest_root/data/throughput/$tile_range_tag"
+    rm -rf "$latest_root/data/tile/$tile_range_tag"
+    rm -rf "$latest_root/data/group/$tile_range_tag"
+    rm -rf "$latest_root/data/subgroup/$tile_range_tag"
+    rm -f "$latest_throughput_dir/${tile_range_tag}.csv"
+    rm -f "$latest_tile_dir/${tile_range_tag}.csv"
+    rm -f "$latest_group_dir/${tile_range_tag}.csv"
+    rm -f "$latest_subgroup_dir/${tile_range_tag}.csv"
+    rm -f "$latest_meta_dir/${tile_range_tag}.json"
+    rm -f "$latest_meta_dir/${tile_range_tag}_metadata.json"
+
+    write_curated_throughput_csv "$latest_throughput_dir/${tile_range_tag}.csv"
+    write_curated_boundary_csv tile "$latest_tile_dir/${tile_range_tag}.csv"
+    write_curated_boundary_csv group "$latest_group_dir/${tile_range_tag}.csv"
+    write_curated_boundary_csv subgroup "$latest_subgroup_dir/${tile_range_tag}.csv"
+    cp -a "$metadata_json" "$latest_meta_dir/${tile_range_tag}.json"
+}
+
+fail_on_results_symlinks() {
+    local target_root=$1
+
+    if [ ! -d "$target_root" ]; then
+        return
+    fi
+
+    local first_symlink
+    first_symlink=$(find "$target_root" -type l | head -n 1 || true)
+    if [ -n "$first_symlink" ]; then
+        echo "ERROR: symlinked result entries are not allowed under $target_root" >&2
+        echo "First symlink found: $first_symlink" >&2
+        echo "Migrate the legacy result tree to real directories first." >&2
+        exit 1
     fi
 }
 
@@ -246,8 +406,10 @@ questa_cmd="questa-${questa_version}"
 
 # Organized result layout
 topology_results_root="$MEMPOOL_DIR/hardware/results/$active_config"
+fail_on_results_symlinks "$topology_results_root/runs"
 runs_root="$topology_results_root/runs/tilerange${tg_tile_range}"
-latest_dir="$topology_results_root/latest/tilerange${tg_tile_range}"
+latest_root="$topology_results_root/latest"
+tile_range_tag="tilerange${tg_tile_range}"
 mkdir -p "$runs_root"
 result_dir=$(make_unique_run_dir "$runs_root" "$timestamp")
 result_dir_rel=${result_dir#${MEMPOOL_DIR}/hardware/}
@@ -614,7 +776,7 @@ if [ $overall_status -ne 0 ]; then
     exit 1
 fi
 
-sync_latest_view "$latest_dir"
+sync_latest_view "$latest_root" "$tile_range_tag"
 
 echo ""
 echo "=========================================="
