@@ -5,6 +5,67 @@
 # Author: Matheus Cavalcante, ETH Zurich
 #         Samuel Riedel, ETH Zurich
 
+# ── Benchmark pipeline variables ──────────────────────────────────────────
+#
+# Public workflow targets:
+#   make benchmark               Stage 1: simulation → traces → CSVs
+#   make plots                   Stage 2: tile plots from an existing result_dir
+#   make rerun_stall_timeseries  Rebuild only stall_timeseries_benchmark.csv
+#
+# Start here as a new user:
+#   1. Run `make benchmark` to produce a complete result_dir.
+#   2. Run `make plots` on that result_dir to generate the overview and tile plots.
+#   3. Only use `make rerun_stall_timeseries` when you want to rebuild the stall CSV
+#      from saved traces without re-running simulation.
+#
+# The `benchmark` target runs the full Stage 1 pipeline:
+#   log → simcvcs → trace → stall_timeseries
+#
+# Required variables (no defaults — must be set explicitly):
+#   app=<name>        Application name, e.g. app=matmul_i32
+#                     Resolved via software/bin/ search.
+#   variant=<name>    System variant: baseline, das, or redmule.
+#                     Controls the result subdirectory.
+#                     Omitting this causes an immediate error to prevent
+#                     accidental writes to the wrong location.
+#
+# Optional variables:
+#   config=<name>     Hardware topology (default: mempool).
+#                     Set config=terapool for the 1024-core system.
+#                     Selects config/<name>.mk for core/group/tile counts.
+#   result_dir=<path> Override the auto-generated result directory.
+#                     Default: results/<app>_<config>/<variant>
+#                     Setting this bypasses the variant requirement.
+#   force=1           Allow overwriting an existing result directory.
+#                     Without this, `make benchmark` refuses to run if
+#                     result_dir/traces/ already contains files.
+#   plot_overview=1   For `make plots`: also generate the cluster overview.
+#                     Default: enabled. Set plot_overview=0 to skip it.
+#   plot_window=<N>   For `make plots`: sliding aggregation window.
+#                     Default: 64 cycles.
+#   plot_tiles="..."  For `make plots`: optional tile list, e.g. "0 1 2".
+#   plot_topology=<name>
+#                     For `make plots`: override topology auto-detection.
+#                     Normally not needed because result metadata is used.
+#
+# The pipeline produces:
+#   result_dir/
+#     traces/          trace_hart_*.trace (1 per core)
+#     data/            results.csv, stall_timeseries_benchmark.csv
+#     avg.txt          Average performance stats
+#     transcript       Simulation log
+#     config, env      Build-time snapshots
+#     topology.env     Exact topology used for post-processing
+#     git-info.diff    Source state at run time
+#
+# Examples:
+#   app=matmul_i32 variant=baseline make benchmark
+#   app=matmul_i32 config=terapool variant=das make benchmark
+#   app=matmul_i32 variant=baseline force=1 make benchmark  # re-run
+#   app=matmul_i32 variant=baseline make plots
+#   result_dir=results/matmul_i32_mempool/baseline make rerun_stall_timeseries force=1
+# ──────────────────────────────────────────────────────────────────────────
+
 SHELL = /usr/bin/env bash
 ROOT_DIR := $(patsubst %/,%, $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 MEMPOOL_DIR := $(shell git rev-parse --show-toplevel 2>/dev/null || echo $$MEMPOOL_DIR)
@@ -96,12 +157,23 @@ endif
 # DPI source files
 dpi     := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cpp))
 dpi_vcs := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%_vcs.o,$(wildcard tb/dpi/*.cpp))
+# System variant (baseline, das, redmule) — must be set explicitly
+variant         ?=
+
 # Traces
 trace = $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
 tracepath ?= $(buildpath)/traces
 traceresult ?= $(tracepath)/results.csv
+timeline_window ?=
+timeline_result ?= $(tracepath)/timeline.csv
+timeline_section ?=
+timeline_benchmark_only ?=
+timeline_delta ?=
 ifndef result_dir
-	result_dir := $(resultpath)/$(shell date +"%Y%m%d_%H%M%S_$(app)_$$(git rev-parse --short HEAD)")
+  ifndef variant
+    $(error variant is not set. Specify variant=baseline, variant=das, or variant=redmule)
+  endif
+	result_dir := $(resultpath)/$(app)_$(config)/$(variant)
 endif
 
 vlog_args += -suppress vlog-2583 -suppress vlog-13314 -suppress vlog-13233
@@ -347,11 +419,35 @@ spyglass/tmp/files: $(bender)
 
 # Give configuration in env
 trace_env += NUM_CORES=$(num_cores)
+trace_env += NUM_GROUPS=$(num_groups)
+trace_env += NUM_CORES_PER_TILE=$(num_cores_per_tile)
 trace_env += SEQ_MEM_SIZE=$(seq_mem_size)
+trace_timeline_section_args = $(if $(timeline_section),--section $(timeline_section),)
+trace_timeline_benchmark_args = $(if $(timeline_benchmark_only),--benchmark-only,)
+trace_timeline_delta_args = $(if $(timeline_delta),--delta,)
+plot_overview ?= 1
+plot_window ?= 64
+plot_section ?= 1
+plot_section_args = $(if $(plot_section),--section $(plot_section),)
+plot_overview_args = $(if $(filter 1,$(plot_overview)),--overview,)
+plot_force_args = $(if $(filter 1,$(force)),--force,)
+plot_tiles_args = $(if $(strip $(plot_tiles)),--tiles $(plot_tiles),)
+plot_topology_args = $(if $(strip $(plot_topology)),--topology $(plot_topology),)
+rerun_force_args = $(if $(filter 1,$(force)),--force,)
 
-benchmark: log simcvcs
+.PHONY: benchmark plots rerun_stall_timeseries
+
+benchmark:
+	@# Guard: refuse to overwrite existing results unless force=1
+	@if [ -d "$(result_dir)/traces" ] && [ "$$(ls -A '$(result_dir)/traces' 2>/dev/null)" ] && [ "$(force)" != "1" ]; then \
+		echo "ERROR: result_dir already has data: $(result_dir)/traces/" >&2; \
+		echo "       Set force=1 to overwrite." >&2; \
+		exit 1; \
+	fi
+	$(MAKE) log simcvcs
 	# Call `make` again to get variable extension with all traces
 	result_dir=$(result_dir) $(MAKE) trace
+	result_dir=$(result_dir) $(MAKE) stall_timeseries
 
 trace: pre_trace $(trace) post_trace
 
@@ -362,6 +458,8 @@ log:
 	cp "$$(grep -oP '(?<=\+PRELOAD=)[^ \"]*' $(buildpath)/transcript)"* "$(result_dir)" || \
 	echo "No application specified")
 	env > "$(result_dir)/env"
+	printf 'CONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\n' \
+		"$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" > "$(result_dir)/topology.env"
 	cp $(MEMPOOL_DIR)/config/config.mk $(result_dir)/config
 	git rev-parse HEAD > "$(result_dir)/git-info.diff"
 	git show --oneline -s >> "$(result_dir)/git-info.diff"
@@ -371,16 +469,60 @@ pre_trace:
 	rm -rf $(tracepath)
 
 post_trace:
-	mkdir -p "$(result_dir)"
+	mkdir -p "$(result_dir)/traces" "$(result_dir)/data"
 	cp $(buildpath)/transcript "$(result_dir)/" | true
-	cp $(traceresult) "$(result_dir)"
-	cp $(trace) "$(result_dir)"
-	$(python) $(ROOT_DIR)/scripts/gen_avg.py --folder "$(result_dir)" | tee $(result_dir)/avg.txt
+	cp $(traceresult) "$(result_dir)/data/"
+	[ -e "$(timeline_result)" ] && cp $(timeline_result) "$(result_dir)/data/" || true
+	cp $(trace) "$(result_dir)/traces/"
+	$(python) $(ROOT_DIR)/scripts/gen_avg.py --folder "$(result_dir)/data" | tee $(result_dir)/avg.txt
+
+stall_timeseries:
+	$(trace_env) $(python) $(ROOT_DIR)/scripts/stall_analysis/_gen_stall_timeseries_batch.py \
+		--folder "$(result_dir)/traces" \
+		--csv "$(result_dir)/data/stall_timeseries_benchmark.csv" \
+		--benchmark-only -p --force
+
+# Public Stage 2 plotting entry point.
+# Usage:
+#   app=matmul_i32 config=mempool variant=baseline make plots
+#   result_dir=results/matmul_i32_mempool/baseline make plots plot_tiles="0 1" force=1
+plots:
+	@if [ ! -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ]; then \
+		echo "ERROR: stall CSV missing: $(result_dir)/data/stall_timeseries_benchmark.csv" >&2; \
+		echo "       Run 'make benchmark' first or point result_dir at an existing run." >&2; \
+		exit 1; \
+	fi
+	$(python) $(ROOT_DIR)/scripts/stall_analysis/plot_all_tiles.py \
+		"$(result_dir)" \
+		$(plot_section_args) \
+		$(plot_overview_args) \
+		--window $(plot_window) \
+		$(plot_tiles_args) \
+		$(plot_topology_args) \
+		$(plot_force_args)
+
+# Public reprocessing entry point.
+# Usage:
+#   result_dir=results/matmul_i32_mempool/baseline make rerun_stall_timeseries force=1
+# This reuses saved traces and metadata; it does not re-run simulation.
+rerun_stall_timeseries:
+	@if [ ! -d "$(result_dir)/traces" ]; then \
+		echo "ERROR: traces directory missing: $(result_dir)/traces" >&2; \
+		echo "       Point result_dir at an existing benchmark run." >&2; \
+		exit 1; \
+	fi
+	$(python) $(ROOT_DIR)/scripts/stall_analysis/rerun_stall_timeseries.py \
+		"$(result_dir)" \
+		--benchmark-only -p \
+		$(rerun_force_args)
 
 $(buildpath)/%.trace: $(buildpath)/%.dasm
 	mkdir -p $(tracepath)
 	$(INSTALL_DIR)/riscv-isa-sim/bin/spike-dasm < $< > $(tracepath)/$*
 	$(trace_env) $(python) $(ROOT_DIR)/scripts/gen_trace.py -p --csv $(traceresult) $(tracepath)/$* > $@
+	@if [ -n "$(timeline_window)" ]; then \
+		$(trace_env) $(python) $(ROOT_DIR)/scripts/stall_analysis/outdated_gen_timeseries_windowed.py -p --csv $(timeline_result) --window $(timeline_window) $(trace_timeline_section_args) $(trace_timeline_benchmark_args) $(trace_timeline_delta_args) $(tracepath)/$*; \
+	fi
 
 tracevis:
 	$(MEMPOOL_DIR)/scripts/tracevis.py $(preload) $(buildpath)/*.trace -o $(buildpath)/tracevis.json
