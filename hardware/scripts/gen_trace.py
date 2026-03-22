@@ -73,10 +73,20 @@ MEM_REGIONS = {'Other': 0, 'Sequential': 1, 'Interleaved': 2}
 
 RAW_TYPES = ['lsu', 'acc']
 
+
+def getenv_int(*names, default):
+    for name in names:
+        value = os.environ.get(name)
+        if value is not None:
+            return int(value)
+    return default
+
+
 # ----------------- Architecture Info  -----------------
-NUM_CORES = int(os.environ.get('num_cores', 256))
-NUM_TILES = NUM_CORES / 4
-SEQ_MEM_SIZE = 4 * int(os.environ.get('seq_mem_size', 1024))
+NUM_CORES = getenv_int('NUM_CORES', 'num_cores', default=256)
+NUM_CORES_PER_TILE = getenv_int('NUM_CORES_PER_TILE', 'num_cores_per_tile', default=4)
+NUM_TILES = NUM_CORES // NUM_CORES_PER_TILE
+SEQ_MEM_SIZE = 4 * getenv_int('SEQ_MEM_SIZE', 'seq_mem_size', default=1024)
 TCDM_SIZE = 16 * 1024 * NUM_TILES
 
 
