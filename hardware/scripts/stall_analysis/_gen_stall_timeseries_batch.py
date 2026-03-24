@@ -37,14 +37,14 @@ Topology handling:
 Examples:
   # First run
   python _gen_stall_timeseries_batch.py \
-      --folder results/matmul_i32_mempool/baseline/traces \
-      --csv results/matmul_i32_mempool/baseline/data/stall_timeseries_benchmark.csv \
+      --folder results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces \
+      --csv results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/stall_timeseries_benchmark.csv \
       --benchmark-only -p
 
   # Re-generate (must pass --force)
   python _gen_stall_timeseries_batch.py \
-      --folder results/matmul_i32_mempool/baseline/traces \\
-      --csv results/matmul_i32_mempool/baseline/data/stall_timeseries_benchmark.csv \\
+      --folder results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces \\
+      --csv results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/stall_timeseries_benchmark.csv \\
       --benchmark-only -p --force
 
   # Standalone run outside a saved result directory

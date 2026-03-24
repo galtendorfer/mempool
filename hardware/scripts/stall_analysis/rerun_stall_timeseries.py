@@ -8,15 +8,15 @@ This is the stable user-facing entry point for the reprocessing step.
 The underscore-prefixed `_gen_stall_timeseries_batch.py` remains internal.
 
 Typical usage:
-    python rerun_stall_timeseries.py ../../../results/matmul_i32_mempool/baseline
+    python rerun_stall_timeseries.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline
 
 Examples:
     # Rebuild the default benchmark CSV in-place
-    python rerun_stall_timeseries.py ../../../results/matmul_i32_mempool/baseline --force
+    python rerun_stall_timeseries.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --force
 
     # Write to a separate CSV for comparison
-    python rerun_stall_timeseries.py ../../../results/matmul_i32_mempool/baseline \
-        --csv ../../../results/matmul_i32_mempool/baseline/data/recheck.csv
+    python rerun_stall_timeseries.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline \
+        --csv ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/recheck.csv
 
 The wrapper derives:
   - traces folder: <result_dir>/traces

@@ -9,12 +9,17 @@
 #
 # Public workflow targets:
 #   make benchmark               Stage 1: simulation → traces → CSVs
-#   make plots                   Stage 2: tile plots from an existing result_dir
+#   make plots                   Stage 2: tile plots plus communication analysis from an existing result_dir
+#   make plots_parallel          Stage 2: run `make plots` across selected kernels in parallel
+#   make plots_comm              Stage 2b: thesis communication figures from result_dir
 #   make rerun_stall_timeseries  Rebuild only stall_timeseries_benchmark.csv
 #
 # Start here as a new user:
 #   1. Run `make benchmark` to produce a complete result_dir.
-#   2. Run `make plots` on that result_dir to generate the overview and tile plots.
+#   2. Run `make plots` on that result_dir to generate the overview/tile plots
+#      and, by default, the communication-analysis artifacts and thesis figures.
+#      If you want multiple kernels, use `make plots_parallel` with
+#      `parallel_kernels="..."` and `parallel_jobs=N`.
 #   3. Only use `make rerun_stall_timeseries` when you want to rebuild the stall CSV
 #      from saved traces without re-running simulation.
 #
@@ -24,6 +29,8 @@
 # Required variables (no defaults — must be set explicitly):
 #   app=<name>        Application name, e.g. app=matmul_i32
 #                     Resolved via software/bin/ search.
+#   kernel=<name>     Kernel folder name, e.g. kernel=2x2_xpulpv2.
+#                     Select this to separate benchmark outputs by kernel.
 #   variant=<name>    System variant: baseline, das, or redmule.
 #                     Controls the result subdirectory.
 #                     Omitting this causes an immediate error to prevent
@@ -34,8 +41,8 @@
 #                     Set config=terapool for the 1024-core system.
 #                     Selects config/<name>.mk for core/group/tile counts.
 #   result_dir=<path> Override the auto-generated result directory.
-#                     Default: results/<app>_<config>/<variant>
-#                     Setting this bypasses the variant requirement.
+#                     Default: results/<app>_<config>/<kernel>/<variant>
+#                     Setting this bypasses the kernel/variant requirements.
 #   force=1           Allow overwriting an existing result directory.
 #                     Without this, `make benchmark` refuses to run if
 #                     result_dir/traces/ already contains files.
@@ -43,6 +50,13 @@
 #                     Default: enabled. Set plot_overview=0 to skip it.
 #   plot_window=<N>   For `make plots`: sliding aggregation window.
 #                     Default: 64 cycles.
+#   plot_comm=0       For `make plots`: disable communication extraction,
+#                     summaries, and thesis communication figures.
+#   parallel_kernels="..."
+#                     For `make plots_parallel`: kernel subset to run.
+#                     Example: "4x4 4x4_asm"
+#   parallel_jobs=<N> For `make plots_parallel`: number of concurrent kernels.
+#                     Default: number of kernels in `parallel_kernels`.
 #   plot_tiles="..."  For `make plots`: optional tile list, e.g. "0 1 2".
 #   plot_topology=<name>
 #                     For `make plots`: override topology auto-detection.
@@ -59,11 +73,14 @@
 #     git-info.diff    Source state at run time
 #
 # Examples:
-#   app=matmul_i32 variant=baseline make benchmark
-#   app=matmul_i32 config=terapool variant=das make benchmark
-#   app=matmul_i32 variant=baseline force=1 make benchmark  # re-run
-#   app=matmul_i32 variant=baseline make plots
-#   result_dir=results/matmul_i32_mempool/baseline make rerun_stall_timeseries force=1
+#   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make benchmark
+#   app=matmul_i32 config=terapool kernel=4x4_asm variant=das make benchmark
+#   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline force=1 make benchmark  # re-run
+#   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make plots
+#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
+#
+# For `app=matmul_i32`, `make benchmark` rebuilds the software binary first so
+# the compiled kernel matches `kernel=<name>`.
 # ──────────────────────────────────────────────────────────────────────────
 
 SHELL = /usr/bin/env bash
@@ -105,7 +122,8 @@ verilator_build ?= $(ROOT_DIR)/verilator_build
 verilator_files ?= $(verilator_build)/files
 verilator_top   ?= mempool_tb_verilator
 # Python
-python          ?= python3
+python_venv     ?= $(MEMPOOL_DIR)/mempoolvenv/bin/python
+python          ?= $(python_venv)
 # Enable tracing
 snitch_trace    ?= 1
 
@@ -159,6 +177,8 @@ dpi     := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb
 dpi_vcs := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%_vcs.o,$(wildcard tb/dpi/*.cpp))
 # System variant (baseline, das, redmule) — must be set explicitly
 variant         ?=
+# Kernel label for result directory grouping — must be set explicitly
+kernel          ?=
 
 # Traces
 trace = $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
@@ -169,11 +189,17 @@ timeline_result ?= $(tracepath)/timeline.csv
 timeline_section ?=
 timeline_benchmark_only ?=
 timeline_delta ?=
+result_dir_goals := $(filter benchmark plots plots_comm rerun_stall_timeseries,$(MAKECMDGOALS))
+ifneq ($(strip $(result_dir_goals)),)
 ifndef result_dir
+	ifndef kernel
+		$(error kernel is not set. Specify kernel=<name>, e.g. kernel=2x2_xpulpv2)
+	endif
   ifndef variant
     $(error variant is not set. Specify variant=baseline, variant=das, or variant=redmule)
   endif
-	result_dir := $(resultpath)/$(app)_$(config)/$(variant)
+	result_dir := $(resultpath)/$(app)_$(config)/$(kernel)/$(variant)
+endif
 endif
 
 vlog_args += -suppress vlog-2583 -suppress vlog-13314 -suppress vlog-13233
@@ -428,6 +454,9 @@ trace_timeline_delta_args = $(if $(timeline_delta),--delta,)
 plot_overview ?= 1
 plot_window ?= 64
 plot_section ?= 1
+plot_comm ?= 1
+parallel_kernels ?=
+parallel_jobs ?= $(words $(parallel_kernels))
 plot_section_args = $(if $(plot_section),--section $(plot_section),)
 plot_overview_args = $(if $(filter 1,$(plot_overview)),--overview,)
 plot_force_args = $(if $(filter 1,$(force)),--force,)
@@ -435,42 +464,66 @@ plot_tiles_args = $(if $(strip $(plot_tiles)),--tiles $(plot_tiles),)
 plot_topology_args = $(if $(strip $(plot_topology)),--topology $(plot_topology),)
 rerun_force_args = $(if $(filter 1,$(force)),--force,)
 
-.PHONY: benchmark plots rerun_stall_timeseries
+.PHONY: build_app benchmark plots plots_parallel plots_comm rerun_stall_timeseries save_transcript
 
-benchmark:
+build_app:
+ifdef app
+	$(MAKE) -C $(MEMPOOL_DIR)/software/apps/baremetal $(app)
+endif
+
+benchmark: build_app
 	@# Guard: refuse to overwrite existing results unless force=1
 	@if [ -d "$(result_dir)/traces" ] && [ "$$(ls -A '$(result_dir)/traces' 2>/dev/null)" ] && [ "$(force)" != "1" ]; then \
 		echo "ERROR: result_dir already has data: $(result_dir)/traces/" >&2; \
 		echo "       Set force=1 to overwrite." >&2; \
 		exit 1; \
 	fi
-	$(MAKE) log simcvcs
+	$(MAKE) log
+	@sim_status=0; \
+	$(MAKE) simcvcs || sim_status=$$?; \
+	result_dir="$(result_dir)" $(MAKE) save_transcript; \
+	if [ "$$sim_status" -ne 0 ]; then \
+		exit "$$sim_status"; \
+	fi
 	# Call `make` again to get variable extension with all traces
 	result_dir=$(result_dir) $(MAKE) trace
 	result_dir=$(result_dir) $(MAKE) stall_timeseries
-
-trace: pre_trace $(trace) post_trace
 
 log:
 	mkdir -p "$(result_dir)"
 	[ -e "$(preload)" ] && cp "$(preload)"* "$(result_dir)" || \
 	([ -e "$(buildpath)/transcript" ] && \
-	cp "$$(grep -oP '(?<=\+PRELOAD=)[^ \"]*' $(buildpath)/transcript)"* "$(result_dir)" || \
+	cp "$$(grep -oP '(?<=\+PRELOAD=)[^ \" ]*' $(buildpath)/transcript)"* "$(result_dir)" || \
 	echo "No application specified")
-	env > "$(result_dir)/env"
-	printf 'CONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\n' \
-		"$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" > "$(result_dir)/topology.env"
+	{ \
+		printf 'app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\n' \
+			"$(app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)"; \
+		env; \
+	} > "$(result_dir)/env"
+	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\n' \
+		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" > "$(result_dir)/topology.env"
 	cp $(MEMPOOL_DIR)/config/config.mk $(result_dir)/config
 	git rev-parse HEAD > "$(result_dir)/git-info.diff"
 	git show --oneline -s >> "$(result_dir)/git-info.diff"
 	git diff >> "$(result_dir)/git-info.diff"
+
+save_transcript:
+	@mkdir -p "$(result_dir)"
+	@if [ -f "$(buildpath)/transcript" ]; then \
+		cp "$(buildpath)/transcript" "$(result_dir)/transcript.tmp" && \
+		mv "$(result_dir)/transcript.tmp" "$(result_dir)/transcript"; \
+	else \
+		echo "WARNING: transcript not found: $(buildpath)/transcript" >&2; \
+	fi
+
+trace: pre_trace $(trace) post_trace
 
 pre_trace:
 	rm -rf $(tracepath)
 
 post_trace:
 	mkdir -p "$(result_dir)/traces" "$(result_dir)/data"
-	cp $(buildpath)/transcript "$(result_dir)/" | true
+	result_dir="$(result_dir)" $(MAKE) save_transcript
 	cp $(traceresult) "$(result_dir)/data/"
 	[ -e "$(timeline_result)" ] && cp $(timeline_result) "$(result_dir)/data/" || true
 	cp $(trace) "$(result_dir)/traces/"
@@ -484,8 +537,9 @@ stall_timeseries:
 
 # Public Stage 2 plotting entry point.
 # Usage:
-#   app=matmul_i32 config=mempool variant=baseline make plots
-#   result_dir=results/matmul_i32_mempool/baseline make plots plot_tiles="0 1" force=1
+#   app=matmul_i32 config=mempool kernel=2x2_xpulpv2 variant=baseline make plots
+#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make plots plot_tiles="0 1" force=1
+#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make plots plot_comm=0
 plots:
 	@if [ ! -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ]; then \
 		echo "ERROR: stall CSV missing: $(result_dir)/data/stall_timeseries_benchmark.csv" >&2; \
@@ -500,10 +554,92 @@ plots:
 		$(plot_tiles_args) \
 		$(plot_topology_args) \
 		$(plot_force_args)
+	@if [ "$(plot_comm)" = "1" ]; then \
+		if [ ! -d "$(result_dir)/traces" ]; then \
+			echo "INFO: skipping communication analysis; traces missing: $(result_dir)/traces" >&2; \
+		else \
+			if [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ] || [ "$(force)" = "1" ]; then \
+				$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/extract_comm_events.py \
+					"$(result_dir)" \
+					-p \
+					$(plot_force_args); \
+			else \
+				echo "INFO: keeping existing communication CSV: $(result_dir)/data/comm_events_benchmark.csv"; \
+			fi; \
+			$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/summarize_comm_events.py \
+				"$(result_dir)"; \
+			$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/summarize_comm_timeseries.py \
+				"$(result_dir)" \
+				--window $(plot_window); \
+			$(MAKE) --no-print-directory \
+				result_dir="$(result_dir)" \
+				plot_section="$(plot_section)" \
+				python_venv="$(python_venv)" \
+				plots_comm; \
+		fi; \
+	fi
+
+# Public Stage 2 parallel plotting entry point.
+# Usage:
+#   app=matmul_i32 config=mempool variant=baseline \
+#     parallel_kernels="4x4 4x4_asm" make plots_parallel
+#   app=matmul_i32 config=mempool variant=baseline \
+#     parallel_kernels="4x4 4x4_asm" parallel_jobs=1 make plots_parallel
+plots_parallel:
+	@if [ -n "$(result_dir)" ]; then \
+		echo "ERROR: plots_parallel does not accept result_dir; use parallel_kernels instead." >&2; \
+		exit 1; \
+	fi
+	@if [ -z "$(strip $(parallel_kernels))" ]; then \
+		echo "ERROR: parallel_kernels is empty. Example: parallel_kernels=\"4x4 4x4_asm\"" >&2; \
+		exit 1; \
+	fi
+	@if [ -z "$(app)" ]; then \
+		echo "ERROR: app is not set. Example: app=matmul_i32" >&2; \
+		exit 1; \
+	fi
+	@if [ -z "$(variant)" ]; then \
+		echo "ERROR: variant is not set. Example: variant=baseline" >&2; \
+		exit 1; \
+	fi
+	@printf '%s\n' $(parallel_kernels) | xargs -I{} -P $(parallel_jobs) sh -c '\
+		$(MAKE) --no-print-directory \
+			app="$(app)" \
+			config="$(config)" \
+			variant="$(variant)" \
+			kernel="$$1" \
+			python="$(python)" \
+			python_venv="$(python_venv)" \
+			plot_section="$(plot_section)" \
+			plot_overview="$(plot_overview)" \
+			plot_window="$(plot_window)" \
+			plot_comm="$(plot_comm)" \
+			plot_tiles="$(plot_tiles)" \
+			plot_topology="$(plot_topology)" \
+			force="$(force)" \
+			plots' sh {}
+
+# Public communication-analysis plotting entry point.
+# Generates thesis-quality communication figures (PNG + PDF).
+# Usually invoked automatically by `make plots`; can also be run directly after
+# summarize_comm_events.py and summarize_comm_timeseries.py.
+# Usage:
+#   app=matmul_i32 kernel=4x4 variant=baseline make plots_comm
+#   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make plots_comm
+#   result_dir=results/matmul_i32_mempool/4x4/baseline make plots_comm
+plots_comm:
+	@if [ ! -d "$(result_dir)/data/comm_summary" ]; then \
+		echo "ERROR: comm_summary missing: $(result_dir)/data/comm_summary/" >&2; \
+		echo "       Run summarize_comm_events.py first." >&2; \
+		exit 1; \
+	fi
+	$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/plot_comm_thesis.py \
+		"$(result_dir)" \
+		$(plot_section_args)
 
 # Public reprocessing entry point.
 # Usage:
-#   result_dir=results/matmul_i32_mempool/baseline make rerun_stall_timeseries force=1
+#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
 # This reuses saved traces and metadata; it does not re-run simulation.
 rerun_stall_timeseries:
 	@if [ ! -d "$(result_dir)/traces" ]; then \

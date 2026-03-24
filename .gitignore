@@ -16,7 +16,8 @@ gmon.out
 *.swp
 tags
 # Python
-**.idea
+**/.idea/
+__pycache__/
 venv/
 # Visual Studio Code
 .vscode
@@ -28,6 +29,7 @@ venv/
 # In general, ignore pdfs
 *.pdf
 .venv/
+mempoolvenv/
 toolchain
 
 # Hardware simulation artifacts

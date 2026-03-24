@@ -9,8 +9,8 @@ This script remains the direct implementation behind that public target.
 
 Required positional argument:
     result_dir          Path to a variant directory, e.g.:
-                          results/matmul_i32_mempool/baseline
-                          results/matmul_i32_terapool/das
+                          results/matmul_i32_mempool/2x2_xpulpv2/baseline
+                          results/matmul_i32_terapool/2x2_xpulpv2/das
 
 Optional flags:
     --section N         Filter by section number (repeatable).
@@ -33,16 +33,16 @@ Optional flags:
 
 Examples:
     # All tiles, topology from result metadata
-    python plot_all_tiles.py ../../results/matmul_i32_mempool/baseline --section 1
+    python plot_all_tiles.py ../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --section 1
 
     # Only tiles 0 and 35
-    python plot_all_tiles.py ../../results/matmul_i32_mempool/baseline --section 1 --tiles 0 35
+    python plot_all_tiles.py ../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --section 1 --tiles 0 35
 
     # Dry run to see routing
-    python plot_all_tiles.py ../../results/matmul_i32_terapool/baseline --section 1 --dry-run
+    python plot_all_tiles.py ../../results/matmul_i32_terapool/2x2_xpulpv2/baseline --section 1 --dry-run
 
     # Re-generate all plots (overwrite existing)
-    python plot_all_tiles.py ../../results/matmul_i32_mempool/baseline --section 1 --force
+    python plot_all_tiles.py ../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --section 1 --force
 """
 
 import argparse
@@ -133,7 +133,7 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(
         description="Batch-generate tile detail plots for all tiles.")
     p.add_argument("result_dir",
-                   help="Variant directory (e.g. results/matmul_i32_mempool/baseline)")
+                   help="Variant directory (e.g. results/matmul_i32_mempool/2x2_xpulpv2/baseline)")
     p.add_argument("--section", type=int, action="append",
                    help="Filter by section (repeatable)")
     p.add_argument("--topology", choices=list(TOPOLOGIES),
