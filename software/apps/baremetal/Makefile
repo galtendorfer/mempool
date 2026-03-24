@@ -16,6 +16,33 @@ RUNTIME_DIR := $(abspath $(SOFTWARE_DIR)/runtime)
 # This will overwrite the ROOT_DIR variable from the included makefile
 include $(RUNTIME_DIR)/runtime.mk
 
+ifneq ($(filter matmul_i32,$(MAKECMDGOALS)),)
+	ifeq ($(kernel),2x2_xpulpv2)
+		DEFINES += -DMATMUL_I32_KERNEL_2X2_XPULPV2
+		ifneq ($(XPULPIMG),1)
+			$(error kernel=2x2_xpulpv2 requires xpulpimg=1)
+		endif
+	else ifeq ($(kernel),2x2_rv32im)
+		DEFINES += -DMATMUL_I32_KERNEL_2X2_RV32IM
+	else ifeq ($(kernel),4x4)
+		DEFINES += -DMATMUL_I32_KERNEL_4X4
+	else ifeq ($(kernel),4x4_conflict_opt)
+		DEFINES += -DMATMUL_I32_KERNEL_4X4_CONFLICT_OPT
+	else ifeq ($(kernel),4x4_asm)
+		DEFINES += -DMATMUL_I32_KERNEL_4X4_ASM
+		ifneq ($(XPULPIMG),1)
+			$(error kernel=4x4_asm requires xpulpimg=1)
+		endif
+	else ifeq ($(kernel),4x4_conflict_opt_asm)
+		DEFINES += -DMATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM
+		ifneq ($(XPULPIMG),1)
+			$(error kernel=4x4_conflict_opt_asm requires xpulpimg=1)
+		endif
+	else ifneq ($(strip $(kernel)),)
+		$(error Unsupported kernel=$(kernel) for matmul_i32. Supported values: 2x2_xpulpv2 2x2_rv32im 4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm)
+	endif
+endif
+
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c"))
 BINARIES := $(addprefix $(BIN_DIR)/,$(APPS))
 ALL := $(APPS)

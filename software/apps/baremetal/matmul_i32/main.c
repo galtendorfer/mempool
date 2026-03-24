@@ -18,6 +18,15 @@
 #include "baremetal/mempool_checks.h"
 #include "baremetal/mempool_matmul_i32p.h"
 
+#if (defined(MATMUL_I32_KERNEL_2X2_XPULPV2) +                                  \
+  defined(MATMUL_I32_KERNEL_2X2_RV32IM) +                                   \
+  defined(MATMUL_I32_KERNEL_4X4) +                                           \
+  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) +                              \
+  defined(MATMUL_I32_KERNEL_4X4_ASM) +                                       \
+  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)) > 1
+#error "Select exactly one MATMUL_I32 kernel."
+#endif
+
 int32_t l1_A[matrix_M * matrix_N] __attribute__((section(".l1_prio")));
 int32_t l1_B[matrix_N * matrix_P] __attribute__((section(".l1_prio")));
 int32_t l1_C[matrix_M * matrix_P] __attribute__((section(".l1_prio")));
@@ -36,12 +45,37 @@ int main() {
 
   // Benchmark
   mempool_start_benchmark();
+#if defined(MATMUL_I32_KERNEL_2X2_XPULPV2)
+#ifndef __XPULPIMG
+#error "MATMUL_I32_KERNEL_2X2_XPULPV2 requires __XPULPIMG."
+#endif
+  matmul_unrolled_2x2_parallel_i32_xpulpv2(l1_A, l1_B, l1_C, matrix_M, matrix_N,
+                                           matrix_P, core_id, num_cores);
+#elif defined(MATMUL_I32_KERNEL_2X2_RV32IM)
+  matmul_unrolled_2x2_parallel_i32_rv32im(l1_A, l1_B, l1_C, matrix_M, matrix_N,
+                                          matrix_P, core_id, num_cores);
+#elif defined(MATMUL_I32_KERNEL_4X4)
+  mat_mul_unrolled_4x4_parallel(l1_A, l1_B, l1_C, matrix_M, matrix_N, matrix_P,
+                                core_id, num_cores);
+#elif defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT)
+  mat_mul_unrolled_4x4_conflict_opt_parallel(l1_A, l1_B, l1_C, matrix_M,
+                                             matrix_N, matrix_P, core_id,
+                                             num_cores);
+#elif defined(MATMUL_I32_KERNEL_4X4_ASM)
+  mat_mul_unrolled_4x4_parallel_asm(l1_A, l1_B, l1_C, matrix_M, matrix_N,
+                                    matrix_P, core_id, num_cores);
+#elif defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
+  mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
+      l1_A, l1_B, l1_C, matrix_M, matrix_N, matrix_P, core_id, num_cores);
+#else
+  // Preserve the historical default when no explicit kernel is requested.
 #ifdef __XPULPIMG
   matmul_unrolled_2x2_parallel_i32_xpulpv2(l1_A, l1_B, l1_C, matrix_M, matrix_N,
                                            matrix_P, core_id, num_cores);
 #else
   matmul_unrolled_2x2_parallel_i32_rv32im(l1_A, l1_B, l1_C, matrix_M, matrix_N,
                                           matrix_P, core_id, num_cores);
+#endif
 #endif
   mempool_stop_benchmark();
   mempool_barrier(num_cores);
