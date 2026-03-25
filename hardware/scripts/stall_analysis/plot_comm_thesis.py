@@ -861,13 +861,16 @@ def plot_comm_stall_correlation(raw_events_path, stalls_path,
                      s=60, color=GRP_COLORS[g % len(GRP_COLORS)], edgecolor="#333333", lw=0.5,
                      alpha=0.8, label=f"Group {g}", zorder=3)
 
-    if len(remote_fracs) > 2:
-        coeffs = np.polyfit(remote_fracs, lsu_fracs, 1)
-        x_fit = np.linspace(remote_fracs.min(), remote_fracs.max(), 100)
+    finite_mask = np.isfinite(remote_fracs) & np.isfinite(lsu_fracs)
+    fit_x = remote_fracs[finite_mask]
+    fit_y = lsu_fracs[finite_mask]
+    if len(fit_x) > 2 and np.ptp(fit_x) > 0 and np.ptp(fit_y) > 0:
+        coeffs = np.polyfit(fit_x, fit_y, 1)
+        x_fit = np.linspace(fit_x.min(), fit_x.max(), 100)
         y_fit = np.polyval(coeffs, x_fit)
         # Clip regression line to non-negative y
         y_fit = np.clip(y_fit, 0, None)
-        r_val = np.corrcoef(remote_fracs, lsu_fracs)[0, 1]
+        r_val = np.corrcoef(fit_x, fit_y)[0, 1]
         ax_a.plot(x_fit, y_fit, color=COL_NEUTRAL, lw=1.8, ls="--",
                   alpha=0.7, zorder=2)
         ax_a.text(0.97, 0.05, f"r = {r_val:.2f}",
@@ -1206,8 +1209,13 @@ def plot_latency_over_time(tile_ts_rows, n_groups, output_dir, section):
     with np.errstate(invalid="ignore", divide="ignore"):
         sys_avg = np.where(sys_weight > 0, sys_lat / sys_weight, np.nan)
         grp_avg = np.where(grp_weight > 0, grp_lat / grp_weight, np.nan)
-    tile_min = np.nanmin(tile_avgs, axis=0)
-    tile_max = np.nanmax(tile_avgs, axis=0)
+    tile_has_data = np.isfinite(tile_avgs).any(axis=0)
+    tile_min = np.full(n_windows, np.nan)
+    tile_max = np.full(n_windows, np.nan)
+    if tile_has_data.any():
+        valid_tile_avgs = tile_avgs[:, tile_has_data]
+        tile_min[tile_has_data] = np.nanmin(valid_tile_avgs, axis=0)
+        tile_max[tile_has_data] = np.nanmax(valid_tile_avgs, axis=0)
 
     fig, (ax_a, ax_b) = plt.subplots(2, 1, figsize=(11, 7.5), sharex=True,
                                       gridspec_kw={"hspace": 0.18})
@@ -1907,7 +1915,7 @@ def main(argv=None):
         plot_latency_over_time(ts_rows, n_groups, output_dir, section)
 
     if "tile_latency" in figs and ts_rows:
-        for tg in (0, 1):
+        for tg in range(n_groups):
             print(f"\n[6b] Per-tile latency — Group {tg} …")
             plot_per_tile_group_latency(ts_rows, n_groups, output_dir,
                                         section, target_group=tg)

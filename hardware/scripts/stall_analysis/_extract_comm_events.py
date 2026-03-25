@@ -94,9 +94,13 @@ def _getenv_int(*names: str, default: int) -> int:
 _NUM_CORES = _getenv_int("NUM_CORES", "num_cores", default=256)
 _NUM_GROUPS = _getenv_int("NUM_GROUPS", "num_groups", default=1)
 _NUM_CORES_PER_TILE = _getenv_int("NUM_CORES_PER_TILE", "num_cores_per_tile", default=4)
-_SEQ_MEM_SIZE = 4 * _getenv_int("SEQ_MEM_SIZE", "seq_mem_size", default=1024)
+_BANKING_FACTOR = _getenv_int("BANKING_FACTOR", "banking_factor", default=4)
+_L1_BANK_SIZE = _getenv_int("L1_BANK_SIZE", "l1_bank_size", default=1024)
+_NUM_BANKS_PER_TILE = _NUM_CORES_PER_TILE * _BANKING_FACTOR
+_SEQ_MEM_SIZE = _NUM_CORES_PER_TILE * _getenv_int("SEQ_MEM_SIZE", "seq_mem_size", default=512)
 _NUM_TILES = _NUM_CORES // _NUM_CORES_PER_TILE if _NUM_CORES_PER_TILE else 0
-_TCDM_SIZE = 16 * 1024 * _NUM_TILES
+_INTERLEAVE_STRIDE = 4 * _NUM_BANKS_PER_TILE
+_TCDM_SIZE = _NUM_BANKS_PER_TILE * _L1_BANK_SIZE * _NUM_TILES
 
 
 def _read_annotations(dict_str: str) -> dict:
@@ -165,7 +169,7 @@ def _addr_to_meta(address: int) -> tuple[str, int, int]:
         dest_tile = address // _SEQ_MEM_SIZE if _SEQ_MEM_SIZE else -1
     elif 0 <= address < _TCDM_SIZE:
         region_code = 2
-        dest_tile = (address // 64) % _NUM_TILES if _NUM_TILES else -1
+        dest_tile = (address // _INTERLEAVE_STRIDE) % _NUM_TILES if _NUM_TILES else -1
     if dest_tile < 0:
         return _MEM_REGION_LABELS[region_code], -1, -1
     tiles_per_group = _NUM_TILES // _NUM_GROUPS if _NUM_GROUPS else _NUM_TILES

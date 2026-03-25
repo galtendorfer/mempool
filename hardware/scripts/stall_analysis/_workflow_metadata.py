@@ -9,12 +9,52 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CONFIG_DIR = REPO_ROOT / 'config'
-TOPOLOGY_KEYS = ('NUM_CORES', 'NUM_GROUPS', 'NUM_CORES_PER_TILE', 'SEQ_MEM_SIZE')
+TOPOLOGY_KEYS = (
+    'NUM_CORES',
+    'NUM_GROUPS',
+    'NUM_CORES_PER_TILE',
+    'SEQ_MEM_SIZE',
+    'BANKING_FACTOR',
+    'L1_BANK_SIZE',
+    'NUM_SUB_GROUPS_PER_GROUP',
+)
 KNOWN_TOPOLOGIES = {
-    'mempool': {'NUM_CORES': 256, 'NUM_GROUPS': 4, 'NUM_CORES_PER_TILE': 4, 'SEQ_MEM_SIZE': 512},
-    'terapool': {'NUM_CORES': 1024, 'NUM_GROUPS': 4, 'NUM_CORES_PER_TILE': 8, 'SEQ_MEM_SIZE': 512},
-    'minpool': {'NUM_CORES': 16, 'NUM_GROUPS': 4, 'NUM_CORES_PER_TILE': 4, 'SEQ_MEM_SIZE': 512},
-    'systolic': {'NUM_CORES': 256, 'NUM_GROUPS': 4, 'NUM_CORES_PER_TILE': 4, 'SEQ_MEM_SIZE': 1024},
+    'mempool': {
+        'NUM_CORES': 256,
+        'NUM_GROUPS': 4,
+        'NUM_CORES_PER_TILE': 4,
+        'SEQ_MEM_SIZE': 512,
+        'BANKING_FACTOR': 4,
+        'L1_BANK_SIZE': 1024,
+        'NUM_SUB_GROUPS_PER_GROUP': 1,
+    },
+    'terapool': {
+        'NUM_CORES': 1024,
+        'NUM_GROUPS': 4,
+        'NUM_CORES_PER_TILE': 8,
+        'SEQ_MEM_SIZE': 512,
+        'BANKING_FACTOR': 4,
+        'L1_BANK_SIZE': 1024,
+        'NUM_SUB_GROUPS_PER_GROUP': 4,
+    },
+    'minpool': {
+        'NUM_CORES': 16,
+        'NUM_GROUPS': 4,
+        'NUM_CORES_PER_TILE': 4,
+        'SEQ_MEM_SIZE': 512,
+        'BANKING_FACTOR': 4,
+        'L1_BANK_SIZE': 1024,
+        'NUM_SUB_GROUPS_PER_GROUP': 1,
+    },
+    'systolic': {
+        'NUM_CORES': 256,
+        'NUM_GROUPS': 4,
+        'NUM_CORES_PER_TILE': 4,
+        'SEQ_MEM_SIZE': 1024,
+        'BANKING_FACTOR': 4,
+        'L1_BANK_SIZE': 1024,
+        'NUM_SUB_GROUPS_PER_GROUP': 1,
+    },
 }
 
 
@@ -73,6 +113,9 @@ def load_config_topology(config_name: str) -> dict | None:
         'NUM_GROUPS': int(merged['num_groups']),
         'NUM_CORES_PER_TILE': int(merged['num_cores_per_tile']),
         'SEQ_MEM_SIZE': int(merged['seq_mem_size']),
+        'BANKING_FACTOR': int(merged['banking_factor']),
+        'L1_BANK_SIZE': int(merged['l1_bank_size']),
+        'NUM_SUB_GROUPS_PER_GROUP': int(merged['num_sub_groups_per_group']),
         'source': f'config/{config_name}.mk',
     }
 
@@ -150,7 +193,10 @@ def format_topology(metadata: dict) -> str:
         f'{config_part}cores={metadata["NUM_CORES"]}, '
         f'groups={metadata["NUM_GROUPS"]}, '
         f'cores/tile={metadata["NUM_CORES_PER_TILE"]}, '
-        f'seq_mem_size={metadata["SEQ_MEM_SIZE"]}'
+        f'seq_mem_size={metadata["SEQ_MEM_SIZE"]}, '
+        f'banking_factor={metadata["BANKING_FACTOR"]}, '
+        f'l1_bank_size={metadata["L1_BANK_SIZE"]}, '
+        f'subgroups/group={metadata["NUM_SUB_GROUPS_PER_GROUP"]}'
     )
 
 

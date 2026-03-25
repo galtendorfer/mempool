@@ -448,6 +448,9 @@ trace_env += NUM_CORES=$(num_cores)
 trace_env += NUM_GROUPS=$(num_groups)
 trace_env += NUM_CORES_PER_TILE=$(num_cores_per_tile)
 trace_env += SEQ_MEM_SIZE=$(seq_mem_size)
+trace_env += BANKING_FACTOR=$(banking_factor)
+trace_env += L1_BANK_SIZE=$(l1_bank_size)
+trace_env += NUM_SUB_GROUPS_PER_GROUP=$(num_sub_groups_per_group)
 trace_timeline_section_args = $(if $(timeline_section),--section $(timeline_section),)
 trace_timeline_benchmark_args = $(if $(timeline_benchmark_only),--benchmark-only,)
 trace_timeline_delta_args = $(if $(timeline_delta),--delta,)
@@ -500,8 +503,8 @@ log:
 			"$(app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)"; \
 		env; \
 	} > "$(result_dir)/env"
-	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\n' \
-		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" > "$(result_dir)/topology.env"
+	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\n' \
+		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" > "$(result_dir)/topology.env"
 	cp $(MEMPOOL_DIR)/config/config.mk $(result_dir)/config
 	git rev-parse HEAD > "$(result_dir)/git-info.diff"
 	git show --oneline -s >> "$(result_dir)/git-info.diff"
