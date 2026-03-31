@@ -48,7 +48,7 @@ python          ?= python3
 buildpath       ?= build
 # Result path
 resultpath      ?= results
-result_dir      := $(if $(result_dir),$(result_dir),$(resultpath)/$(shell date +"%Y%m%d_%H%M%S_$(app)_$$(git rev-parse --short HEAD)"))
+result_dir      := $(if $(strip $(result_dir)),$(result_dir),$(resultpath)/$(shell date +"%Y%m%d_%H%M%S_$(app)_$$(git rev-parse --short HEAD)"))
 # Traces
 snitch_trace    ?= 1
 trace           := $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
@@ -294,8 +294,16 @@ VERILATOR_FLAGS += $(VERILATOR_WAIVE)
 # At IIS, check .gitlab/.gitlab-ci.yml for an example CLANG_PATH.
 
 ifneq (${CLANG_PATH},)
+  VERILATOR_FLAGS += -CFLAGS "-Wno-unknown-warning-option"
   VERILATOR_FLAGS += -CFLAGS "-nostdinc++ -isystem $(CLANG_PATH)/include/c++/v1"
   VERILATOR_FLAGS += -LDFLAGS "-L $(CLANG_PATH)/lib -Wl,-rpath,$(CLANG_PATH)/lib -lc++ -nostdlib++"
+  # The injected `-nostdlib++` flag is clang-specific; ensure we build/link the
+  # generated model with clang++ when CLANG_PATH is used.
+  CLANG_CC  := $(CLANG_PATH)/bin/clang
+  CLANG_CXX := $(CLANG_PATH)/bin/clang++
+else
+	CLANG_CC  ?= clang
+	CLANG_CXX ?= clang++
 endif
 
 $(VERILATOR_MK): $(VERILATOR_CONF) $(VERILATOR_WAIVE) $(MEMPOOL_DIR)/Bender.yml $(shell find {src,tb,deps} -type f) $(bender) $(config_mk) Makefile
@@ -317,7 +325,7 @@ $(VERILATOR_MK): $(VERILATOR_CONF) $(VERILATOR_WAIVE) $(MEMPOOL_DIR)/Bender.yml 
 	$(verilator) $(VERILATOR_FLAGS) --top-module $(verilator_top)
 
 $(VERILATOR_EXE): $(VERILATOR_MK) $(shell find $(VERILATOR_SRC) -type f) Makefile
-	make -j4 -C $(verilator_build) -f $<
+	$(MAKE) -j4 -C $(verilator_build) -f $< CC="$(CLANG_CC)" CXX="$(CLANG_CXX)" LINK="$(CLANG_CXX)"
 
 verilate: $(VERILATOR_EXE) $(buildpath) Makefile
 	cd $(buildpath) && $(VERILATOR_EXE) $(verilator_args) | tee transcript
