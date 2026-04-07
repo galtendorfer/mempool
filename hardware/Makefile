@@ -286,6 +286,11 @@ VERILATOR_FLAGS += --Mdir $(verilator_build)
 VERILATOR_FLAGS += -f $(verilator_files)
 VERILATOR_FLAGS += -f $(VERILATOR_CONF)
 VERILATOR_FLAGS += $(VERILATOR_WAIVE)
+# Disable noisy Verilator lints
+VERILATOR_FLAGS += -Wno-DECLFILENAME
+VERILATOR_FLAGS += -Wno-PINCONNECTEMPTY
+VERILATOR_FLAGS += -Wno-IMPORTSTAR
+VERILATOR_FLAGS += -Wno-EOFNEWLINE
 # VERILATOR_FLAGS += --trace --trace-fst --trace-structs --trace-params --trace-max-array 1024
 # VERILATOR_FLAGS += --debug
 
@@ -294,16 +299,16 @@ VERILATOR_FLAGS += $(VERILATOR_WAIVE)
 # At IIS, check .gitlab/.gitlab-ci.yml for an example CLANG_PATH.
 
 ifneq (${CLANG_PATH},)
-  VERILATOR_FLAGS += -CFLAGS "-Wno-unknown-warning-option"
   VERILATOR_FLAGS += -CFLAGS "-nostdinc++ -isystem $(CLANG_PATH)/include/c++/v1"
   VERILATOR_FLAGS += -LDFLAGS "-L $(CLANG_PATH)/lib -Wl,-rpath,$(CLANG_PATH)/lib -lc++ -nostdlib++"
+  VERILATOR_FLAGS += -CFLAGS "-Wno-unknown-warning-option"
   # The injected `-nostdlib++` flag is clang-specific; ensure we build/link the
   # generated model with clang++ when CLANG_PATH is used.
   CLANG_CC  := $(CLANG_PATH)/bin/clang
   CLANG_CXX := $(CLANG_PATH)/bin/clang++
 else
-	CLANG_CC  ?= clang
-	CLANG_CXX ?= clang++
+  CLANG_CC  ?= clang
+  CLANG_CXX ?= clang++
 endif
 
 $(VERILATOR_MK): $(VERILATOR_CONF) $(VERILATOR_WAIVE) $(MEMPOOL_DIR)/Bender.yml $(shell find {src,tb,deps} -type f) $(bender) $(config_mk) Makefile
