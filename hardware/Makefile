@@ -24,7 +24,7 @@
 #      from saved traces without re-running simulation.
 #
 # The `benchmark` target runs the full Stage 1 pipeline:
-#   log → simcvcs → trace → stall_timeseries
+#   log → simcvcs → trace → comm_events_real → stall_timeseries
 #
 # Required variables (no defaults — must be set explicitly):
 #   app=<name>        Application name, e.g. app=matmul_i32
@@ -64,8 +64,10 @@
 #
 # The pipeline produces:
 #   result_dir/
+#     real_traces/     canonical analysis trace_hart_* files (1 per core)
 #     traces/          trace_hart_*.trace (1 per core)
-#     data/            results.csv, stall_timeseries_benchmark.csv
+#     data/            results.csv, comm_events_benchmark.csv,
+#                      stall_timeseries_benchmark.csv
 #     avg.txt          Average performance stats
 #     transcript       Simulation log
 #     config, env      Build-time snapshots
@@ -325,9 +327,25 @@ $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 # VCS          #
 ################
 
+# Config stamp — forces VCS rebuild when config= changes on the command line.
+# The stamp captures the effective config fingerprint (config name + num_cores +
+# num_groups).  If the stamp file is missing or its content differs from the
+# current invocation, we delete the stale VCS artefacts so Make sees them as
+# out-of-date and re-elaborates / recompiles.
+vcs_config_stamp      := $(buildpath)/.vcs_config_stamp
+vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group)
+
+$(vcs_config_stamp): FORCE | $(buildpath)
+	@if [ ! -f "$@" ] || [ "$$(cat $@)" != "$(vcs_config_fingerprint)" ]; then \
+		echo "[VCS] Config changed → $(vcs_config_fingerprint)  (was: $$(cat $@ 2>/dev/null || echo '<none>'))"; \
+		rm -f $(buildpath)/compilevcs.sh $(buildpath)/mempool_simv $(buildpath)/mempool_simvopt; \
+		echo "$(vcs_config_fingerprint)" > $@; \
+	fi
+FORCE:
+
 # Elaboration
 .PHONY: elabvcs
-elabvcs: dpivcs $(buildpath) $(buildpath)/compilevcs.sh update-opcodes
+elabvcs: dpivcs $(buildpath) $(vcs_config_stamp) $(buildpath)/compilevcs.sh update-opcodes
 $(buildpath)/compilevcs.sh: $(bender) $(config_mk) Makefile $(MEMPOOL_DIR)/Bender.yml $(shell find {src,tb,deps} -type f)
 	$(bender) script vcs --vlogan-bin="$(vcs_cmd) vlogan" --vlog-arg="$(vlogan_args)" $(vlog_defs) -t rtl -t mempool_vsim > $(buildpath)/compilevcs.sh
 	echo "exit" >> $(buildpath)/compilevcs.sh
@@ -350,11 +368,16 @@ $(buildpath)/mempool_simvopt: $(buildpath)/compilevcs.sh $(buildpath)/$(dpi_libr
 	$(vcs_cmd) vcs -full64 $(top_level) -cc $(CC) -cpp $(CXX) -ld $(CXX) $(dpi_library)/mempool_vcs_dpi.so -assert disable_cover -o mempool_simvopt
 
 # Simulation
-simvcs: compile_vcs_simv
+simvcs: clean-dasm compile_vcs_simv
 	cd $(buildpath) && \
 	./mempool_simv $(vcs_args) -ucli -do ../scripts/vcs/run.tcl -gui
 
-simcvcs: compile_vcs_simvopt
+simcvcs: clean-dasm compile_vcs_simvopt
+	@if [ -f "$(vcs_config_stamp)" ] && [ "$$(cat $(vcs_config_stamp))" != "$(vcs_config_fingerprint)" ]; then \
+		echo "ERROR: VCS binary was built for '$$(cat $(vcs_config_stamp))' but you requested '$(vcs_config_fingerprint)'" >&2; \
+		echo "       Run 'make compile_vcs_simvopt config=$(config)' first, or delete build/mempool_simvopt." >&2; \
+		exit 1; \
+	fi
 	cd $(buildpath) && \
 	./mempool_simvopt $(vcs_args)
 
@@ -458,6 +481,7 @@ plot_overview ?= 1
 plot_window ?= 64
 plot_section ?= 1
 plot_comm ?= 1
+plot_jobs ?= 1
 parallel_kernels ?=
 parallel_jobs ?= $(words $(parallel_kernels))
 plot_section_args = $(if $(plot_section),--section $(plot_section),)
@@ -467,11 +491,11 @@ plot_tiles_args = $(if $(strip $(plot_tiles)),--tiles $(plot_tiles),)
 plot_topology_args = $(if $(strip $(plot_topology)),--topology $(plot_topology),)
 rerun_force_args = $(if $(filter 1,$(force)),--force,)
 
-.PHONY: build_app benchmark plots plots_parallel plots_comm rerun_stall_timeseries save_transcript
+.PHONY: build_app benchmark plots plots_parallel plots_comm rerun_stall_timeseries save_transcript comm_events_real
 
 build_app:
 ifdef app
-	$(MAKE) -C $(MEMPOOL_DIR)/software/apps/baremetal $(app)
+	$(MAKE) -C $(MEMPOOL_DIR)/software/apps/baremetal python="$(python)" $(app)
 endif
 
 benchmark: build_app
@@ -481,7 +505,7 @@ benchmark: build_app
 		echo "       Set force=1 to overwrite." >&2; \
 		exit 1; \
 	fi
-	$(MAKE) log
+	result_dir="$(result_dir)" $(MAKE) log
 	@sim_status=0; \
 	$(MAKE) simcvcs || sim_status=$$?; \
 	result_dir="$(result_dir)" $(MAKE) save_transcript; \
@@ -490,6 +514,7 @@ benchmark: build_app
 	fi
 	# Call `make` again to get variable extension with all traces
 	result_dir=$(result_dir) $(MAKE) trace
+	result_dir=$(result_dir) $(MAKE) comm_events_real
 	result_dir=$(result_dir) $(MAKE) stall_timeseries
 
 log:
@@ -521,12 +546,20 @@ save_transcript:
 
 trace: pre_trace $(trace) post_trace
 
+# Ensure individual trace targets only start after pre_trace cleans the directory,
+# and post_trace only starts after all traces are done.
+$(trace): | pre_trace
+post_trace: $(trace)
+
 pre_trace:
 	rm -rf $(tracepath)
+	rm -f $(buildpath)/trace_hart_*.trace
 
 post_trace:
-	mkdir -p "$(result_dir)/traces" "$(result_dir)/data"
+	rm -rf "$(result_dir)/real_traces" "$(result_dir)/traces"
+	mkdir -p "$(result_dir)/real_traces" "$(result_dir)/traces" "$(result_dir)/data"
 	result_dir="$(result_dir)" $(MAKE) save_transcript
+	cp $(tracepath)/trace_hart_* "$(result_dir)/real_traces/"
 	cp $(traceresult) "$(result_dir)/data/"
 	[ -e "$(timeline_result)" ] && cp $(timeline_result) "$(result_dir)/data/" || true
 	cp $(trace) "$(result_dir)/traces/"
@@ -537,6 +570,13 @@ stall_timeseries:
 		--folder "$(result_dir)/traces" \
 		--csv "$(result_dir)/data/stall_timeseries_benchmark.csv" \
 		--benchmark-only -p --force
+
+comm_events_real:
+	$(trace_env) $(python_venv) $(ROOT_DIR)/scripts/stall_analysis/extract_comm_events_batch.py \
+		--folder "$(tracepath)" \
+		--csv "$(result_dir)/data/comm_events_benchmark.csv" \
+		--benchmark-only -p --force \
+		-j $(plot_jobs)
 
 # Public Stage 2 plotting entry point.
 # Usage:
@@ -556,19 +596,22 @@ plots:
 		--window $(plot_window) \
 		$(plot_tiles_args) \
 		$(plot_topology_args) \
-		$(plot_force_args)
+		$(plot_force_args) \
+		-j $(plot_jobs)
 	@if [ "$(plot_comm)" = "1" ]; then \
-		if [ ! -d "$(result_dir)/traces" ]; then \
-			echo "INFO: skipping communication analysis; traces missing: $(result_dir)/traces" >&2; \
+		if [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ]; then \
+			$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/extract_comm_events.py \
+				"$(result_dir)" \
+				-p \
+				-j $(plot_jobs); \
 		else \
-			if [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ] || [ "$(force)" = "1" ]; then \
-				$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/extract_comm_events.py \
-					"$(result_dir)" \
-					-p \
-					$(plot_force_args); \
-			else \
-				echo "INFO: keeping existing communication CSV: $(result_dir)/data/comm_events_benchmark.csv"; \
+			echo "INFO: keeping existing communication CSV: $(result_dir)/data/comm_events_benchmark.csv"; \
+			if [ "$(force)" = "1" ]; then \
+				echo "INFO: force=1 affects plot outputs only; it does not rebuild communication CSVs."; \
+				echo "INFO: To rebuild from archived real traces in real_traces/, run extract_comm_events.py explicitly."; \
 			fi; \
+		fi; \
+			set -e; \
 			$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/summarize_comm_events.py \
 				"$(result_dir)"; \
 			$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/summarize_comm_timeseries.py \
@@ -579,7 +622,6 @@ plots:
 				plot_section="$(plot_section)" \
 				python_venv="$(python_venv)" \
 				plots_comm; \
-		fi; \
 	fi
 
 # Public Stage 2 parallel plotting entry point.
