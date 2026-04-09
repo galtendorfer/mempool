@@ -482,6 +482,16 @@ void mat_mul_unrolled_4x4_parallel(int32_t const *__restrict__ A,
   }
 }
 
+// Default benchmark normalization:
+// - MemPool  -> 4 tile cores, 256-bank group domain
+// - TeraPool -> 8 tile cores, 256-bank subgroup domain
+#ifdef TERAPOOL
+#define MATMUL_4X4_CONFLICT_TILE_CORE_COUNT 8u
+#else
+#define MATMUL_4X4_CONFLICT_TILE_CORE_COUNT 4u
+#endif
+#define MATMUL_4X4_CONFLICT_BANK_COUNT 256u
+
 void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
                                                 int32_t const *__restrict__ B,
                                                 int32_t *__restrict__ C,
@@ -501,12 +511,8 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
   uint32_t const c_start = (P / c) * (id % c);
   uint32_t const c_end = (P / c) * ((id % c) + 1);
 
-  // For avoiding group conflict by same tile
-  // Each cores in the same tile should access to different groups
-  uint32_t group_bank_nums = 512;              // MemPool = 256
-  uint32_t tile_core_nums = 8;                 // MemPool = 4
-  uint32_t jump_lines_A = group_bank_nums / N; // Used for i control
-  uint32_t jump_lines_B = group_bank_nums / P; // Used for k control
+  uint32_t jump_lines_A = MATMUL_4X4_CONFLICT_BANK_COUNT / N; // Used for i control
+  uint32_t jump_lines_B = MATMUL_4X4_CONFLICT_BANK_COUNT / P; // Used for k control
   // Window size limit, min jump lines is 4 for MatrixA
   if (jump_lines_A < 4) {
     jump_lines_A = 4;
@@ -516,14 +522,16 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
   //      LOOP   OFFSET      //
   /////////////////////////////
   // Outer Loop Control, for group access port conflict
-  uint32_t i_offset = jump_lines_A * (id % tile_core_nums);
+  uint32_t i_offset = jump_lines_A * (id % MATMUL_4X4_CONFLICT_TILE_CORE_COUNT);
   // Inner Loop Incremental Control, for group access port conflict
-  uint32_t k_offset_incr = jump_lines_B * (id % tile_core_nums);
+  uint32_t k_offset_incr = jump_lines_B * (id % MATMUL_4X4_CONFLICT_TILE_CORE_COUNT);
   // Inner Loop Control
   // k_offset = (Core offset) + (Window offset) + (Group offset from MatrixB)
   uint32_t k_offset = (id % c) + (2 * (id / c)) + k_offset_incr;
   // Middle Loop Control, window jump for avoiding bank conflict
-  uint32_t conflict_row = (group_bank_nums * tile_core_nums) / P;
+  uint32_t conflict_row =
+      (MATMUL_4X4_CONFLICT_BANK_COUNT * MATMUL_4X4_CONFLICT_TILE_CORE_COUNT) /
+      P;
   uint32_t j_offset = (2 * (id / c)) / conflict_row;
 
   /////////////////////////////
@@ -806,12 +814,8 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
   uint32_t const c_start = (P / c) * (id % c);
   uint32_t const c_end = (P / c) * ((id % c) + 1);
 
-  // For avoiding group conflict by same tile
-  // Each cores in the same tile should access to different groups
-  uint32_t group_bank_nums = 512;              // MemPool = 256
-  uint32_t tile_core_nums = 8;                 // MemPool = 4
-  uint32_t jump_lines_A = group_bank_nums / N; // Used for i control
-  uint32_t jump_lines_B = group_bank_nums / P; // Used for k control
+  uint32_t jump_lines_A = MATMUL_4X4_CONFLICT_BANK_COUNT / N; // Used for i control
+  uint32_t jump_lines_B = MATMUL_4X4_CONFLICT_BANK_COUNT / P; // Used for k control
   // Window size limit, min jump lines is 4 for MatrixA
   if (jump_lines_A < 4) {
     jump_lines_A = 4;
@@ -821,14 +825,16 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
   //      LOOP   OFFSET      //
   /////////////////////////////
   // Outer Loop Control, for group access port conflict
-  uint32_t i_offset = jump_lines_A * (id % tile_core_nums);
+  uint32_t i_offset = jump_lines_A * (id % MATMUL_4X4_CONFLICT_TILE_CORE_COUNT);
   // Inner Loop Incremental Control, for group access port conflict
-  uint32_t k_offset_incr = jump_lines_B * (id % tile_core_nums);
+  uint32_t k_offset_incr = jump_lines_B * (id % MATMUL_4X4_CONFLICT_TILE_CORE_COUNT);
   // Inner Loop Control
   // k_offset = (Core offset) + (Window offset) + (Group offset from MatrixB)
   uint32_t k_offset = (id % c) + (2 * (id / c)) + k_offset_incr;
   // Middle Loop Control, window jump for avoiding bank conflict
-  uint32_t conflict_row = (group_bank_nums * tile_core_nums) / P;
+  uint32_t conflict_row =
+      (MATMUL_4X4_CONFLICT_BANK_COUNT * MATMUL_4X4_CONFLICT_TILE_CORE_COUNT) /
+      P;
   uint32_t j_offset = (2 * (id / c)) / conflict_row;
 
   /////////////////////////////
