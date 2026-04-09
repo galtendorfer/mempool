@@ -147,6 +147,9 @@ if __name__ == '__main__':
         description='Generate data.h header files.')
     parser.add_argument('--app_name', type=str, help='Name of the app')
     parser.add_argument('--params', type=str, help='Name of the app')
+    parser.add_argument('--define', action='append', default=[],
+                        metavar='KEY=VALUE',
+                        help='Override a define value, e.g. --define matrix_M=64')
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -160,6 +163,12 @@ if __name__ == '__main__':
         defnes = dict([ast.literal_eval(defne)
                       for defne in data_args.get("defines")])
         arrays = [ast.literal_eval(array) for array in data_args.get("arrays")]
+        # Apply CLI overrides, but only for keys already in the hjson config
+        # (so matmul overrides are silently ignored for non-matmul apps).
+        for ovr in args.define:
+            key, val = ovr.split('=', 1)
+            if key in defnes:
+                defnes[key] = int(val)
 
     # Determine output file name
     filename = os.path.dirname(os.path.abspath(__file__))

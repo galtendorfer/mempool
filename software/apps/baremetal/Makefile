@@ -17,6 +17,13 @@ RUNTIME_DIR := $(abspath $(SOFTWARE_DIR)/runtime)
 include $(RUNTIME_DIR)/runtime.mk
 
 ifneq ($(filter matmul_i32,$(MAKECMDGOALS)),)
+        # Matrix dimensions: override with matmul_M=, matmul_N=, matmul_P= on the command line.
+        # Default: auto-size so every core gets a tile: M=P=4·√(num_cores), N=32.
+        _matmul_dim := $(shell python3 -c "import math; print(int(4*math.sqrt($(num_cores))))")
+        matmul_M ?= $(_matmul_dim)
+        matmul_N ?= 32
+        matmul_P ?= $(_matmul_dim)
+        GENDATA_OVERRIDES += --define matrix_M=$(matmul_M) --define matrix_N=$(matmul_N) --define matrix_P=$(matmul_P)
 	ifeq ($(kernel),2x2_xpulpv2)
 		DEFINES += -DMATMUL_I32_KERNEL_2X2_XPULPV2
 		ifneq ($(XPULPIMG),1)

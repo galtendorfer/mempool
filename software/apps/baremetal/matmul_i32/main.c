@@ -18,12 +18,12 @@
 #include "baremetal/mempool_checks.h"
 #include "baremetal/mempool_matmul_i32p.h"
 
-#if (defined(MATMUL_I32_KERNEL_2X2_XPULPV2) +                                  \
-  defined(MATMUL_I32_KERNEL_2X2_RV32IM) +                                   \
-  defined(MATMUL_I32_KERNEL_4X4) +                                           \
-  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) +                              \
-  defined(MATMUL_I32_KERNEL_4X4_ASM) +                                       \
-  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)) > 1
+#if (defined(MATMUL_I32_KERNEL_2X2_XPULPV2) + \
+     defined(MATMUL_I32_KERNEL_2X2_RV32IM) + \
+     defined(MATMUL_I32_KERNEL_4X4) + \
+     defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) + \
+     defined(MATMUL_I32_KERNEL_4X4_ASM) + \
+     defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)) > 1
 #error "Select exactly one MATMUL_I32 kernel."
 #endif
 
@@ -31,9 +31,29 @@ int32_t l1_A[matrix_M * matrix_N] __attribute__((section(".l1_prio")));
 int32_t l1_B[matrix_N * matrix_P] __attribute__((section(".l1_prio")));
 int32_t l1_C[matrix_M * matrix_P] __attribute__((section(".l1_prio")));
 
+static uint32_t active_matmul_cores(uint32_t available_cores) {
+  uint32_t active_cores = available_cores;
+
+#if defined(MATMUL_I32_KERNEL_4X4) || \
+    defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) || \
+    defined(MATMUL_I32_KERNEL_4X4_ASM) || \
+    defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
+  uint32_t max_tiles = (matrix_M / 4) * (matrix_P / 4);
+#else
+  uint32_t max_tiles = (matrix_M / 2) * (matrix_P / 2);
+#endif
+
+  if (max_tiles > 0 && active_cores > max_tiles) {
+    active_cores = max_tiles;
+  }
+
+  return active_cores;
+}
+
 int main() {
   uint32_t core_id = mempool_get_core_id();
   uint32_t num_cores = mempool_get_core_count();
+  uint32_t kernel_cores = active_matmul_cores(num_cores);
   mempool_barrier_init(core_id);
 
   // Initialize data
@@ -45,40 +65,63 @@ int main() {
 
   // Benchmark
   mempool_start_benchmark();
+
 #if defined(MATMUL_I32_KERNEL_2X2_XPULPV2)
-#ifndef __XPULPIMG
-#error "MATMUL_I32_KERNEL_2X2_XPULPV2 requires __XPULPIMG."
-#endif
-  matmul_unrolled_2x2_parallel_i32_xpulpv2(l1_A, l1_B, l1_C, matrix_M, matrix_N,
-                                           matrix_P, core_id, num_cores);
-#elif defined(MATMUL_I32_KERNEL_2X2_RV32IM)
-  matmul_unrolled_2x2_parallel_i32_rv32im(l1_A, l1_B, l1_C, matrix_M, matrix_N,
-                                          matrix_P, core_id, num_cores);
-#elif defined(MATMUL_I32_KERNEL_4X4)
-  mat_mul_unrolled_4x4_parallel(l1_A, l1_B, l1_C, matrix_M, matrix_N, matrix_P,
-                                core_id, num_cores);
-#elif defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT)
-  mat_mul_unrolled_4x4_conflict_opt_parallel(l1_A, l1_B, l1_C, matrix_M,
+  #ifndef __XPULPIMG
+  #error "MATMUL_I32_KERNEL_2X2_XPULPV2 requires __XPULPIMG."
+  #endif
+  if (core_id < kernel_cores) {
+    matmul_unrolled_2x2_parallel_i32_xpulpv2(l1_A, l1_B, l1_C, matrix_M,
                                              matrix_N, matrix_P, core_id,
-                                             num_cores);
+                                             kernel_cores);
+  }
+#elif defined(MATMUL_I32_KERNEL_2X2_RV32IM)
+  if (core_id < kernel_cores) {
+    matmul_unrolled_2x2_parallel_i32_rv32im(l1_A, l1_B, l1_C, matrix_M,
+                                            matrix_N, matrix_P, core_id,
+                                            kernel_cores);
+  }
+#elif defined(MATMUL_I32_KERNEL_4X4)
+  if (core_id < kernel_cores) {
+    mat_mul_unrolled_4x4_parallel(l1_A, l1_B, l1_C, matrix_M, matrix_N,
+                                  matrix_P, core_id, kernel_cores);
+  }
+#elif defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT)
+  if (core_id < kernel_cores) {
+    mat_mul_unrolled_4x4_conflict_opt_parallel(l1_A, l1_B, l1_C, matrix_M,
+                                               matrix_N, matrix_P, core_id,
+                                               kernel_cores);
+  }
 #elif defined(MATMUL_I32_KERNEL_4X4_ASM)
-  mat_mul_unrolled_4x4_parallel_asm(l1_A, l1_B, l1_C, matrix_M, matrix_N,
-                                    matrix_P, core_id, num_cores);
+  if (core_id < kernel_cores) {
+    mat_mul_unrolled_4x4_parallel_asm(l1_A, l1_B, l1_C, matrix_M, matrix_N,
+                                      matrix_P, core_id, kernel_cores);
+  }
 #elif defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
-  mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
-      l1_A, l1_B, l1_C, matrix_M, matrix_N, matrix_P, core_id, num_cores);
+  if (core_id < kernel_cores) {
+    mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
+        l1_A, l1_B, l1_C, matrix_M, matrix_N, matrix_P, core_id,
+        kernel_cores);
+  }
 #else
   // Preserve the historical default when no explicit kernel is requested.
-#ifdef __XPULPIMG
-  matmul_unrolled_2x2_parallel_i32_xpulpv2(l1_A, l1_B, l1_C, matrix_M, matrix_N,
-                                           matrix_P, core_id, num_cores);
-#else
-  matmul_unrolled_2x2_parallel_i32_rv32im(l1_A, l1_B, l1_C, matrix_M, matrix_N,
-                                          matrix_P, core_id, num_cores);
+  #ifdef __XPULPIMG
+  if (core_id < kernel_cores) {
+    matmul_unrolled_2x2_parallel_i32_xpulpv2(l1_A, l1_B, l1_C, matrix_M,
+                                             matrix_N, matrix_P, core_id,
+                                             kernel_cores);
+  }
+  #else
+  if (core_id < kernel_cores) {
+    matmul_unrolled_2x2_parallel_i32_rv32im(l1_A, l1_B, l1_C, matrix_M,
+                                            matrix_N, matrix_P, core_id,
+                                            kernel_cores);
+  }
+  #endif
 #endif
-#endif
+  
   mempool_stop_benchmark();
-  mempool_barrier(num_cores);
+  mempool_log_barrier(2, core_id);
 
   // Verify results
   mempool_check_i32(l1_C, l2_C, matrix_M * matrix_P, 0, 0);
