@@ -47,6 +47,7 @@ Examples:
 
 import argparse
 import csv
+import multiprocessing
 import sys
 from pathlib import Path
 
@@ -146,9 +147,28 @@ def parse_args(argv=None):
                    help="Sliding-window width for timeseries (default: 64)")
     p.add_argument("--force", action="store_true",
                    help="Overwrite existing plot files (default: skip)")
+    p.add_argument("--jobs", "-j", type=int, default=1,
+                   help="Number of parallel tile-plot workers (default: 1)")
     p.add_argument("--dry-run", action="store_true",
                    help="Print what would be done without executing")
     return p.parse_args(argv)
+
+
+def _tile_worker(item):
+    """Worker for parallel tile plotting (must be at module level for pickling)."""
+    import sys
+    from pathlib import Path
+    script_dir = Path(__file__).resolve().parent
+    if str(script_dir) not in sys.path:
+        sys.path.insert(0, str(script_dir))
+    import _plot_specific_tile
+
+    tid, out_dir, tile_argv, dg = item
+    try:
+        _plot_specific_tile.main(tile_argv)
+        return (tid, None)
+    except Exception as e:
+        return (tid, str(e))
 
 
 def main(argv=None):
@@ -240,34 +260,53 @@ def main(argv=None):
     digits = TOPOLOGIES[topology]["tile_digits"]
     failed = []
     skipped = 0
-    for i, tid in enumerate(tile_ids, 1):
+
+    # Build work items
+    work_items = []
+    for tid in tile_ids:
         out_dir = tile_output_dir(plots_dir, topology, tid)
-        # _plot_specific_tile writes "tile_detail_tile{tid}.png" (no zero-padding)
         tile_png = out_dir / f"tile_detail_tile{tid}.png"
-
-        label = f"[{i}/{len(tile_ids)}] tile {tid:0{digits}d} → {out_dir.relative_to(plots_dir)}"
-
         if tile_png.exists() and not args.force:
             skipped += 1
             continue
-
         tile_argv = [str(csv_path), str(tid)] + section_args + traces_args + window_args + [
             "--output-dir", str(out_dir),
-            "--prefix", f"tile_detail",
+            "--prefix", "tile_detail",
         ]
+        work_items.append((tid, out_dir, tile_argv, digits))
 
-        if args.dry_run:
+    if args.dry_run:
+        for tid, out_dir, _, dg in work_items:
+            label = f"tile {tid:0{dg}d} → {out_dir.relative_to(plots_dir)}"
             print(f"[dry-run] {label}")
-            continue
+    elif work_items:
+        n_jobs = min(args.jobs, len(work_items))
+        # Ensure output dirs exist
+        for _, out_dir, _, _ in work_items:
+            out_dir.mkdir(parents=True, exist_ok=True)
 
-        print(label, end=" ... ", flush=True)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        try:
-            _plot_specific_tile.main(tile_argv)
-            print("ok")
-        except Exception as e:
-            print(f"FAILED: {e}")
-            failed.append((tid, str(e)))
+        if n_jobs <= 1:
+            # Sequential (original behaviour)
+            for i, (tid, out_dir, tile_argv, dg) in enumerate(work_items, 1):
+                label = f"[{i}/{len(work_items)}] tile {tid:0{dg}d} → {out_dir.relative_to(plots_dir)}"
+                print(label, end=" ... ", flush=True)
+                try:
+                    _plot_specific_tile.main(tile_argv)
+                    print("ok")
+                except Exception as e:
+                    print(f"FAILED: {e}")
+                    failed.append((tid, str(e)))
+        else:
+            print(f"Generating {len(work_items)} tile plots with {n_jobs} parallel workers ...")
+            # Use spawn context to avoid fork-safety issues with matplotlib
+            ctx = multiprocessing.get_context("spawn")
+
+            with ctx.Pool(n_jobs) as pool:
+                results = pool.map(_tile_worker, work_items)
+            for tid, err in results:
+                if err is not None:
+                    failed.append((tid, err))
+            print(f"  {len(work_items) - len(failed)} ok, {len(failed)} failed")
 
     # ── Summary ───────────────────────────────────────────────────────
     if not args.dry_run:

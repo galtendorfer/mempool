@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Generate a combined communication-event CSV from all trace files in a folder.
 
-Reads every trace_hart_*.trace in --folder, calls _extract_comm_events.py on
-each one, and appends the rows into a single --csv output file.
+Reads every supported trace_hart_* file in --folder, calls
+_extract_comm_events.py on each one, and appends the rows into a single
+--csv output file.
 
 Normal users can also use `extract_comm_events.py` when they already have a
 benchmark result directory and want the safest interface.
@@ -14,6 +15,8 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from _workflow_metadata import (
@@ -25,6 +28,17 @@ from _workflow_metadata import (
     load_result_dir_topology,
     validate_topology_consistency,
 )
+
+
+def _find_trace_files(folder: Path) -> list[Path]:
+    trace_files = []
+    for path in sorted(folder.glob("trace_hart_*")):
+        if not path.is_file():
+            continue
+        if path.suffix == ".dasm":
+            continue
+        trace_files.append(path)
+    return trace_files
 
 
 def _resolve_topology(args, parser, folder, output_path):
@@ -67,7 +81,7 @@ def _resolve_topology(args, parser, folder, output_path):
         except ValueError as exc:
             parser.error(f"Environment disagrees with --topology: {exc}")
 
-    trace_files = sorted(folder.glob("trace_hart_*.trace"))
+    trace_files = _find_trace_files(folder)
     if trace_files and len(trace_files) != int(topology["NUM_CORES"]):
         print(
             f"Warning: found {len(trace_files)} traces, but topology expects {topology['NUM_CORES']} cores.",
@@ -79,13 +93,18 @@ def _resolve_topology(args, parser, folder, output_path):
 
 def _parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Extract combined communication events from all traces in a folder.")
-    parser.add_argument("--folder", required=True, help="Folder containing trace_hart_*.trace files")
+    parser.add_argument(
+        "--folder",
+        required=True,
+        help="Folder containing real trace_hart_* files (legacy reconstructed traces may still parse for one-off recovery)",
+    )
     parser.add_argument("--csv", required=True, help="Combined CSV output path")
     parser.add_argument("--section", type=int, action="append", help="Emit rows only for the specified section; may be repeated")
     parser.add_argument("--benchmark-only", action="store_true", help="Shortcut for --section 1 (the benchmark bracket)")
     parser.add_argument("-p", "--permissive", action="store_true", help="Ignore malformed non-trace lines when possible")
     parser.add_argument("--force", action="store_true", help="Overwrite existing CSV output (default: refuse)")
     parser.add_argument("--topology", help="Configuration/topology name (for example: mempool or terapool) when metadata is unavailable")
+    parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of parallel extraction workers (default: 1)")
     return parser.parse_args(argv)
 
 
@@ -98,7 +117,7 @@ def main(argv=None):
     output_path = Path(args.csv)
     topology, trace_files = _resolve_topology(args, argparse.ArgumentParser(prog="extract_comm_events_batch.py"), folder, output_path)
     if not trace_files:
-        raise SystemExit(f"No trace_hart_*.trace files found in {folder}")
+        raise SystemExit(f"No supported trace_hart_* files found in {folder}")
 
     if output_path.exists():
         if not args.force:
@@ -124,10 +143,63 @@ def main(argv=None):
     for section in args.section or []:
         cmd.extend(["--section", str(section)])
 
-    for index, trace_file in enumerate(trace_files, start=1):
-        subprocess.run(cmd + [str(trace_file)], check=True, env=child_env)
-        if index % 32 == 0 or index == len(trace_files):
-            print(f"Processed {index}/{len(trace_files)} traces", file=sys.stderr)
+    n_jobs = min(args.jobs, len(trace_files))
+
+    if n_jobs <= 1:
+        # Sequential (original behaviour)
+        for index, trace_file in enumerate(trace_files, start=1):
+            subprocess.run(
+                cmd + [str(trace_file)],
+                check=True,
+                env=child_env,
+                stdout=subprocess.DEVNULL,
+            )
+            if index % 32 == 0 or index == len(trace_files):
+                print(f"Processed {index}/{len(trace_files)} traces", file=sys.stderr)
+    else:
+        # Parallel: each worker writes to a temp CSV, then merge.
+        print(f"Extracting {len(trace_files)} traces with {n_jobs} workers ...", file=sys.stderr)
+        tmp_dir = tempfile.mkdtemp(prefix="comm_par_")
+
+        def _run_one(item):
+            idx, trace_file = item
+            tmp_csv = os.path.join(tmp_dir, f"part_{idx:04d}.csv")
+            subprocess.run(
+                [sys.executable, str(worker), "--csv", tmp_csv, str(trace_file)]
+                + (["--permissive"] if args.permissive else [])
+                + (["--benchmark-only"] if args.benchmark_only else [])
+                + [a for s in (args.section or []) for a in ("--section", str(s))],
+                check=True,
+                env=child_env,
+                stdout=subprocess.DEVNULL,
+            )
+            return tmp_csv
+
+        done = 0
+        tmp_csvs = []
+        with ThreadPoolExecutor(max_workers=n_jobs) as pool:
+            futures = {pool.submit(_run_one, (i, tf)): i for i, tf in enumerate(trace_files)}
+            for future in as_completed(futures):
+                future.result()  # raises on error
+                done += 1
+                if done % 64 == 0 or done == len(trace_files):
+                    print(f"Processed {done}/{len(trace_files)} traces", file=sys.stderr)
+
+        # Merge temp CSVs into final output (preserve header from first file only)
+        tmp_csvs = sorted(Path(tmp_dir).glob("part_*.csv"))
+        header_written = False
+        with open(output_path, "w", newline="") as out:
+            for tmp_csv in tmp_csvs:
+                with open(tmp_csv, "r") as inp:
+                    for line_no, line in enumerate(inp):
+                        if line_no == 0:
+                            if not header_written:
+                                out.write(line)
+                                header_written = True
+                        else:
+                            out.write(line)
+                tmp_csv.unlink()
+        Path(tmp_dir).rmdir()
 
     print(f"Wrote combined communication events to {output_path}")
     return 0

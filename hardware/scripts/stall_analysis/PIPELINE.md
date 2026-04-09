@@ -42,8 +42,14 @@ environment.
 
 What this gives you:
 
-- `make benchmark`: traces plus `data/results.csv` and `data/stall_timeseries_benchmark.csv`
+- `make benchmark`: raw `.dasm` provenance in `build/`, canonical analysis traces archived under `real_traces/`, reconstructed traces, plus `data/results.csv`, `data/comm_events_benchmark.csv`, and `data/stall_timeseries_benchmark.csv`
 - `make plots`: tile/overview plots, `data/comm_events_benchmark.csv`, `data/comm_summary/`, `data/comm_timeseries/`, and `plots/communication/`
+
+Trace layers used in this document:
+
+- raw trace: `build/*.dasm` from simulation
+- canonical analysis trace: `build/traces/trace_hart_*` after `spike-dasm`, later archived to `result_dir/real_traces/`
+- reconstructed trace: `result_dir/traces/trace_hart_*.trace` produced later by `gen_trace.py`
 
 ---
 
@@ -142,15 +148,22 @@ YOU RUN                          CALLED INTERNALLY                 OUTPUT
 │  │                                                                          │
 │  ├─► trace                                                                  │
 │  │     ├─► pre_trace       (cleans build/traces/)                          │
-│  │     ├─► *.dasm→*.trace  (per hart, in parallel by Make)                 │
-│  │     │     ├── spike-dasm            .dasm → build/traces/spike output   │
-│  │     │     ├── gen_trace.py          spike output → .trace + results.csv │
+│  │     ├─► *.dasm→trace artifacts  (per hart, in parallel by Make)         │
+│  │     │     ├── spike-dasm            .dasm → build/traces/trace_hart_*   │
+│  │     │     │                         (canonical analysis traces)          │
+│  │     │     ├── gen_trace.py          spike-dasm output → .trace +        │
+│  │     │     │                         results.csv                          │
 │  │     │     └── outdated_gen_timeseries_windowed.py                       │
 │  │     │                            (optional, if timeline_window set)     │
 │  │     └─► post_trace                                                      │
-│  │           ├── cp *.trace         → result_dir/traces/                   │
-│  │           ├── cp results.csv     → result_dir/data/                     │
-│  │           └── gen_avg.py         → result_dir/avg.txt                   │
+│  │           ├── cp trace_hart_*     → result_dir/real_traces/             │
+│  │           ├── cp *.trace          → result_dir/traces/                  │
+│  │           ├── cp results.csv      → result_dir/data/                    │
+│  │           └── gen_avg.py          → result_dir/avg.txt                  │
+│  │                                                                          │
+│  ├─► comm_events_real                                                       │
+│  │     └── extract_comm_events_batch.py                                     │
+│  │           build/traces/trace_hart_* → result_dir/data/comm_events_benchmark.csv │
 │  │                                                                          │
 │  └─► stall_timeseries                                                       │
 │        └── _gen_stall_timeseries_batch.py                                   │
@@ -159,8 +172,10 @@ YOU RUN                          CALLED INTERNALLY                 OUTPUT
 │                                                                             │
 │  Output:                                                                    │
 │    result_dir/                                                              │
-│      traces/    trace_hart_*.trace                                          │
-│      data/      results.csv, stall_timeseries_benchmark.csv                │
+│      real_traces/     trace_hart_*      (canonical analysis traces)         │
+│      traces/         trace_hart_*.trace (reconstructed traces)              │
+│      data/      results.csv, comm_events_benchmark.csv,                    │
+│                 stall_timeseries_benchmark.csv                             │
 │      avg.txt, transcript, config, env, topology.env, git-info.diff         │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -266,8 +281,9 @@ app=matmul_i32 config=mempool kernel=2x2_xpulpv2 variant=baseline make benchmark
 
 ```
 result_dir/
+  real_traces/  trace_hart_*        (canonical analysis traces, 1 per core: 256 for mempool, 1024 for terapool)
   traces/       trace_hart_*.trace  (1 per core: 256 for mempool, 1024 for terapool)
-  data/         results.csv, stall_timeseries_benchmark.csv
+  data/         results.csv, comm_events_benchmark.csv, stall_timeseries_benchmark.csv
   avg.txt       average performance stats per section
   transcript    simulation log
   config        snapshot of config.mk at build time
@@ -297,6 +313,14 @@ path, result directory layout, or standard benchmark flags.
 | `plot_tiles` | no | all | Optional tile list, e.g. `plot_tiles="0 1 2"` |
 | `plot_topology` | no | auto | Override topology detection if needed |
 | `force` | no | off | Overwrite existing PNGs |
+Important behavior:
+
+- `make benchmark` now archives the canonical analysis traces from `spike-dasm` into `real_traces/` and creates `data/comm_events_benchmark.csv` from them.
+- `make plots` keeps that CSV by default.
+- `force=1` does not rebuild the communication CSV by itself.
+- If `make plots` needs to build the CSV because it is missing, it uses those archived canonical analysis traces from `real_traces/`.
+- If archived canonical analysis traces are missing too, `make plots` fails instead of rebuilding from reconstructed traces.
+- To rebuild communication data explicitly, run `extract_comm_events.py`.
 
 ### 3. `plot_all_tiles.py` — Batch Plot Generation
 
@@ -371,20 +395,27 @@ python extract_comm_events.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/ba
 ```
 
 This derives:
-  - traces folder: `<result_dir>/traces`
+  - canonical analysis trace folder: `<result_dir>/real_traces`
   - default output: `<result_dir>/data/comm_events_benchmark.csv`
+
+Useful flags:
+  - `--force`: overwrite an existing communication CSV
 
 ### 8. `extract_comm_events_batch.py` — Direct Batch Extraction
 
 Run from `hardware/scripts/stall_analysis/` when you want to point directly at
-`traces/` instead of a full `result_dir`.
+real trace folders instead of a full `result_dir`.
 
 ```bash
 python extract_comm_events_batch.py \
-  --folder ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces \
+  --folder ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/real_traces \
   --csv ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/comm_events_benchmark.csv \
     --benchmark-only --force
 ```
+
+The normal `--folder` input is a canonical-analysis-trace folder containing
+`trace_hart_*` files from `spike-dasm`. Legacy reconstructed `trace_hart_*.trace` files may still parse for
+manual recovery, but they are decommissioned from the standard pipeline.
 
 ### 9. `summarize_comm_events.py` — First Summary Layer
 
@@ -447,7 +478,7 @@ It writes PNG files to `plots/communication/` and matching PDF files to `plots/c
   - `latency_tile_g{N}`: per-tile latency within a group (G0 and G1)
   - `latency_matrix`: full tile-pair latency heatmap (green→yellow→red)
   - `latency_contention`: traffic volume vs latency scatter
-  - `latency_excess_matrix`: latency heatmap normalized by ideal hierarchy minimum (local=1, same-group=3, remote=5)
+  - `latency_excess_matrix`: latency heatmap normalized by topology-aware ideal hierarchy minimum (MemPool: local=1, same-subgroup=3, same-group=3, remote=5; TeraPool: local=1, same-subgroup=3, same-group=5, remote=7)
 
 File names include `_sectionN` when `--section` is used, and a `_<kernel>_<variant>` suffix derived from the result directory path.
 
@@ -502,7 +533,7 @@ Upstream scripts called by the Makefile (not in this folder):
 
 | Script | Called by | What it does |
 |--------|-----------|-------------|
-| `gen_trace.py` | Makefile `%.trace` rule | Parses spike-dasm output → annotated `.trace` + `results.csv` |
+| `gen_trace.py` | Makefile `%.trace` rule | Parses spike-dasm output → reconstructed `.trace` + `results.csv` |
 | `outdated_gen_timeseries_windowed.py` | Makefile `%.trace` rule | Optional legacy window-based timeline CSV |
 | `gen_avg.py` | Makefile `post_trace` | Averages results.csv across all cores → `avg.txt` |
 
@@ -552,6 +583,8 @@ For terapool:
 | `make benchmark` | Refuses if `result_dir/traces/` has files | `force=1` |
 | `_gen_stall_timeseries_batch.py` | Refuses if output CSV exists; rejects missing or conflicting topology metadata | `--force`, `--topology`, or explicit env |
 | `extract_comm_events.py` / `extract_comm_events_batch.py` | Refuse if output CSV exists; reject missing or conflicting topology metadata | `--force`, `--topology`, or explicit env |
+| `make plots` | Keeps existing `comm_events_benchmark.csv` by default, even with `force=1` | Run `extract_comm_events.py` explicitly if you want to rebuild |
+| `extract_comm_events.py` | Requires archived canonical analysis traces in `real_traces/`; reconstructed traces are decommissioned | Preserve `real_traces/` if you want later rebuilds |
 | `plot_all_tiles.py` | Skips tile if PNG already exists | `--force` |
 
 ---
@@ -580,6 +613,10 @@ python plot_specific_core.py \
 # ── EXTRACT COMMUNICATION EVENTS ────────────────────────────
 python extract_comm_events.py \
   ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --force
+
+# ── REBUILD COMMUNICATION DATA EXPLICITLY ───────────────────
+python extract_comm_events.py \
+  ../../../results/matmul_i32_mempool/4x4/baseline --force
 
 # ── SUMMARIZE COMMUNICATION EVENTS ──────────────────────────
 python summarize_comm_events.py \

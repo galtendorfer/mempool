@@ -64,13 +64,16 @@ def _load_rows(csv_path: Path, *, sections: set[int] | None):
                 "cycle": _parse_int(row.get("cycle")),
                 "core": _parse_int(row.get("core")),
                 "group": _parse_int(row.get("group")),
+                "subgroup": _parse_int(row.get("subgroup")),
                 "tile": _parse_int(row.get("tile")),
                 "event_type": (row.get("event_type") or "").strip(),
                 "region": (row.get("region") or "").strip(),
                 "dest_tile": _parse_int(row.get("dest_tile")),
                 "dest_group": _parse_int(row.get("dest_group")),
+                "dest_subgroup": _parse_int(row.get("dest_subgroup")),
                 "is_local": _parse_int(row.get("is_local")),
                 "is_same_group": _parse_int(row.get("is_same_group")),
+                "is_same_subgroup": _parse_int(row.get("is_same_subgroup")),
                 "latency": _parse_float(row.get("latency")),
             })
     return rows, seen_sections
@@ -98,6 +101,7 @@ def _build_tile_rows(rows: list[dict], *, window: int):
 
     grouped = defaultdict(lambda: {
         "source_group": None,
+        "source_subgroup": None,
         "outgoing_events": 0,
         "outgoing_load_issue": 0,
         "outgoing_store_issue": 0,
@@ -107,6 +111,7 @@ def _build_tile_rows(rows: list[dict], *, window: int):
         "incoming_store_issue": 0,
         "incoming_load_returns": 0,
         "local_events": 0,
+        "same_subgroup_events": 0,
         "same_group_events": 0,
         "remote_group_events": 0,
         "unknown_dest_events": 0,
@@ -128,6 +133,7 @@ def _build_tile_rows(rows: list[dict], *, window: int):
         source_key = (row["section"], window_index, source_tile)
         source_bucket = grouped[source_key]
         source_bucket["source_group"] = row["group"]
+        source_bucket["source_subgroup"] = row["subgroup"]
         source_bucket["outgoing_events"] += 1
         event_type = row["event_type"]
         if event_type == "load_issue":
@@ -140,6 +146,10 @@ def _build_tile_rows(rows: list[dict], *, window: int):
         if row["is_local"] == 1:
             source_bucket["local_events"] += 1
             source_bucket["local_outgoing_events"] += 1
+        elif row["is_same_subgroup"] == 1:
+            source_bucket["same_subgroup_events"] += 1
+            source_bucket["same_group_events"] += 1
+            source_bucket["remote_outgoing_events"] += 1
         elif row["is_same_group"] == 1:
             source_bucket["same_group_events"] += 1
             source_bucket["remote_outgoing_events"] += 1
@@ -186,6 +196,7 @@ def _build_tile_rows(rows: list[dict], *, window: int):
             "window_size": window,
             "tile": tile,
             "group": "" if bucket["source_group"] is None else bucket["source_group"],
+            "subgroup": "" if bucket["source_subgroup"] is None else bucket["source_subgroup"],
             "outgoing_events": bucket["outgoing_events"],
             "outgoing_load_issue": bucket["outgoing_load_issue"],
             "outgoing_store_issue": bucket["outgoing_store_issue"],
@@ -195,6 +206,7 @@ def _build_tile_rows(rows: list[dict], *, window: int):
             "incoming_store_issue": bucket["incoming_store_issue"],
             "incoming_load_returns": bucket["incoming_load_returns"],
             "local_events": bucket["local_events"],
+            "same_subgroup_events": bucket["same_subgroup_events"],
             "same_group_events": bucket["same_group_events"],
             "remote_group_events": bucket["remote_group_events"],
             "unknown_dest_events": bucket["unknown_dest_events"],
@@ -225,7 +237,9 @@ def _build_tile_rows(rows: list[dict], *, window: int):
 def _build_edge_rows(rows: list[dict], *, window: int, min_cycle: int):
     grouped = defaultdict(lambda: {
         "source_group": None,
+        "source_subgroup": None,
         "dest_group": None,
+        "dest_subgroup": None,
         "event_count": 0,
         "load_issue_count": 0,
         "store_issue_count": 0,
@@ -233,6 +247,7 @@ def _build_edge_rows(rows: list[dict], *, window: int, min_cycle: int):
         "latency_total": 0.0,
         "latency_samples": 0,
         "is_local_events": 0,
+        "same_subgroup_events": 0,
         "same_group_events": 0,
         "remote_group_events": 0,
     })
@@ -247,7 +262,9 @@ def _build_edge_rows(rows: list[dict], *, window: int, min_cycle: int):
         key = (row["section"], window_index, source_tile, dest_tile)
         bucket = grouped[key]
         bucket["source_group"] = row["group"]
+        bucket["source_subgroup"] = row["subgroup"]
         bucket["dest_group"] = row["dest_group"]
+        bucket["dest_subgroup"] = row["dest_subgroup"]
         bucket["event_count"] += 1
         if row["event_type"] == "load_issue":
             bucket["load_issue_count"] += 1
@@ -257,6 +274,9 @@ def _build_edge_rows(rows: list[dict], *, window: int, min_cycle: int):
             bucket["load_return_count"] += 1
         if row["is_local"] == 1:
             bucket["is_local_events"] += 1
+        elif row["is_same_subgroup"] == 1:
+            bucket["same_subgroup_events"] += 1
+            bucket["same_group_events"] += 1
         elif row["is_same_group"] == 1:
             bucket["same_group_events"] += 1
         else:
@@ -281,13 +301,16 @@ def _build_edge_rows(rows: list[dict], *, window: int, min_cycle: int):
             "window_size": window,
             "source_tile": source_tile,
             "source_group": "" if bucket["source_group"] is None else bucket["source_group"],
+            "source_subgroup": "" if bucket["source_subgroup"] is None else bucket["source_subgroup"],
             "dest_tile": dest_tile,
             "dest_group": "" if bucket["dest_group"] is None else bucket["dest_group"],
+            "dest_subgroup": "" if bucket["dest_subgroup"] is None else bucket["dest_subgroup"],
             "event_count": bucket["event_count"],
             "load_issue_count": bucket["load_issue_count"],
             "store_issue_count": bucket["store_issue_count"],
             "load_return_count": bucket["load_return_count"],
             "is_local_events": bucket["is_local_events"],
+            "same_subgroup_events": bucket["same_subgroup_events"],
             "same_group_events": bucket["same_group_events"],
             "remote_group_events": bucket["remote_group_events"],
         }
@@ -327,10 +350,10 @@ def _write_metadata(path: Path, *, source_csv: Path, result_dir: Path | None, ti
             "tile_csv": {
                 "row_granularity": "one row per section/window/tile",
                 "time_fields": ["window_index", "window_start_cycle", "window_end_cycle", "window_center_cycle", "window_size"],
-                "identity_fields": ["section", "tile", "group"],
+                "identity_fields": ["section", "tile", "group", "subgroup"],
                 "outgoing_fields": [
                     "outgoing_events", "outgoing_load_issue", "outgoing_store_issue", "load_returns_seen",
-                    "local_events", "same_group_events", "remote_group_events", "unknown_dest_events",
+                    "local_events", "same_subgroup_events", "same_group_events", "remote_group_events", "unknown_dest_events",
                     "local_outgoing_events", "remote_outgoing_events",
                     "outgoing_avg_latency", "outgoing_latency_samples"
                 ],
@@ -342,10 +365,10 @@ def _write_metadata(path: Path, *, source_csv: Path, result_dir: Path | None, ti
             "edge_csv": {
                 "row_granularity": "one row per section/window/source_tile/dest_tile",
                 "time_fields": ["window_index", "window_start_cycle", "window_end_cycle", "window_center_cycle", "window_size"],
-                "identity_fields": ["section", "source_tile", "source_group", "dest_tile", "dest_group"],
+                "identity_fields": ["section", "source_tile", "source_group", "source_subgroup", "dest_tile", "dest_group", "dest_subgroup"],
                 "metric_fields": [
                     "event_count", "load_issue_count", "store_issue_count", "load_return_count",
-                    "is_local_events", "same_group_events", "remote_group_events",
+                    "is_local_events", "same_subgroup_events", "same_group_events", "remote_group_events",
                     "avg_latency", "latency_samples"
                 ],
             },

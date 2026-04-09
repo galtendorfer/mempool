@@ -89,13 +89,16 @@ def _load_rows(csv_path: Path, *, sections: set[int] | None):
                 "cycle": _parse_int(row.get("cycle")),
                 "core": _parse_int(row.get("core")),
                 "group": _parse_int(row.get("group")),
+                "subgroup": _parse_int(row.get("subgroup")),
                 "tile": _parse_int(row.get("tile")),
                 "event_type": (row.get("event_type") or "").strip(),
                 "region": (row.get("region") or "").strip(),
                 "dest_tile": _parse_int(row.get("dest_tile")),
                 "dest_group": _parse_int(row.get("dest_group")),
+                "dest_subgroup": _parse_int(row.get("dest_subgroup")),
                 "is_local": _parse_int(row.get("is_local")),
                 "is_same_group": _parse_int(row.get("is_same_group")),
+                "is_same_subgroup": _parse_int(row.get("is_same_subgroup")),
                 "latency": _parse_float(row.get("latency")),
             })
     return rows, seen_sections
@@ -108,8 +111,10 @@ def _build_source_dest_counts(rows: list[dict]):
             row["section"],
             row["tile"],
             row["group"],
+            row["subgroup"],
             row["dest_tile"],
             row["dest_group"],
+            row["dest_subgroup"],
             row["region"],
             row["event_type"],
         )
@@ -117,13 +122,15 @@ def _build_source_dest_counts(rows: list[dict]):
 
     out_rows = []
     for key in sorted(counts, key=lambda item: tuple(_sortable(part) for part in item)):
-        section, tile, group, dest_tile, dest_group, region, event_type = key
+        section, tile, group, subgroup, dest_tile, dest_group, dest_subgroup, region, event_type = key
         out_rows.append({
             "section": section,
             "source_tile": tile,
             "source_group": group,
+            "source_subgroup": "" if subgroup is None else subgroup,
             "dest_tile": "" if dest_tile is None else dest_tile,
             "dest_group": "" if dest_group is None else dest_group,
+            "dest_subgroup": "" if dest_subgroup is None else dest_subgroup,
             "region": region,
             "event_type": event_type,
             "count": counts[key],
@@ -134,33 +141,50 @@ def _build_source_dest_counts(rows: list[dict]):
 def _build_source_tile_locality(rows: list[dict]):
     grouped = defaultdict(lambda: Counter())
     for row in rows:
-        key = (row["section"], row["tile"], row["group"])
+        key = (row["section"], row["tile"], row["group"], row["subgroup"])
         grouped[key]["total_events"] += 1
         grouped[key][f"event_type::{row['event_type']}"] += 1
         if row["is_local"] == 1:
             grouped[key]["local_events"] += 1
+        elif row["is_same_subgroup"] == 1:
+            grouped[key]["same_subgroup_events"] += 1
+            grouped[key]["remote_events"] += 1
         elif row["is_local"] == 0:
+            if row["is_same_group"] == 1:
+                grouped[key]["same_group_other_subgroup_events"] += 1
+            else:
+                grouped[key]["remote_group_events"] += 1
             grouped[key]["remote_events"] += 1
         else:
             grouped[key]["unknown_destination_events"] += 1
 
     out_rows = []
     for key in sorted(grouped, key=lambda item: tuple(_sortable(part) for part in item)):
-        section, tile, group = key
+        section, tile, group, subgroup = key
         counter = grouped[key]
         total = counter["total_events"]
         local = counter["local_events"]
+        same_subgroup = counter["same_subgroup_events"]
+        same_group_other_subgroup = counter["same_group_other_subgroup_events"]
+        remote_group = counter["remote_group_events"]
         remote = counter["remote_events"]
         unknown = counter["unknown_destination_events"]
         out_rows.append({
             "section": section,
             "source_tile": tile,
             "source_group": group,
+            "source_subgroup": "" if subgroup is None else subgroup,
             "total_events": total,
             "local_events": local,
+            "same_subgroup_events": same_subgroup,
+            "same_group_other_subgroup_events": same_group_other_subgroup,
+            "remote_group_events": remote_group,
             "remote_events": remote,
             "unknown_destination_events": unknown,
             "local_pct": f"{_percent(local, total):.2f}",
+            "same_subgroup_pct": f"{_percent(same_subgroup, total):.2f}",
+            "same_group_other_subgroup_pct": f"{_percent(same_group_other_subgroup, total):.2f}",
+            "remote_group_pct": f"{_percent(remote_group, total):.2f}",
             "remote_pct": f"{_percent(remote, total):.2f}",
             "load_issue_count": counter["event_type::load_issue"],
             "store_issue_count": counter["event_type::store_issue"],
@@ -178,12 +202,12 @@ def _build_dest_tile_latency(rows: list[dict]):
             continue
         if row["latency"] is None:
             continue
-        key = (row["section"], row["dest_tile"], row["dest_group"], row["region"])
+        key = (row["section"], row["dest_tile"], row["dest_group"], row["dest_subgroup"], row["region"])
         grouped[key].append(float(row["latency"]))
 
     out_rows = []
     for key in sorted(grouped, key=lambda item: tuple(_sortable(part) for part in item)):
-        section, dest_tile, dest_group, region = key
+        section, dest_tile, dest_group, dest_subgroup, region = key
         values = sorted(grouped[key])
         count = len(values)
         avg = sum(values) / count if count else None
@@ -191,6 +215,7 @@ def _build_dest_tile_latency(rows: list[dict]):
             "section": section,
             "dest_tile": dest_tile,
             "dest_group": "" if dest_group is None else dest_group,
+            "dest_subgroup": "" if dest_subgroup is None else dest_subgroup,
             "region": region,
             "load_return_count": count,
             "avg_latency": f"{avg:.3f}" if avg is not None else "",

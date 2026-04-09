@@ -137,11 +137,15 @@ def find_result_dir(*paths) -> Path | None:
     for raw_path in paths:
         if not raw_path:
             continue
-        path = Path(raw_path).resolve()
-        if path.name in ('traces', 'data'):
-            candidates.append(path.parent)
-        elif path.parent.name in ('traces', 'data'):
-            candidates.append(path.parent.parent)
+        seen = set()
+        for path in (Path(raw_path).absolute(), Path(raw_path).resolve()):
+            if path in seen:
+                continue
+            seen.add(path)
+            if path.name in ('traces', 'real_traces', 'data'):
+                candidates.append(path.parent)
+            elif path.parent.name in ('traces', 'real_traces', 'data'):
+                candidates.append(path.parent.parent)
     for candidate in candidates:
         if (candidate / 'env').is_file() or (candidate / 'topology.env').is_file():
             return candidate

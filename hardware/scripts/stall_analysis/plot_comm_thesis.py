@@ -5,7 +5,7 @@ Generates publication-ready figures including:
     1. Tile-to-tile traffic matrix
     2. Group-level traffic aggregate
     3. Locality breakdown & latency by network distance
-    4. Communication-stall correlation (tile-level scatter + temporal overlay)
+    4. Communication-stall correlation (temporal overlay)
     5. Temporal communication profile (stacked area + incoming heatmap + latency)
 
 Usage:
@@ -44,6 +44,7 @@ FONT_LEGEND   = 9
 
 # Colorblind-safe palette (Okabe-Ito-inspired)
 COL_LOCAL     = "#0072B2"   # blue  – local / intra-tile
+COL_SAME_SUB  = "#009E73"  # green – same subgroup, different tile
 COL_SAME_GRP  = "#56B4E9"  # sky blue – same group, different tile
 COL_REMOTE    = "#D55E00"  # vermillion – remote / inter-group
 COL_ACCENT    = "#E69F00"  # amber – highlights / p95
@@ -56,16 +57,18 @@ GRP_COLORS_LIGHT = ["#B3D9EF", "#F4C4A0", "#A3DFC9", "#E8C6DA"]
 DPI = 300
 FIG_TEXT_COLOR = "#222222"
 
-LOCALITY_CLASSES = ["local", "same_group", "remote"]
+LOCALITY_CLASSES = ["local", "same_subgroup", "same_group", "remote"]
 LOCALITY_LABELS  = {
-    "local":      "Local (intra-tile)",
-    "same_group": "Same group",
-    "remote":     "Remote (inter-group)",
+    "local":         "Local (intra-tile)",
+    "same_subgroup": "Same subgroup",
+    "same_group":    "Same group, other subgroup",
+    "remote":        "Remote (inter-group)",
 }
 LOCALITY_COLORS = {
-    "local":      COL_LOCAL,
-    "same_group": COL_SAME_GRP,
-    "remote":     COL_REMOTE,
+    "local":         COL_LOCAL,
+    "same_subgroup": COL_SAME_SUB,
+    "same_group":    COL_SAME_GRP,
+    "remote":        COL_REMOTE,
 }
 
 
@@ -140,6 +143,43 @@ def _load_csv(path: Path):
         return list(csv.DictReader(f))
 
 
+def _load_topology(path: Path, default_n_groups: int):
+    topology = {
+        "n_groups": default_n_groups,
+        "n_tiles": None,
+        "tpg": None,
+        "n_subgroups_per_group": None,
+        "tiles_per_subgroup": None,
+    }
+    topo_path = path / "topology.env"
+    if not topo_path.is_file():
+        return topology
+
+    values = {}
+    with topo_path.open() as handle:
+        for line in handle:
+            line = line.strip()
+            if not line or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip()
+
+    n_groups = int(values.get("NUM_GROUPS", topology["n_groups"]))
+    num_cores = int(values.get("NUM_CORES", 0))
+    cores_per_tile = int(values.get("NUM_CORES_PER_TILE", 0))
+    n_tiles = num_cores // cores_per_tile if num_cores and cores_per_tile else None
+    tpg = n_tiles // n_groups if n_tiles and n_groups else None
+    n_sub = int(values.get("NUM_SUB_GROUPS_PER_GROUP", 0)) or None
+    tps = tpg // n_sub if tpg and n_sub else None
+
+    topology["n_groups"] = n_groups
+    topology["n_tiles"] = n_tiles
+    topology["tpg"] = tpg
+    topology["n_subgroups_per_group"] = n_sub
+    topology["tiles_per_subgroup"] = tps
+    return topology
+
+
 def _filter_section(rows, section):
     if section is None:
         return rows
@@ -201,6 +241,89 @@ def _nice_count(v):
     if v >= 1000:
         return f"{v / 1000:.1f}k"
     return f"{v:.0f}"
+
+
+def _classify_locality(row):
+    if row.get("is_local") == "1" or _pint(row.get("is_local")) == 1:
+        return "local"
+    if row.get("is_same_subgroup") == "1" or _pint(row.get("is_same_subgroup")) == 1:
+        return "same_subgroup"
+    if row.get("is_same_group") == "1" or _pint(row.get("is_same_group")) == 1:
+        return "same_group"
+    return "remote"
+
+
+def _latency_baseline_map(topology):
+    """Ideal minima for the trace-measured load-return metric."""
+    n_subgroups = topology.get("n_subgroups_per_group") or 1
+    if n_subgroups <= 1:
+        return {
+            "local": 1.0,
+            "same_subgroup": 3.0,
+            "same_group": 3.0,
+            "remote": 5.0,
+        }
+    return {
+        "local": 1.0,
+        "same_subgroup": 3.0,
+        "same_group": 5.0,
+        "remote": 7.0,
+    }
+
+
+def _add_subgroup_boxes(ax, topology, tpg, n_groups, zorder_base=7):
+    """Draw subgroup diagonal boxes, boundary lines, and axis labels."""
+    tps = topology.get("tiles_per_subgroup")
+    n_sub = topology.get("n_subgroups_per_group")
+    n_tiles = n_groups * tpg
+    if not tps or not n_sub or tps >= tpg:
+        return  # no subgroups or subgroup == group
+
+    # Dashed boundary lines at each subgroup edge (skip group boundaries)
+    for sg_boundary in range(tps, n_tiles, tps):
+        if sg_boundary % tpg != 0:
+            ax.axhline(sg_boundary - 0.5, color="#888888", lw=0.6,
+                       ls="--", alpha=0.5, zorder=3)
+            ax.axvline(sg_boundary - 0.5, color="#888888", lw=0.6,
+                       ls="--", alpha=0.5, zorder=3)
+
+    # Diagonal boxes for each subgroup
+    for g in range(n_groups):
+        gcol = GRP_COLORS[g % len(GRP_COLORS)]
+        for s in range(n_sub):
+            origin = g * tpg + s * tps - 0.5
+            ax.add_patch(Rectangle(
+                (origin, origin), tps, tps,
+                linewidth=1.5, edgecolor=gcol,
+                facecolor="none", ls="--", alpha=0.7,
+                zorder=zorder_base, clip_on=False,
+            ))
+
+    # Axis labels — placed between group label and tick labels
+    for g in range(n_groups):
+        gcol = GRP_COLORS[g % len(GRP_COLORS)]
+        for s in range(n_sub):
+            sg_mid = g * tpg + s * tps + tps / 2
+            ax.text(-0.02, sg_mid, f"s{s}", ha="right", va="center",
+                    fontsize=FONT_ANNOT - 1, color=gcol, alpha=0.6,
+                    transform=ax.get_yaxis_transform(), clip_on=False)
+            ax.text(sg_mid, -0.03, f"s{s}", ha="center", va="top",
+                    fontsize=FONT_ANNOT - 1, color=gcol, alpha=0.6,
+                    transform=ax.get_xaxis_transform(), clip_on=False)
+
+
+def _timeseries_locality_counts(row):
+    local = _pint(row.get("local_events", 0))
+    same_subgroup = _pint(row.get("same_subgroup_events", 0))
+    same_group_total = _pint(row.get("same_group_events", 0))
+    same_group_other = max(0, same_group_total - same_subgroup)
+    remote = _pint(row.get("remote_group_events", 0))
+    return {
+        "local": local,
+        "same_subgroup": same_subgroup,
+        "same_group": same_group_other,
+        "remote": remote,
+    }
 
 
 def _clean_spine(ax, top=False, right=False):
@@ -268,26 +391,37 @@ def _migrate_legacy_pdfs(output_dir: Path):
 # Figure 1 – Traffic Matrix with Group Structure
 # ===================================================================
 
-def _build_traffic_matrices(source_dest_rows, n_groups):
+def _build_traffic_matrices(source_dest_rows, topology):
+    n_groups = topology["n_groups"]
     issue_rows = [
-        (_pint(r["source_tile"]), _pint(r["dest_tile"]), _pint(r["count"]))
+        (
+            _pint(r["source_tile"]),
+            _pint(r["dest_tile"]),
+            _pint(r["count"]),
+            _pint(r.get("source_group")),
+            _pint(r.get("dest_group")),
+        )
         for r in source_dest_rows
         if (r.get("event_type") or "").strip() in ("load_issue", "store_issue")
     ]
     if not issue_rows:
         return None
 
-    max_tile = max(max(s, d) for s, d, _ in issue_rows)
-    n_tiles = max_tile + 1
-    tpg = n_tiles // n_groups
+    max_tile = max(max(s, d) for s, d, *_ in issue_rows)
+    n_tiles = topology.get("n_tiles") or (max_tile + 1)
+    tpg = topology.get("tpg") or (n_tiles // n_groups)
 
     mat = np.zeros((n_tiles, n_tiles), dtype=float)
-    for s, d, c in issue_rows:
-        mat[s, d] += c
+    for s, d, c, _, _ in issue_rows:
+        if 0 <= s < n_tiles and 0 <= d < n_tiles:
+            mat[s, d] += c
 
     gmat = np.zeros((n_groups, n_groups), dtype=float)
-    for s, d, c in issue_rows:
-        sg, dg = s // tpg, d // tpg
+    for s, d, c, sg, dg in issue_rows:
+        if sg < 0:
+            sg = s // tpg
+        if dg < 0:
+            dg = d // tpg
         if sg < n_groups and dg < n_groups:
             gmat[sg, dg] += c
 
@@ -299,9 +433,10 @@ def _build_traffic_matrices(source_dest_rows, n_groups):
         "tpg": tpg,
     }
 
-def plot_traffic_matrix(source_dest_rows, n_groups, output_dir, section):
+def plot_traffic_matrix_group(source_dest_rows, topology, output_dir, section):
     """Emit the standalone group-level traffic aggregate figure."""
-    matrices = _build_traffic_matrices(source_dest_rows, n_groups)
+    n_groups = topology["n_groups"]
+    matrices = _build_traffic_matrices(source_dest_rows, topology)
     if matrices is None:
         print("  [skip] No traffic data for matrix")
         return
@@ -346,15 +481,21 @@ def plot_traffic_matrix(source_dest_rows, n_groups, output_dir, section):
 
 
 # ===================================================================
-# Figure 1b – Zoomed Traffic Matrix (active groups only)
+# Figure 1b – Full Tile-level Traffic Matrix
 # ===================================================================
 
-def plot_traffic_matrix_zoom(source_dest_rows, n_groups, output_dir, section,
-                             zoom_groups=None):
-    """Rectangular zoomed heatmap: active source groups (y) × all dest tiles (x).
-    Shows the full destination reach of active groups, not just within-group traffic."""
+def plot_traffic_matrix_full(source_dest_rows, topology, output_dir, section):
+    """Full-chip square tile-to-tile request heatmap (n_tiles × n_tiles).
+    All groups are shown on both axes so the matrix is always square."""
+    n_groups = topology["n_groups"]
     issue_rows = [
-        (_pint(r["source_tile"]), _pint(r["dest_tile"]), _pint(r["count"]))
+        (
+            _pint(r["source_tile"]),
+            _pint(r["dest_tile"]),
+            _pint(r["count"]),
+            _pint(r.get("source_group")),
+            _pint(r.get("dest_group")),
+        )
         for r in source_dest_rows
         if (r.get("event_type") or "").strip() in ("load_issue", "store_issue")
     ]
@@ -362,53 +503,32 @@ def plot_traffic_matrix_zoom(source_dest_rows, n_groups, output_dir, section,
         print("  [skip] No traffic data for zoom matrix")
         return
 
-    max_tile = max(max(s, d) for s, d, _ in issue_rows)
-    n_tiles = max_tile + 1
-    tpg = n_tiles // n_groups
+    max_tile = max(max(s, d) for s, d, *_ in issue_rows)
+    n_tiles = topology.get("n_tiles") or (max_tile + 1)
+    tpg = topology.get("tpg") or (n_tiles // n_groups)
 
     mat = np.zeros((n_tiles, n_tiles), dtype=float)
-    for s, d, c in issue_rows:
-        mat[s, d] += c
+    for s, d, c, _, _ in issue_rows:
+        if 0 <= s < n_tiles and 0 <= d < n_tiles:
+            mat[s, d] += c
 
-    # Auto-detect active source groups: those with cross-tile traffic
-    if zoom_groups is None:
-        group_nonlocal = np.zeros(n_groups)
-        for s, d, c in issue_rows:
-            sg = s // tpg
-            if s != d:
-                group_nonlocal[sg] += c
-        zoom_groups = [g for g in range(n_groups) if group_nonlocal[g] > 0]
-        if not zoom_groups:
-            zoom_groups = list(range(n_groups))
+    # Always show ALL groups on both axes → full square matrix
+    zoom_groups = list(range(n_groups))
+    dest_groups = list(range(n_groups))
 
-    # Source tiles = active source groups; dest tiles = all tiles with traffic
-    src_tiles = []
-    for g in zoom_groups:
-        src_tiles.extend(range(g * tpg, (g + 1) * tpg))
-    # Dest axis: all groups that receive traffic from source tiles
-    dest_groups_set = set()
-    for s, d, c in issue_rows:
-        if s in set(src_tiles) and c > 0:
-            dest_groups_set.add(d // tpg)
-    dest_groups = sorted(dest_groups_set)
-    dest_tiles = []
-    for g in dest_groups:
-        dest_tiles.extend(range(g * tpg, (g + 1) * tpg))
+    src_tiles = list(range(n_tiles))
+    dest_tiles = list(range(n_tiles))
 
-    sub = mat[np.ix_(src_tiles, dest_tiles)]
-    n_src = len(src_tiles)
-    n_dst = len(dest_tiles)
+    sub = mat  # full n_tiles × n_tiles
+    n_src = n_tiles
+    n_dst = n_tiles
 
-    cell_size = 0.34
-    # Adaptive: maximize cell size while staying under 8000px at output DPI
-    max_px = 7900  # leave margin below 8192
-    max_w_inches = max_px / DPI - 3.5
-    max_h_inches = max_px / DPI - 2.5
-    cell_size = min(0.50, max_w_inches / max(n_dst, 1),
-                          max_h_inches / max(n_src, 1))
-    cell_size = max(cell_size, 0.20)  # floor for very large matrices
-    fig_w = n_dst * cell_size + 3.5   # +colorbar + labels
-    fig_h = n_src * cell_size + 2.5   # +title + xlabel
+    # Adaptive figure sizing — cell_size drives annotation legibility
+    max_px = 8000 if n_tiles > 64 else 5400  # higher res for large matrices
+    cell_size = max(0.20, min(0.50, (max_px / DPI - 2.5) / max(n_tiles, 1)))
+    side_inches = max(6.0, n_tiles * cell_size)
+    fig_w = side_inches + 2.5  # colorbar + labels
+    fig_h = side_inches + 2.0  # title + xlabel
     fig, ax = plt.subplots(figsize=(fig_w, fig_h))
 
     vmax = sub.max()
@@ -420,23 +540,23 @@ def plot_traffic_matrix_zoom(source_dest_rows, n_groups, output_dir, section,
     im = ax.imshow(sub_plot, origin="lower", cmap=cmap, aspect="equal",
                    norm=LogNorm(vmin=vmin, vmax=vmax), interpolation="nearest")
 
-    # Annotate cells (only feasible when matrix is small enough)
-    if n_src * n_dst <= 4500:
-        annot_fs = max(6.0, FONT_ANNOT - 0.5 * (max(n_src, n_dst) > 32)
-                                        - 0.5 * (max(n_src, n_dst) > 48))
-        for i in range(n_src):
-            for j in range(n_dst):
-                val = sub[i, j]
-                if val > 0:
-                    txt_col = "white" if val > vmax * 0.3 else FIG_TEXT_COLOR
-                    ax.text(j, i, _nice_count(val), ha="center", va="center",
-                            fontsize=annot_fs, fontweight="bold", color=txt_col)
+    # Annotate cells — font scales with cell size for readability.
+    cell_pt = cell_size * 72
+    annot_fs = min(FONT_ANNOT, max(2.0, cell_pt * 0.28))
+    fw = "bold" if max(n_src, n_dst) <= 32 else "normal"
+    for i in range(n_src):
+        for j in range(n_dst):
+            val = sub[i, j]
+            if val > 0:
+                txt_col = "white" if val > vmax * 0.3 else FIG_TEXT_COLOR
+                ax.text(j, i, _nice_count(val), ha="center", va="center",
+                        fontsize=annot_fs, fontweight=fw, color=txt_col)
 
     # Group boundaries — source (y-axis)
-    src_offsets = {}  # group -> y-offset in sub-matrix
-    offset = 0
+    src_offsets = {}
     for g in zoom_groups:
-        if offset > 0:
+        offset = g * tpg
+        if g > 0:
             ax.axhline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
         mid = offset + tpg / 2
         ax.text(-0.04, mid, f"G{g}", ha="right", va="center",
@@ -444,13 +564,12 @@ def plot_traffic_matrix_zoom(source_dest_rows, n_groups, output_dir, section,
                 color=GRP_COLORS[g % len(GRP_COLORS)],
                 transform=ax.get_yaxis_transform(), clip_on=False)
         src_offsets[g] = offset
-        offset += tpg
 
     # Group boundaries — dest (x-axis)
-    dst_offsets = {}  # group -> x-offset in sub-matrix
-    offset = 0
-    for gi, g in enumerate(dest_groups):
-        if gi > 0:
+    dst_offsets = {}
+    for g in dest_groups:
+        offset = g * tpg
+        if g > 0:
             ax.axvline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
         mid = offset + tpg / 2
         ax.text(mid, -0.06, f"G{g}", ha="center", va="top",
@@ -458,49 +577,58 @@ def plot_traffic_matrix_zoom(source_dest_rows, n_groups, output_dir, section,
                 color=GRP_COLORS[g % len(GRP_COLORS)],
                 transform=ax.get_xaxis_transform(), clip_on=False)
         dst_offsets[g] = offset
-        offset += tpg
 
-    # Highlight self-group blocks (src_group == dest_group)
+    # Highlight self-group diagonal blocks
     for g in zoom_groups:
-        if g in dst_offsets:
-            rect_xy = (dst_offsets[g] - 0.5, src_offsets[g] - 0.5)
-            gcol = GRP_COLORS[g % len(GRP_COLORS)]
-            # Dark backing outline for contrast
-            ax.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=8.0, edgecolor="#000000",
-                facecolor="none", alpha=0.25, zorder=4, clip_on=False,
-            ))
-            # Colored glow
-            ax.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=5.0, edgecolor=gcol,
-                facecolor="none", alpha=0.5, zorder=5, clip_on=False,
-            ))
-            # Crisp colored border
-            ax.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=3.0, edgecolor=gcol,
-                facecolor="none", zorder=6, clip_on=False,
-            ))
+        rect_xy = (dst_offsets[g] - 0.5, src_offsets[g] - 0.5)
+        gcol = GRP_COLORS[g % len(GRP_COLORS)]
+        ax.add_patch(Rectangle(
+            rect_xy, tpg, tpg,
+            linewidth=4.0, edgecolor="#000000",
+            facecolor="none", alpha=0.2, zorder=4, clip_on=False,
+        ))
+        ax.add_patch(Rectangle(
+            rect_xy, tpg, tpg,
+            linewidth=2.5, edgecolor=gcol,
+            facecolor="none", zorder=5, clip_on=False,
+        ))
 
-    tick_fs = max(6.5, FONT_TICK - 1.0 * (n_dst > 48))
-    ax.set_xticks(range(n_dst))
-    ax.set_yticks(range(n_src))
-    ax.set_xticklabels(dest_tiles, fontsize=tick_fs, rotation=90)
-    ax.set_yticklabels(src_tiles, fontsize=tick_fs)
+    # Highlight self-subgroup diagonal blocks
+    _add_subgroup_boxes(ax, topology, tpg, n_groups)
+
+    # Tick labels — show ticks at subgroup boundaries for readability
+    if n_tiles > 64:
+        _tps = topology.get("tiles_per_subgroup")
+        if _tps:
+            tick_positions = list(range(0, n_tiles, _tps))
+            if (n_tiles - 1) not in tick_positions:
+                tick_positions.append(n_tiles - 1)
+        else:
+            tick_positions = list(range(0, n_tiles, tpg))
+            tick_positions.append(n_tiles - 1)
+        tick_labels = [str(t) for t in tick_positions]
+        ax.set_xticks(tick_positions)
+        ax.set_yticks(tick_positions)
+        ax.set_xticklabels(tick_labels, fontsize=FONT_TICK - 1, rotation=90)
+        ax.set_yticklabels(tick_labels, fontsize=FONT_TICK - 1)
+    else:
+        tick_fs = max(6.5, FONT_TICK - 1.0 * (n_dst > 48))
+        ax.set_xticks(range(n_dst))
+        ax.set_yticks(range(n_src))
+        ax.set_xticklabels(dest_tiles, fontsize=tick_fs, rotation=90)
+        ax.set_yticklabels(src_tiles, fontsize=tick_fs)
     ax.set_xlabel("Destination tile", fontsize=FONT_LABEL, labelpad=20)
     ax.set_ylabel("Source tile", fontsize=FONT_LABEL)
 
     src_label = ", ".join(f"G{g}" for g in zoom_groups)
     dst_label = ", ".join(f"G{g}" for g in dest_groups)
-    ax.set_title("Tile-to-tile traffic volume (load + store events)",
+    ax.set_title("Tile-to-tile request volume (load/store issues)",
                  fontsize=FONT_SUBTITLE, fontweight="bold", pad=10)
 
     divider = make_axes_locatable(ax)
     cax = divider.append_axes("right", size="3.5%", pad=1.00)
     cb = fig.colorbar(im, cax=cax)
-    cb.set_label("Load + store events", fontsize=FONT_LABEL - 1)
+    cb.set_label("Load/store issues", fontsize=FONT_LABEL - 1)
     # Explicit clean tick values across the log range
     import math as _m
     _lo, _hi = _m.log10(max(vmin, 1)), _m.log10(max(vmax, 1))
@@ -521,9 +649,8 @@ def plot_traffic_matrix_zoom(source_dest_rows, n_groups, output_dir, section,
     nonzero = int(np.count_nonzero(sub))
     sec_lbl = f"Section {section}" if section is not None else "All sections"
     fig.text(0.5, -0.005,
-             f"{sec_lbl}  ·  {n_src} source tiles ({src_label}) → "
-             f"{n_dst} dest tiles ({dst_label})  ·  "
-             f"{_nice_count(total)} events  ·  {nonzero} active pairs",
+             f"{sec_lbl}  ·  {n_tiles} tiles  ·  {n_groups} groups  ·  "
+             f"{_nice_count(total)} requests  ·  {nonzero} active pairs",
              ha="center", fontsize=FONT_ANNOT, color="#666666", style="italic")
 
     _save(fig, output_dir, "traffic_matrix", section)
@@ -569,12 +696,7 @@ def plot_locality_latency(source_tile_rows, raw_events_path, n_groups,
                     continue
                 if r["event_type"] != "load_return" or not r.get("latency", ""):
                     continue
-                if r.get("is_local") == "1":
-                    lc = "local"
-                elif r.get("is_same_group") == "1":
-                    lc = "same_group"
-                else:
-                    lc = "remote"
+                lc = _classify_locality(r)
                 lat_by_loc[lc].append(float(r["latency"]))
 
     fig = plt.figure(figsize=(11, 10))
@@ -602,12 +724,12 @@ def plot_locality_latency(source_tile_rows, raw_events_path, n_groups,
     ax_a.set_yticks([])
     ax_a.set_xlabel("Tile", fontsize=FONT_LABEL)
     ax_a.set_xticks(np.arange(0, n_tiles, max(1, tpg // 2)))
-    ax_a.set_title("(a)  Remote traffic fraction per tile",
+    ax_a.set_title("(a)  Non-local traffic fraction per tile",
                    fontsize=FONT_SUBTITLE, fontweight="bold", pad=8, loc="left")
     divider_a = make_axes_locatable(ax_a)
     cax_a = divider_a.append_axes("right", size="3.5%", pad=1.00)
     cb_a = fig.colorbar(im_a, cax=cax_a)
-    cb_a.set_label("Remote %", fontsize=FONT_LABEL - 1)
+    cb_a.set_label("Non-local %", fontsize=FONT_LABEL - 1)
     cb_a.ax.tick_params(labelsize=FONT_TICK - 1)
 
     # (b) Per-group stacked traffic
@@ -624,17 +746,14 @@ def plot_locality_latency(source_tile_rows, raw_events_path, n_groups,
                 g = _pint(r.get("group", 0))
                 if g >= n_groups:
                     continue
-                if r.get("is_local") == "1":
-                    grp_counts["local"][g] += 1
-                elif r.get("is_same_group") == "1":
-                    grp_counts["same_group"][g] += 1
-                else:
-                    grp_counts["remote"][g] += 1
+                grp_counts[_classify_locality(r)][g] += 1
     else:
         for i, g in enumerate(groups):
             if g < n_groups:
                 grp_counts["local"][g] += local[i]
-                grp_counts["remote"][g] += remote[i]
+                grp_counts["same_subgroup"][g] += _pint(sorted_tiles[i].get("same_subgroup_events"))
+                grp_counts["same_group"][g] += _pint(sorted_tiles[i].get("same_group_other_subgroup_events"))
+                grp_counts["remote"][g] += _pint(sorted_tiles[i].get("remote_group_events"))
 
     x_b = np.arange(n_groups)
     bar_w = 0.55
@@ -660,7 +779,7 @@ def plot_locality_latency(source_tile_rows, raw_events_path, n_groups,
     ax_b.set_ylabel("Event count", fontsize=FONT_LABEL)
     ax_b.set_title("(b)  Traffic volume per group by network distance",
                    fontsize=FONT_SUBTITLE, fontweight="bold", pad=8, loc="left")
-    ax_b.legend(loc="upper right", fontsize=FONT_LEGEND)
+    ax_b.legend(loc="upper right", fontsize=FONT_LEGEND, ncol=2)
     ax_b.yaxis.set_major_locator(MaxNLocator(integer=True))
     _clean_spine(ax_b)
 
@@ -733,7 +852,7 @@ def plot_comm_stall_correlation(raw_events_path, stalls_path,
         return
 
     # -- (a) Per-tile aggregates ------------------------------------------
-    tile_comm = defaultdict(lambda: {"local": 0, "same_group": 0, "remote": 0})
+    tile_comm = defaultdict(lambda: {lc: 0 for lc in LOCALITY_CLASSES})
     with raw_events_path.open(newline="") as f:
         for r in csv.DictReader(f):
             if section is not None and _pint(r.get("section")) != section:
@@ -742,12 +861,7 @@ def plot_comm_stall_correlation(raw_events_path, stalls_path,
             if et not in ("load_issue", "store_issue"):
                 continue
             t = _pint(r.get("tile"))
-            if r.get("is_local") == "1":
-                tile_comm[t]["local"] += 1
-            elif r.get("is_same_group") == "1":
-                tile_comm[t]["same_group"] += 1
-            else:
-                tile_comm[t]["remote"] += 1
+            tile_comm[t][_classify_locality(r)] += 1
 
     tile_stall = defaultdict(lambda: {"total": 0, "stall": 0, "lsu": 0})
     with stalls_path.open(newline="") as f:
@@ -773,8 +887,8 @@ def plot_comm_stall_correlation(raw_events_path, stalls_path,
     for t in tiles:
         c = tile_comm[t]
         s = tile_stall[t]
-        total_comm = c["local"] + c["same_group"] + c["remote"]
-        rf = (c["same_group"] + c["remote"]) / total_comm * 100 if total_comm > 0 else 0
+        total_comm = sum(c[lc] for lc in LOCALITY_CLASSES)
+        rf = (c["same_subgroup"] + c["same_group"] + c["remote"]) / total_comm * 100 if total_comm > 0 else 0
         lf = s["lsu"] / s["total"] * 100 if s["total"] > 0 else 0
         remote_fracs.append(rf)
         lsu_fracs.append(lf)
@@ -806,11 +920,9 @@ def plot_comm_stall_correlation(raw_events_path, stalls_path,
                     continue
                 if cc is None:
                     cc = float(r["window_center_cycle"])
-                same = int(r.get("same_group_events", 0))
-                rem  = int(r.get("remote_group_events", 0))
-                loc  = int(r.get("local_events", 0))
-                agg_remote[wi]     += same + rem
-                agg_total_comm[wi] += loc + same + rem
+                loc_counts = _timeseries_locality_counts(r)
+                agg_remote[wi] += loc_counts["same_subgroup"] + loc_counts["same_group"] + loc_counts["remote"]
+                agg_total_comm[wi] += sum(loc_counts.values())
             cycle_centers.append(cc if cc is not None else 0)
         cycle_centers = np.array(cycle_centers)
         remote_rate = np.where(agg_total_comm > 0,
@@ -972,6 +1084,7 @@ def plot_temporal_profile(tile_ts_rows, raw_events_path, result_dir, n_groups, o
 
     cycle_centers  = []
     agg_local      = np.zeros(n_windows)
+    agg_same_sub   = np.zeros(n_windows)
     agg_same       = np.zeros(n_windows)
     agg_remote     = np.zeros(n_windows)
     heatmap_in     = np.zeros((n_tiles, n_windows))
@@ -979,8 +1092,10 @@ def plot_temporal_profile(tile_ts_rows, raw_events_path, result_dir, n_groups, o
     agg_lat_weight = np.zeros(n_windows)
     loc_lat_sum    = np.zeros(n_windows)
     loc_lat_n      = np.zeros(n_windows)
-    same_lat_sum   = np.zeros(n_windows)
-    same_lat_n     = np.zeros(n_windows)
+    same_sub_lat_sum = np.zeros(n_windows)
+    same_sub_lat_n   = np.zeros(n_windows)
+    same_lat_sum     = np.zeros(n_windows)
+    same_lat_n       = np.zeros(n_windows)
     remote_lat_sum = np.zeros(n_windows)
     remote_lat_n   = np.zeros(n_windows)
 
@@ -992,12 +1107,11 @@ def plot_temporal_profile(tile_ts_rows, raw_events_path, result_dir, n_groups, o
                 continue
             if cc is None:
                 cc = float(r["window_center_cycle"])
-            loc  = int(r.get("local_events", 0))
-            same = int(r.get("same_group_events", 0))
-            rem  = int(r.get("remote_group_events", 0))
-            agg_local[wi]  += loc
-            agg_same[wi]   += same
-            agg_remote[wi] += rem
+            loc_counts = _timeseries_locality_counts(r)
+            agg_local[wi]    += loc_counts["local"]
+            agg_same_sub[wi] += loc_counts["same_subgroup"]
+            agg_same[wi]     += loc_counts["same_group"]
+            agg_remote[wi]   += loc_counts["remote"]
             heatmap_in[ti, wi] = int(r.get("incoming_events", 0))
             lat   = _pfloat(r.get("outgoing_avg_latency", 0))
             lat_n = int(r.get("outgoing_latency_samples", 0))
@@ -1045,10 +1159,14 @@ def plot_temporal_profile(tile_ts_rows, raw_events_path, result_dir, n_groups, o
                 if wi_pos is None:
                     continue
                 latency = float(lat)
-                if r.get("is_local") == "1":
+                locality = _classify_locality(r)
+                if locality == "local":
                     loc_lat_sum[wi_pos] += latency
                     loc_lat_n[wi_pos] += 1
-                elif r.get("is_same_group") == "1":
+                elif locality == "same_subgroup":
+                    same_sub_lat_sum[wi_pos] += latency
+                    same_sub_lat_n[wi_pos] += 1
+                elif locality == "same_group":
                     same_lat_sum[wi_pos] += latency
                     same_lat_n[wi_pos] += 1
                 else:
@@ -1056,6 +1174,7 @@ def plot_temporal_profile(tile_ts_rows, raw_events_path, result_dir, n_groups, o
                     remote_lat_n[wi_pos] += 1
 
     avg_local_lat = np.divide(loc_lat_sum, loc_lat_n, out=np.full(n_windows, np.nan), where=loc_lat_n > 0)
+    avg_same_sub_lat = np.divide(same_sub_lat_sum, same_sub_lat_n, out=np.full(n_windows, np.nan), where=same_sub_lat_n > 0)
     avg_same_lat = np.divide(same_lat_sum, same_lat_n, out=np.full(n_windows, np.nan), where=same_lat_n > 0)
     avg_remote_lat = np.divide(remote_lat_sum, remote_lat_n, out=np.full(n_windows, np.nan), where=remote_lat_n > 0)
 
@@ -1076,18 +1195,21 @@ def plot_temporal_profile(tile_ts_rows, raw_events_path, result_dir, n_groups, o
     ax_a.fill_between(rel_cycle_centers, 0, agg_local,
                       step="mid", color=COL_LOCAL, alpha=0.85,
                       label=LOCALITY_LABELS["local"])
-    ax_a.fill_between(rel_cycle_centers, agg_local, agg_local + agg_same,
+    ax_a.fill_between(rel_cycle_centers, agg_local, agg_local + agg_same_sub,
+                      step="mid", color=COL_SAME_SUB, alpha=0.75,
+                      label=LOCALITY_LABELS["same_subgroup"])
+    ax_a.fill_between(rel_cycle_centers, agg_local + agg_same_sub, agg_local + agg_same_sub + agg_same,
                       step="mid", color=COL_SAME_GRP, alpha=0.75,
                       label=LOCALITY_LABELS["same_group"])
-    ax_a.fill_between(rel_cycle_centers, agg_local + agg_same,
-                      agg_local + agg_same + agg_remote,
+    ax_a.fill_between(rel_cycle_centers, agg_local + agg_same_sub + agg_same,
+                      agg_local + agg_same_sub + agg_same + agg_remote,
                       step="mid", color=COL_REMOTE, alpha=0.75,
                       label=LOCALITY_LABELS["remote"])
     ax_a.set_xlim(x_min, x_max)
     ax_a.set_ylabel("Events per window", fontsize=FONT_LABEL)
     ax_a.set_title("(a)  Aggregate traffic by locality class",
                    fontsize=FONT_SUBTITLE, fontweight="bold", pad=6, loc="left")
-    ax_a.legend(loc="upper right", fontsize=FONT_LEGEND, ncol=3)
+    ax_a.legend(loc="upper right", fontsize=FONT_LEGEND, ncol=2)
     _clean_spine(ax_a)
     ax_a.tick_params(labelbottom=True)
     ax_a.set_xlabel(x_label, fontsize=FONT_LABEL, labelpad=2)
@@ -1133,11 +1255,13 @@ def plot_temporal_profile(tile_ts_rows, raw_events_path, result_dir, n_groups, o
     ax_c.plot(rel_cycle_centers, avg_lat, color=COL_REMOTE, lw=2.2,
               zorder=3, label="Overall Avg.")
     ax_c.plot(rel_cycle_centers, avg_local_lat, color=COL_LOCAL, lw=1.8,
-              zorder=4, label="Tile Avg.")
+              zorder=4, label="Local Avg.")
+    ax_c.plot(rel_cycle_centers, avg_same_sub_lat, color=COL_SAME_SUB, lw=1.8,
+              zorder=4, label="Same-subgroup Avg.")
     ax_c.plot(rel_cycle_centers, avg_same_lat, color=COL_SAME_GRP, lw=1.8,
-              zorder=4, label="Group Avg.")
+              zorder=4, label="Same-group Avg.")
     ax_c.plot(rel_cycle_centers, avg_remote_lat, color=COL_ACCENT, lw=1.8,
-              zorder=4, label="Cluster Avg.")
+              zorder=4, label="Remote Avg.")
     ax_c.fill_between(rel_cycle_centers, 0, avg_lat, color=COL_REMOTE, alpha=0.12)
     ax_c.set_xlim(x_min, x_max)
     ax_c.set_xlabel(x_label, fontsize=FONT_LABEL)
@@ -1372,21 +1496,21 @@ def plot_per_tile_group_latency(tile_ts_rows, n_groups, output_dir, section,
 
 
 # ===================================================================
-# Figure 7 – Traffic Volume vs. Actual Latency
+# Figure 7 – Tile-pair Latency Heatmap
 # ===================================================================
 
-def plot_traffic_vs_latency(raw_events_path, n_groups, output_dir, section):
-    """Two panels showing where loads go and how long they actually take:
-      (a) Tile×tile latency heatmap (avg measured latency per pair)
-      (b) Scatter: load count vs avg latency per (src,dest) pair, by locality
-    """
+def plot_traffic_vs_latency(raw_events_path, topology, output_dir, section):
+    """Full-chip square tile×tile latency heatmap (avg measured latency per pair)."""
     if not raw_events_path.is_file():
         print("  [skip] Missing raw events CSV")
         return
 
-    # Aggregate per (source_tile, dest_tile): count, total_latency, locality
+    # Aggregate per (source_tile, dest_tile): count, latencies list, locality
+    TRIM_FRAC = 0.10  # drop first/last 10% of the cycle range (startup/teardown)
     pair_data = defaultdict(lambda: {"count": 0, "lat_sum": 0.0, "lat_n": 0,
-                                      "locality": "remote"})
+                                      "latencies": [],  # (cycle, latency) tuples
+                                      "locality": "remote", "source_group": -1,
+                                      "dest_group": -1})
     with raw_events_path.open(newline="") as f:
         for r in csv.DictReader(f):
             if section is not None and _pint(r.get("section")) != section:
@@ -1396,7 +1520,8 @@ def plot_traffic_vs_latency(raw_events_path, n_groups, output_dir, section):
             st = _pint(r.get("tile"))
             dt = _pint(r.get("dest_tile", -1))
             lat = r.get("latency", "")
-            if dt < 0 or not lat:
+            cyc = r.get("cycle", "")
+            if dt < 0 or not lat or not cyc:
                 continue
             lat = float(lat)
             key = (st, dt)
@@ -1404,58 +1529,63 @@ def plot_traffic_vs_latency(raw_events_path, n_groups, output_dir, section):
             d["count"] += 1
             d["lat_sum"] += lat
             d["lat_n"] += 1
-            if r.get("is_local") == "1":
-                d["locality"] = "local"
-            elif r.get("is_same_group") == "1":
-                d["locality"] = "same_group"
+            d["latencies"].append((int(cyc), lat))
+            d["locality"] = _classify_locality(r)
+            d["source_group"] = _pint(r.get("group"))
+            d["dest_group"] = _pint(r.get("dest_group"))
 
     if not pair_data:
         print("  [skip] No load_return events with latency")
         return
 
+    n_groups = topology["n_groups"]
     max_tile = max(max(s, d) for s, d in pair_data)
-    n_tiles = max_tile + 1
-    tpg = n_tiles // n_groups if n_groups > 0 else n_tiles
+    n_tiles = topology.get("n_tiles") or (max_tile + 1)
+    tpg = topology.get("tpg") or (n_tiles // n_groups)
 
-    # Build latency matrix
-    lat_mat = np.full((n_tiles, n_tiles), np.nan)
-    for (s, d), v in pair_data.items():
-        if v["lat_n"] > 0:
-            lat_mat[s, d] = v["lat_sum"] / v["lat_n"]
+    # Determine stable computation window (drop startup/teardown transients)
+    all_cycles = [c for v in pair_data.values() for c, _ in v["latencies"]]
+    if all_cycles:
+        c_min, c_max = min(all_cycles), max(all_cycles)
+        c_range = c_max - c_min
+        c_lo = c_min + c_range * TRIM_FRAC
+        c_hi = c_max - c_range * TRIM_FRAC
+    else:
+        c_lo, c_hi = -1, float('inf')
 
-    # Auto-detect active source groups (those with cross-tile traffic)
-    group_nonlocal = np.zeros(n_groups)
-    for (s, d), v in pair_data.items():
-        sg = s // tpg
-        if s != d and sg < n_groups:
-            group_nonlocal[sg] += v["count"]
-    zoom_groups = [g for g in range(n_groups) if group_nonlocal[g] > 0]
-    if not zoom_groups:
-        zoom_groups = list(range(n_groups))
+    # Build two latency matrices from the same collected data:
+    #   original — plain mean over all events in the section
+    #   refined  — 80th percentile over the stable computation window
+    REFINED_PCTL = 80
+    lat_variants = {}
+    for variant in ("original", "refined"):
+        mat = np.full((n_tiles, n_tiles), np.nan)
+        for (s, d), v in pair_data.items():
+            if v["lat_n"] <= 0:
+                continue
+            if variant == "original":
+                mat[s, d] = v["lat_sum"] / v["lat_n"]
+            else:  # refined
+                lats = np.array([lat for cyc, lat in v["latencies"]
+                                 if c_lo <= cyc <= c_hi])
+                if len(lats) == 0:
+                    mat[s, d] = v["lat_sum"] / v["lat_n"]  # fallback
+                    continue
+                mat[s, d] = float(np.percentile(lats, REFINED_PCTL))
+        lat_variants[variant] = mat
 
-    # Source tiles = active source groups
-    src_tiles = []
-    for g in zoom_groups:
-        src_tiles.extend(range(g * tpg, (g + 1) * tpg))
-    src_set = set(src_tiles)
+    # Always show ALL groups on both axes → full square matrix
+    zoom_groups = list(range(n_groups))
+    dest_groups = list(range(n_groups))
+    src_tiles = list(range(n_tiles))
+    dest_tiles = list(range(n_tiles))
 
-    # Dest tiles = all groups receiving traffic from source tiles
-    dest_groups_set = set()
-    for (s, d), v in pair_data.items():
-        if s in src_set and v["count"] > 0:
-            dest_groups_set.add(d // tpg)
-    dest_groups = sorted(dest_groups_set)
-    dest_tiles = []
-    for g in dest_groups:
-        dest_tiles.extend(range(g * tpg, (g + 1) * tpg))
-
-    sub = lat_mat[np.ix_(src_tiles, dest_tiles)]
-    n_src = len(src_tiles)
-    n_dst = len(dest_tiles)
+    n_src = n_tiles
+    n_dst = n_tiles
 
     cell_size = 0.34
-    # Adaptive: maximize cell size while staying under 8000px at output DPI
-    max_px = 7900  # leave margin below 8192
+    # Adaptive: maximize cell size while keeping PNGs readable
+    max_px = 8000 if n_tiles > 64 else 5400  # higher res for large matrices
     max_w_inches = max_px / DPI - 3.5
     max_h_inches = max_px / DPI - 2.5
     cell_size = min(0.50, max_w_inches / max(n_dst, 1),
@@ -1464,160 +1594,183 @@ def plot_traffic_vs_latency(raw_events_path, n_groups, output_dir, section):
     fig_w = n_dst * cell_size + 3.5
     fig_h = n_src * cell_size + 2.5
 
-    # ---- Figure (a): full-width latency heatmap ----
-    fig_a, ax_a = plt.subplots(figsize=(fig_w, fig_h))
-
-    # Rectangular latency heatmap (src groups → all dest tiles)
-    # Green → yellow → red sequential (low=fast/green, high=slow/red)
+    # Shared colourmap setup (used by both variants)
     _cmap_colors = ["#1a9641", "#55b748", "#91cf60", "#d0ec8a",
                     "#f0f4a4", "#fee08b", "#fdae61", "#f46d43",
                     "#d73027", "#a50026"]
     cmap_lat = LinearSegmentedColormap.from_list("lat_GnYlRd", _cmap_colors, N=256)
     cmap_lat.set_bad(color="#FFFFFF")
-    valid_lats = sub[~np.isnan(sub)]
-    vmin_lat = np.floor(valid_lats.min()) if len(valid_lats) else 1
-    vmax_lat = np.ceil(valid_lats.max()) if len(valid_lats) else 10
-    lat_norm = PowerNorm(gamma=0.65, vmin=vmin_lat, vmax=vmax_lat)
-    im_a = ax_a.imshow(sub, origin="lower", cmap=cmap_lat, aspect="equal",
-                       norm=lat_norm, interpolation="nearest")
+    N_GREEN = 4
+    N_CMAP  = len(_cmap_colors)
+    REMOTE_CMAP_POS = (N_GREEN - 1) / (N_CMAP - 1)
+    K_CONTENTION = 3.0
+    LOG_CMAP_END = 0.95
+    TAIL_MULT    = 2.0
 
-    # Cell annotations with latency values
-    if n_src * n_dst <= 4500:
-        annot_fs = max(6.0, FONT_ANNOT - 0.5 * (max(n_src, n_dst) > 32)
-                                        - 0.5 * (max(n_src, n_dst) > 48))
-        for i in range(n_src):
-            for j in range(n_dst):
-                val = sub[i, j]
-                if not np.isnan(val):
-                    ax_a.text(j, i, f"{val:.0f}", ha="center", va="center",
-                              fontsize=annot_fs, fontweight="bold", color="black")
+    baseline_map = _latency_baseline_map(topology)
+    b_local  = baseline_map["local"]
+    b_sub    = baseline_map["same_subgroup"]
+    b_remote = baseline_map["remote"]
 
-    # Group boundaries — source (y-axis)
-    src_offsets = {}
-    offset = 0
-    for g in zoom_groups:
-        if offset > 0:
-            ax_a.axhline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
-        mid = offset + tpg / 2
-        ax_a.text(-0.04, mid, f"G{g}", ha="right", va="center",
-                  fontsize=FONT_ANNOT + 3, fontweight="bold",
-                  color=GRP_COLORS[g % len(GRP_COLORS)],
-                  transform=ax_a.get_yaxis_transform(), clip_on=False)
-        src_offsets[g] = offset
-        offset += tpg
+    vmin_lat = b_local
+    vmax_fixed = K_CONTENTION * b_remote
+    vmax_tail  = TAIL_MULT * vmax_fixed
 
-    # Group boundaries — dest (x-axis)
-    dst_offsets = {}
-    offset = 0
-    for gi, g in enumerate(dest_groups):
-        if gi > 0:
-            ax_a.axvline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
-        mid = offset + tpg / 2
-        ax_a.text(mid, -0.06, f"G{g}", ha="center", va="top",
-                  fontsize=FONT_ANNOT + 3, fontweight="bold",
-                  color=GRP_COLORS[g % len(GRP_COLORS)],
-                  transform=ax_a.get_xaxis_transform(), clip_on=False)
-        dst_offsets[g] = offset
-        offset += tpg
+    x_pts = [vmin_lat]
+    y_pts = [0.0]
+    hierarchy_span = max(b_remote - vmin_lat, 1e-6)
+    for bval in (b_local, b_sub):
+        if bval > vmin_lat:
+            frac = REMOTE_CMAP_POS * (bval - vmin_lat) / hierarchy_span
+            x_pts.append(bval)
+            y_pts.append(frac)
+    x_pts.append(b_remote)
+    y_pts.append(REMOTE_CMAP_POS)
+    log_denom = np.log(vmax_fixed / b_remote)
+    for i in range(1, 21):
+        f = i / 20.0
+        x_val = b_remote + f * (vmax_fixed - b_remote)
+        y_val = REMOTE_CMAP_POS + (LOG_CMAP_END - REMOTE_CMAP_POS) * np.log(x_val / b_remote) / log_denom
+        x_pts.append(x_val)
+        y_pts.append(y_val)
+    tail_span = vmax_tail - vmax_fixed
+    for i in range(1, 11):
+        f = i / 10.0
+        x_pts.append(vmax_fixed + f * tail_span)
+        y_pts.append(LOG_CMAP_END + (1.0 - LOG_CMAP_END) * np.sqrt(f))
+    lat_norm = PiecewiseNorm(x_pts, y_pts, vmin=vmin_lat, vmax=vmax_tail)
 
-    # Highlight self-group blocks (src_group == dest_group)
-    for g in zoom_groups:
-        if g in dst_offsets:
-            rect_xy = (dst_offsets[g] - 0.5, src_offsets[g] - 0.5)
-            gcol = GRP_COLORS[g % len(GRP_COLORS)]
-            # Dark backing outline for contrast against any background
-            ax_a.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=8.0, edgecolor="#000000",
-                facecolor="none", alpha=0.25, zorder=4, clip_on=False,
-            ))
-            # Colored glow
-            ax_a.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=5.0, edgecolor=gcol,
-                facecolor="none", alpha=0.5, zorder=5, clip_on=False,
-            ))
-            # Crisp colored border
-            ax_a.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=3.0, edgecolor=gcol,
-                facecolor="none", zorder=6, clip_on=False,
-            ))
-
-    tick_fs = max(6.5, FONT_TICK - 1.5 * (n_dst > 48))
-    ax_a.set_xticks(range(n_dst))
-    ax_a.set_yticks(range(n_src))
-    ax_a.set_xticklabels(dest_tiles, fontsize=tick_fs, rotation=90)
-    ax_a.set_yticklabels(src_tiles, fontsize=tick_fs)
-    ax_a.set_xlabel("Destination tile", fontsize=FONT_LABEL, labelpad=20)
-    ax_a.set_ylabel("Source tile", fontsize=FONT_LABEL)
-
-    src_label = ", ".join(f"G{g}" for g in zoom_groups)
-    dst_label = ", ".join(f"G{g}" for g in dest_groups)
-    ax_a.set_title("Average load-return latency per tile (cycles)",
-                   fontsize=FONT_SUBTITLE, fontweight="bold", pad=10)
-    divider_a = make_axes_locatable(ax_a)
-    cax_a = divider_a.append_axes("right", size="3.5%", pad=1.00)
-    cb_a = fig_a.colorbar(im_a, cax=cax_a)
-    cb_a.set_label("Avg latency (cycles)", fontsize=FONT_LABEL - 1)
-    # Clean round-number ticks
-    _lo_i, _hi_i = int(np.floor(vmin_lat)), int(np.ceil(vmax_lat))
-    _round_ticks = [_lo_i] + [v for v in range(5, _hi_i + 1, 5) if v > _lo_i and v < _hi_i] + [_hi_i]
-    cb_a.set_ticks(_round_ticks)
-    cb_a.ax.tick_params(labelsize=FONT_TICK)
-
+    _tick_vals = sorted(set([int(vmin_lat), int(b_sub), int(b_remote)] +
+                            list(range(int(b_remote) + 2, int(vmax_fixed), 2)) +
+                            [int(vmax_fixed), int(vmax_tail)]))
     sec_lbl = f"Section {section}" if section is not None else "All sections"
     n_pairs = len(pair_data)
     total_loads = sum(v["count"] for v in pair_data.values())
-    global_avg = (sum(v["lat_sum"] for v in pair_data.values()) /
-                  max(1, sum(v["lat_n"] for v in pair_data.values())))
-    fig_a.text(0.5, -0.005,
-               f"{sec_lbl}  ·  {n_src} source tiles ({src_label}) → "
-               f"{n_dst} dest tiles ({dst_label})  ·  "
-               f"{n_pairs} active pairs  ·  "
-               f"{_nice_count(total_loads)} load returns  ·  "
-               f"Global avg: {global_avg:.1f} cycles",
-               ha="center", fontsize=FONT_ANNOT, color="#666666", style="italic")
 
-    _save(fig_a, output_dir, "latency_matrix", section)
+    # ---- Render heatmap for each variant ----
+    _variant_meta = {
+        "original": {
+            "title": "Load-return latency per tile pair (cycles, mean)",
+            "save_name": "latency_matrix",
+            "global_avg_fn": lambda: (sum(v["lat_sum"] for v in pair_data.values()) /
+                                      max(1, sum(v["lat_n"] for v in pair_data.values()))),
+        },
+        "refined": {
+            "title": "Load-return latency per tile pair (cycles, steady-state p80)",
+            "save_name": "latency_matrix_refined",
+            "global_avg_fn": lambda: (float(np.percentile([lat for v in pair_data.values()
+                                                            for cyc, lat in v["latencies"]
+                                                            if c_lo <= cyc <= c_hi], REFINED_PCTL))
+                                      if all_cycles else 0.0),
+        },
+    }
+    for variant, meta in _variant_meta.items():
+        sub = lat_variants[variant]
+        sub_rounded = np.round(sub)
+        sub_int = np.clip(sub_rounded, vmin_lat, vmax_tail)
 
-    # ---- Figure (b): contention scatter (separate page) ----
-    fig_b, ax_b = plt.subplots(figsize=(7, 5.5))
-    for lc in LOCALITY_CLASSES:
-        xs, ys = [], []
-        for (s, d), v in pair_data.items():
-            if v["locality"] == lc and v["lat_n"] > 0:
-                xs.append(v["count"])
-                ys.append(v["lat_sum"] / v["lat_n"])
-        if xs:
-            ax_b.scatter(xs, ys, s=40, alpha=0.7,
-                         color=LOCALITY_COLORS[lc], edgecolor="#333333", lw=0.4,
-                         label=LOCALITY_LABELS[lc], zorder=3)
+        fig_a, ax_a = plt.subplots(figsize=(fig_w, fig_h))
+        im_a = ax_a.imshow(sub_int, origin="lower", cmap=cmap_lat, aspect="equal",
+                           norm=lat_norm, interpolation="nearest")
 
-    ax_b.set_xlabel("Load returns (count per src→dest pair)", fontsize=FONT_LABEL)
-    ax_b.set_ylabel("Avg load-return latency (cycles)", fontsize=FONT_LABEL)
-    ax_b.set_title("Contention: traffic volume vs. actual latency",
-                   fontsize=FONT_SUBTITLE, fontweight="bold", pad=10)
-    ax_b.legend(loc="upper right", fontsize=FONT_LEGEND)
-    _clean_spine(ax_b)
+        cell_pt = cell_size * 72
+        annot_fs = min(FONT_ANNOT, max(2.0, cell_pt * 0.28))
+        fw = "bold" if max(n_src, n_dst) <= 32 else "normal"
+        for i in range(n_src):
+            for j in range(n_dst):
+                val = sub_rounded[i, j]
+                if not np.isnan(val):
+                    ax_a.text(j, i, f"{val:.0f}", ha="center", va="center",
+                              fontsize=annot_fs, fontweight=fw, color="black")
 
-    fig_b.text(0.5, -0.005,
-               f"{sec_lbl}  ·  {n_pairs} src→dest pairs  ·  "
-               f"{_nice_count(total_loads)} load returns  ·  "
-               f"Global avg: {global_avg:.1f} cycles",
-               ha="center", fontsize=FONT_ANNOT, color="#666666", style="italic")
+        src_offsets = {}
+        for g in zoom_groups:
+            offset = g * tpg
+            if g > 0:
+                ax_a.axhline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
+            mid = offset + tpg / 2
+            ax_a.text(-0.04, mid, f"G{g}", ha="right", va="center",
+                      fontsize=FONT_ANNOT + 3, fontweight="bold",
+                      color=GRP_COLORS[g % len(GRP_COLORS)],
+                      transform=ax_a.get_yaxis_transform(), clip_on=False)
+            src_offsets[g] = offset
 
-    _save(fig_b, output_dir, "latency_contention", section)
+        dst_offsets = {}
+        for g in dest_groups:
+            offset = g * tpg
+            if g > 0:
+                ax_a.axvline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
+            mid = offset + tpg / 2
+            ax_a.text(mid, -0.06, f"G{g}", ha="center", va="top",
+                      fontsize=FONT_ANNOT + 3, fontweight="bold",
+                      color=GRP_COLORS[g % len(GRP_COLORS)],
+                      transform=ax_a.get_xaxis_transform(), clip_on=False)
+            dst_offsets[g] = offset
+
+        for g in zoom_groups:
+            if g in src_offsets and g in dst_offsets:
+                rect_xy = (dst_offsets[g] - 0.5, src_offsets[g] - 0.5)
+                gcol = GRP_COLORS[g % len(GRP_COLORS)]
+                ax_a.add_patch(Rectangle(
+                    rect_xy, tpg, tpg,
+                    linewidth=8.0, edgecolor="#000000",
+                    facecolor="none", alpha=0.25, zorder=4, clip_on=False,
+                ))
+                ax_a.add_patch(Rectangle(
+                    rect_xy, tpg, tpg,
+                    linewidth=5.0, edgecolor=gcol,
+                    facecolor="none", alpha=0.5, zorder=5, clip_on=False,
+                ))
+                ax_a.add_patch(Rectangle(
+                    rect_xy, tpg, tpg,
+                    linewidth=3.0, edgecolor=gcol,
+                    facecolor="none", zorder=6, clip_on=False,
+                ))
+
+        # Highlight self-subgroup diagonal blocks
+        _add_subgroup_boxes(ax_a, topology, tpg, n_groups)
+
+        tick_fs = max(6.5, FONT_TICK - 1.5 * (n_dst > 48))
+        ax_a.set_xticks(range(n_dst))
+        ax_a.set_yticks(range(n_src))
+        ax_a.set_xticklabels(dest_tiles, fontsize=tick_fs, rotation=90)
+        ax_a.set_yticklabels(src_tiles, fontsize=tick_fs)
+        ax_a.set_xlabel("Destination tile", fontsize=FONT_LABEL, labelpad=20)
+        ax_a.set_ylabel("Source tile", fontsize=FONT_LABEL)
+
+        ax_a.set_title(meta["title"],
+                       fontsize=FONT_SUBTITLE, fontweight="bold", pad=10)
+        divider_a = make_axes_locatable(ax_a)
+        cax_a = divider_a.append_axes("right", size="3.5%", pad=1.00)
+        cb_a = fig_a.colorbar(im_a, cax=cax_a)
+        cb_a.set_label("Avg latency (cycles)", fontsize=FONT_LABEL - 1)
+        cb_a.set_ticks(_tick_vals)
+        cb_a.set_ticklabels([str(t) if t < vmax_tail else f"{t}+"
+                             for t in _tick_vals])
+        cb_a.ax.tick_params(labelsize=FONT_TICK)
+
+        global_avg = meta["global_avg_fn"]()
+        fig_a.text(0.5, -0.005,
+                   f"{sec_lbl}  ·  {n_tiles} tiles  ·  {n_groups} groups  ·  "
+                   f"{n_pairs} active pairs  ·  "
+                   f"{_nice_count(total_loads)} load returns  ·  "
+                   f"Global avg: {global_avg:.1f} cycles",
+                   ha="center", fontsize=FONT_ANNOT, color="#666666", style="italic")
+
+        _save(fig_a, output_dir, meta["save_name"], section)
 
 
-def plot_latency_over_minimum(raw_events_path, n_groups, output_dir, section):
+def plot_latency_over_minimum(raw_events_path, topology, output_dir, section):
     """Tile-pair latency heatmap normalized by hierarchy-aware ideal minima."""
     if not raw_events_path.is_file():
         print("  [skip] Missing raw events CSV")
         return
 
+    TRIM_FRAC = 0.10  # drop first/last 10% of the cycle range (startup/teardown)
     pair_data = defaultdict(lambda: {"count": 0, "lat_sum": 0.0, "lat_n": 0,
-                                      "locality": "remote"})
+                                      "latencies": [],  # (cycle, latency) tuples
+                                      "locality": "remote", "source_group": -1,
+                                      "dest_group": -1})
     with raw_events_path.open(newline="") as f:
         for r in csv.DictReader(f):
             if section is not None and _pint(r.get("section")) != section:
@@ -1627,7 +1780,8 @@ def plot_latency_over_minimum(raw_events_path, n_groups, output_dir, section):
             st = _pint(r.get("tile"))
             dt = _pint(r.get("dest_tile", -1))
             lat = r.get("latency", "")
-            if dt < 0 or not lat:
+            cyc = r.get("cycle", "")
+            if dt < 0 or not lat or not cyc:
                 continue
             lat = float(lat)
             key = (st, dt)
@@ -1635,56 +1789,66 @@ def plot_latency_over_minimum(raw_events_path, n_groups, output_dir, section):
             data["count"] += 1
             data["lat_sum"] += lat
             data["lat_n"] += 1
-            if r.get("is_local") == "1":
-                data["locality"] = "local"
-            elif r.get("is_same_group") == "1":
-                data["locality"] = "same_group"
+            data["latencies"].append((int(cyc), lat))
+            data["locality"] = _classify_locality(r)
+            data["source_group"] = _pint(r.get("group"))
+            data["dest_group"] = _pint(r.get("dest_group"))
 
     if not pair_data:
         print("  [skip] No load_return events with latency")
         return
 
+    n_groups = topology["n_groups"]
     max_tile = max(max(s, d) for s, d in pair_data)
-    n_tiles = max_tile + 1
-    tpg = n_tiles // n_groups if n_groups > 0 else n_tiles
+    n_tiles = topology.get("n_tiles") or (max_tile + 1)
+    tpg = topology.get("tpg") or (n_tiles // n_groups)
 
-    lat_mat = np.full((n_tiles, n_tiles), np.nan)
+    # Determine stable computation window (drop startup/teardown transients)
+    all_cycles = [c for v in pair_data.values() for c, _ in v["latencies"]]
+    if all_cycles:
+        c_min, c_max = min(all_cycles), max(all_cycles)
+        c_range = c_max - c_min
+        c_lo = c_min + c_range * TRIM_FRAC
+        c_hi = c_max - c_range * TRIM_FRAC
+    else:
+        c_lo, c_hi = -1, float('inf')
+
+    # Build both original and refined latency matrices
+    lat_variants = {}
     loc_mat = np.full((n_tiles, n_tiles), "", dtype=object)
+
+    # Original: plain mean, all events
+    mat_orig = np.full((n_tiles, n_tiles), np.nan)
     for (s, d), data in pair_data.items():
         if data["lat_n"] > 0:
-            lat_mat[s, d] = data["lat_sum"] / data["lat_n"]
+            mat_orig[s, d] = data["lat_sum"] / data["lat_n"]
             loc_mat[s, d] = data["locality"]
+    lat_variants["original"] = mat_orig
 
-    group_nonlocal = np.zeros(n_groups)
+    # Refined: 80th percentile over trimmed window
+    REFINED_PCTL = 80
+    mat_ref = np.full((n_tiles, n_tiles), np.nan)
     for (s, d), data in pair_data.items():
-        sg = s // tpg
-        if s != d and sg < n_groups:
-            group_nonlocal[sg] += data["count"]
-    zoom_groups = [g for g in range(n_groups) if group_nonlocal[g] > 0]
-    if not zoom_groups:
-        zoom_groups = list(range(n_groups))
+        if data["lat_n"] > 0:
+            trimmed = [lat for cyc, lat in data["latencies"] if c_lo <= cyc <= c_hi]
+            if trimmed:
+                mat_ref[s, d] = float(np.percentile(trimmed, REFINED_PCTL))
+            else:
+                mat_ref[s, d] = data["lat_sum"] / data["lat_n"]
+            loc_mat[s, d] = data["locality"]
+    lat_variants["refined"] = mat_ref
 
-    src_tiles = []
-    for group in zoom_groups:
-        src_tiles.extend(range(group * tpg, (group + 1) * tpg))
-    src_set = set(src_tiles)
+    # Always show ALL groups on both axes → full square matrix
+    zoom_groups = list(range(n_groups))
+    dest_groups = list(range(n_groups))
+    src_tiles = list(range(n_tiles))
+    dest_tiles = list(range(n_tiles))
 
-    dest_groups_set = set()
-    for (s, d), data in pair_data.items():
-        if s in src_set and data["count"] > 0:
-            dest_groups_set.add(d // tpg)
-    dest_groups = sorted(dest_groups_set)
-    dest_tiles = []
-    for group in dest_groups:
-        dest_tiles.extend(range(group * tpg, (group + 1) * tpg))
-
-    sub_lat = lat_mat[np.ix_(src_tiles, dest_tiles)]
-    sub_loc = loc_mat[np.ix_(src_tiles, dest_tiles)]
-    n_src = len(src_tiles)
-    n_dst = len(dest_tiles)
+    n_src = n_tiles
+    n_dst = n_tiles
 
     cell_size = 0.34
-    max_px = 7900
+    max_px = 8000 if n_tiles > 64 else 5400  # higher res for large matrices
     max_w_inches = max_px / DPI - 3.5
     max_h_inches = max_px / DPI - 2.5
     cell_size = min(0.50, max_w_inches / max(n_dst, 1),
@@ -1693,153 +1857,166 @@ def plot_latency_over_minimum(raw_events_path, n_groups, output_dir, section):
     fig_w = n_dst * cell_size + 3.5
     fig_h = n_src * cell_size + 2.5
 
-    baseline_map = {"local": 1.0, "same_group": 3.0, "remote": 5.0}
-    delta_mat = np.full_like(sub_lat, np.nan, dtype=float)
-    for i in range(n_src):
-        for j in range(n_dst):
-            latency = sub_lat[i, j]
-            if np.isnan(latency):
-                continue
-            locality = sub_loc[i, j] or "remote"
-            delta_mat[i, j] = max(0.0, latency - baseline_map.get(locality, 5.0))
+    baseline_map = _latency_baseline_map(topology)
 
-    valid_delta = delta_mat[~np.isnan(delta_mat)]
-    vmax_delta = np.ceil(valid_delta.max()) if len(valid_delta) else 1.0
-    vmax_delta = max(1.0, vmax_delta)
-    rounded_delta_mat = np.where(
-        np.isnan(delta_mat),
-        np.nan,
-        np.floor(delta_mat + 0.5),
-    )
-
-    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    # Shared colormap
     _cmap_colors = ["#1a9641", "#55b748", "#91cf60", "#d0ec8a",
                     "#f0f4a4", "#fee08b", "#fdae61", "#f46d43",
                     "#d73027", "#a50026"]
-    cmap_delta = LinearSegmentedColormap.from_list(
-        "lat_over_minimum",
-        _cmap_colors,
-        N=256,
-    )
+    cmap_delta = LinearSegmentedColormap.from_list("lat_over_minimum", _cmap_colors, N=256)
     cmap_delta.set_bad(color="#FFFFFF")
-    base_norm = PowerNorm(gamma=0.38, vmin=0.0, vmax=vmax_delta)
-    if vmax_delta > 2.0:
-        x_points = [0.0, 1.0, min(2.0, vmax_delta)]
-        y_points = [float(base_norm(0.0)),
-                    float(base_norm(min(1.0, vmax_delta))) * 0.78,
-                    float(base_norm(min(2.0, vmax_delta))) * 0.86]
-        if vmax_delta > 10.0:
-            x_points.extend([5.0, 10.0, vmax_delta])
-            y_points.extend([
-                float(base_norm(5.0)),
-                min(0.97, float(base_norm(10.0)) + 0.10),
-                1.0,
-            ])
-        elif vmax_delta > 5.0:
-            x_points.extend([5.0, vmax_delta])
-            y_points.extend([float(base_norm(5.0)), 1.0])
-        else:
-            x_points.append(vmax_delta)
-            y_points.append(1.0)
-        y_points = np.maximum.accumulate(y_points)
-        delta_norm = PiecewiseNorm(x_points, y_points, vmin=0.0, vmax=vmax_delta)
-    else:
-        delta_norm = base_norm
-    im = ax.imshow(rounded_delta_mat, origin="lower", cmap=cmap_delta, aspect="equal",
-                   norm=delta_norm, interpolation="nearest")
 
-    if n_src * n_dst <= 4500:
-        annot_fs = max(6.0, FONT_ANNOT - 0.5 * (max(n_src, n_dst) > 32)
-                                        - 0.5 * (max(n_src, n_dst) > 48))
+    sec_lbl = f"Section {section}" if section is not None else "All sections"
+    n_pairs = len(pair_data)
+    total_loads = sum(data["count"] for data in pair_data.values())
+
+    _variant_meta = {
+        "original": {
+            "title": "Excess load-return latency above ideal minimum (mean)",
+            "save_name": "latency_excess_matrix",
+        },
+        "refined": {
+            "title": "Excess load-return latency above ideal minimum (steady-state p80)",
+            "save_name": "latency_excess_matrix_refined",
+        },
+    }
+
+    for variant, meta in _variant_meta.items():
+        sub_lat = lat_variants[variant]
+
+        delta_mat = np.full_like(sub_lat, np.nan, dtype=float)
+        for i in range(n_src):
+            for j in range(n_dst):
+                latency = sub_lat[i, j]
+                if np.isnan(latency):
+                    continue
+                locality = loc_mat[i, j] or "remote"
+                delta_mat[i, j] = max(0.0, latency - baseline_map.get(locality, baseline_map["remote"]))
+
+        delta_mat = np.round(delta_mat)
+
+        valid_delta = delta_mat[~np.isnan(delta_mat)]
+        vmax_delta = np.ceil(valid_delta.max()) if len(valid_delta) else 1.0
+        vmax_delta = max(1.0, vmax_delta)
+
+        base_norm = PowerNorm(gamma=0.38, vmin=0.0, vmax=vmax_delta)
+        if vmax_delta > 2.0:
+            x_points = [0.0, 1.0, min(2.0, vmax_delta)]
+            y_points = [float(base_norm(0.0)),
+                        float(base_norm(min(1.0, vmax_delta))) * 0.78,
+                        float(base_norm(min(2.0, vmax_delta))) * 0.86]
+            if vmax_delta > 10.0:
+                x_points.extend([5.0, 10.0, vmax_delta])
+                y_points.extend([
+                    float(base_norm(5.0)),
+                    min(0.97, float(base_norm(10.0)) + 0.10),
+                    1.0,
+                ])
+            elif vmax_delta > 5.0:
+                x_points.extend([5.0, vmax_delta])
+                y_points.extend([float(base_norm(5.0)), 1.0])
+            else:
+                x_points.append(vmax_delta)
+                y_points.append(1.0)
+            y_points = np.maximum.accumulate(y_points)
+            delta_norm = PiecewiseNorm(x_points, y_points, vmin=0.0, vmax=vmax_delta)
+        else:
+            delta_norm = base_norm
+
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        im = ax.imshow(delta_mat, origin="lower", cmap=cmap_delta, aspect="equal",
+                       norm=delta_norm, interpolation="nearest")
+
+        cell_pt = cell_size * 72
+        annot_fs = min(FONT_ANNOT, max(2.0, cell_pt * 0.28))
+        fw = "bold" if max(n_src, n_dst) <= 32 else "normal"
         for i in range(n_src):
             for j in range(n_dst):
                 value = delta_mat[i, j]
                 if not np.isnan(value):
                     rounded_value = int(np.floor(value + 0.5))
                     ax.text(j, i, f"{rounded_value}", ha="center", va="center",
-                            fontsize=annot_fs, fontweight="bold", color="black")
+                            fontsize=annot_fs, fontweight=fw, color="black")
 
-    src_offsets = {}
-    offset = 0
-    for group in zoom_groups:
-        if offset > 0:
-            ax.axhline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
-        mid = offset + tpg / 2
-        ax.text(-0.04, mid, f"G{group}", ha="right", va="center",
-                fontsize=FONT_ANNOT + 3, fontweight="bold",
-                color=GRP_COLORS[group % len(GRP_COLORS)],
-                transform=ax.get_yaxis_transform(), clip_on=False)
-        src_offsets[group] = offset
-        offset += tpg
+        src_offsets = {}
+        for group in zoom_groups:
+            offset = group * tpg
+            if group > 0:
+                ax.axhline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
+            mid = offset + tpg / 2
+            ax.text(-0.04, mid, f"G{group}", ha="right", va="center",
+                    fontsize=FONT_ANNOT + 3, fontweight="bold",
+                    color=GRP_COLORS[group % len(GRP_COLORS)],
+                    transform=ax.get_yaxis_transform(), clip_on=False)
+            src_offsets[group] = offset
 
-    dst_offsets = {}
-    offset = 0
-    for idx, group in enumerate(dest_groups):
-        if idx > 0:
-            ax.axvline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
-        mid = offset + tpg / 2
-        ax.text(mid, -0.06, f"G{group}", ha="center", va="top",
-                fontsize=FONT_ANNOT + 3, fontweight="bold",
-                color=GRP_COLORS[group % len(GRP_COLORS)],
-                transform=ax.get_xaxis_transform(), clip_on=False)
-        dst_offsets[group] = offset
-        offset += tpg
+        dst_offsets = {}
+        for group in dest_groups:
+            offset = group * tpg
+            if group > 0:
+                ax.axvline(offset - 0.5, color="#333333", lw=2.0, alpha=0.7)
+            mid = offset + tpg / 2
+            ax.text(mid, -0.06, f"G{group}", ha="center", va="top",
+                    fontsize=FONT_ANNOT + 3, fontweight="bold",
+                    color=GRP_COLORS[group % len(GRP_COLORS)],
+                    transform=ax.get_xaxis_transform(), clip_on=False)
+            dst_offsets[group] = offset
 
-    for group in zoom_groups:
-        if group in dst_offsets:
-            rect_xy = (dst_offsets[group] - 0.5, src_offsets[group] - 0.5)
-            group_col = GRP_COLORS[group % len(GRP_COLORS)]
-            ax.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=8.0, edgecolor="#000000",
-                facecolor="none", alpha=0.25, zorder=4, clip_on=False,
-            ))
-            ax.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=5.0, edgecolor=group_col,
-                facecolor="none", alpha=0.5, zorder=5, clip_on=False,
-            ))
-            ax.add_patch(Rectangle(
-                rect_xy, tpg, tpg,
-                linewidth=3.0, edgecolor=group_col,
-                facecolor="none", zorder=6, clip_on=False,
-            ))
+        for group in zoom_groups:
+            if group in src_offsets and group in dst_offsets:
+                rect_xy = (dst_offsets[group] - 0.5, src_offsets[group] - 0.5)
+                group_col = GRP_COLORS[group % len(GRP_COLORS)]
+                ax.add_patch(Rectangle(
+                    rect_xy, tpg, tpg,
+                    linewidth=8.0, edgecolor="#000000",
+                    facecolor="none", alpha=0.25, zorder=4, clip_on=False,
+                ))
+                ax.add_patch(Rectangle(
+                    rect_xy, tpg, tpg,
+                    linewidth=5.0, edgecolor=group_col,
+                    facecolor="none", alpha=0.5, zorder=5, clip_on=False,
+                ))
+                ax.add_patch(Rectangle(
+                    rect_xy, tpg, tpg,
+                    linewidth=3.0, edgecolor=group_col,
+                    facecolor="none", zorder=6, clip_on=False,
+                ))
 
-    tick_fs = max(6.5, FONT_TICK - 1.5 * (n_dst > 48))
-    ax.set_xticks(range(n_dst))
-    ax.set_yticks(range(n_src))
-    ax.set_xticklabels(dest_tiles, fontsize=tick_fs, rotation=90)
-    ax.set_yticklabels(src_tiles, fontsize=tick_fs)
-    ax.set_xlabel("Destination tile", fontsize=FONT_LABEL, labelpad=20)
-    ax.set_ylabel("Source tile", fontsize=FONT_LABEL)
-    ax.set_title("Average load-return latency above ideal minimum",
-                 fontsize=FONT_SUBTITLE, fontweight="bold", pad=10)
+        # Highlight self-subgroup diagonal blocks
+        _add_subgroup_boxes(ax, topology, tpg, n_groups)
 
-    divider = make_axes_locatable(ax)
-    cax = divider.append_axes("right", size="3.5%", pad=1.00)
-    cb = fig.colorbar(im, cax=cax)
-    cb.set_label("Excess latency over ideal minimum (cycles)", fontsize=FONT_LABEL - 1)
-    ticks = sorted(set([0, 1, 2, 5] + [v for v in range(10, int(vmax_delta) + 1, 5)] + [int(vmax_delta)]))
-    ticks = [tick for tick in ticks if 0 <= tick <= vmax_delta]
-    cb.set_ticks(ticks)
-    cb.ax.tick_params(labelsize=FONT_TICK)
+        tick_fs = max(6.5, FONT_TICK - 1.5 * (n_dst > 48))
+        ax.set_xticks(range(n_dst))
+        ax.set_yticks(range(n_src))
+        ax.set_xticklabels(dest_tiles, fontsize=tick_fs, rotation=90)
+        ax.set_yticklabels(src_tiles, fontsize=tick_fs)
+        ax.set_xlabel("Destination tile", fontsize=FONT_LABEL, labelpad=20)
+        ax.set_ylabel("Source tile", fontsize=FONT_LABEL)
+        ax.set_title(meta["title"],
+                     fontsize=FONT_SUBTITLE, fontweight="bold", pad=10)
 
-    sec_lbl = f"Section {section}" if section is not None else "All sections"
-    src_label = ", ".join(f"G{group}" for group in zoom_groups)
-    dst_label = ", ".join(f"G{group}" for group in dest_groups)
-    n_pairs = len(pair_data)
-    total_loads = sum(data["count"] for data in pair_data.values())
-    global_avg_delta = float(np.nanmean(valid_delta)) if len(valid_delta) else 0.0
-    fig.text(0.5, -0.005,
-             f"{sec_lbl}  ·  {n_src} source tiles ({src_label}) → "
-             f"{n_dst} dest tiles ({dst_label})  ·  "
-             f"{n_pairs} active pairs  ·  "
-             f"{_nice_count(total_loads)} load returns  ·  "
-             f"Global avg excess: {global_avg_delta:.1f} cycles  ·  "
-             f"Baselines: local=1, same-group=3, remote=5",
-             ha="center", fontsize=FONT_ANNOT, color="#666666", style="italic")
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="3.5%", pad=1.00)
+        cb = fig.colorbar(im, cax=cax)
+        cb.set_label("Excess latency over ideal minimum (cycles)", fontsize=FONT_LABEL - 1)
+        ticks = sorted(set([0, 1, 2, 5] + [v for v in range(10, int(vmax_delta) + 1, 5)] + [int(vmax_delta)]))
+        ticks = [tick for tick in ticks if 0 <= tick <= vmax_delta]
+        cb.set_ticks(ticks)
+        cb.ax.tick_params(labelsize=FONT_TICK)
 
-    _save(fig, output_dir, "latency_excess_matrix", section)
+        global_avg_delta = float(np.nanmean(valid_delta)) if len(valid_delta) else 0.0
+        fig.text(0.5, -0.005,
+                 f"{sec_lbl}  ·  {n_tiles} tiles  ·  {n_groups} groups  ·  "
+                 f"{n_pairs} active pairs  ·  "
+                 f"{_nice_count(total_loads)} load returns  ·  "
+                 f"Global avg excess: {global_avg_delta:.1f} cycles  ·  "
+                 f"Baselines: local={baseline_map['local']:.0f}, "
+                 f"same-subgroup={baseline_map['same_subgroup']:.0f}, "
+                 f"same-group={baseline_map['same_group']:.0f}, "
+                 f"remote={baseline_map['remote']:.0f}",
+                 ha="center", fontsize=FONT_ANNOT, color="#666666", style="italic")
+
+        _save(fig, output_dir, meta["save_name"], section)
 
 
 # ===================================================================
@@ -1856,8 +2033,8 @@ def _parse_args(argv=None):
     p.add_argument("--n-groups", type=int, default=4,
                    help="Number of tile groups (default: 4)")
     p.add_argument("--figures", nargs="*", default=None,
-                   help="Which figures: matrix zoom locality correlation "
-                        "temporal latency tile_latency contention latency_over_minimum (default: all)")
+                   help="Which figures: matrix locality correlation "
+                        "temporal latency tile_latency latency_matrix latency_over_minimum (default: all)")
     return p.parse_args(argv)
 
 
@@ -1871,10 +2048,12 @@ def main(argv=None):
     _migrate_legacy_pdfs(output_dir)
 
     section  = args.section
-    n_groups = args.n_groups
+    topology = _load_topology(paths["result_dir"], args.n_groups)
+    n_groups = topology["n_groups"]
     figs = (set(args.figures) if args.figures
-            else {"matrix", "zoom", "locality", "correlation", "temporal",
-                  "latency", "tile_latency", "contention"})
+            else {"matrix", "locality", "correlation", "temporal",
+                  "latency", "tile_latency", "latency_matrix",
+                  "latency_over_minimum"})
 
     print(f"Generating thesis figures → {output_dir}")
 
@@ -1889,12 +2068,8 @@ def main(argv=None):
 
     if "matrix" in figs:
         print("\n[1/5] Traffic matrix …")
-        plot_traffic_matrix_zoom(sd_rows, n_groups, output_dir, section)
-        plot_traffic_matrix(sd_rows, n_groups, output_dir, section)
-
-    if "zoom" in figs:
-        print("\n[2/5] Traffic matrix (zoomed alias) …")
-        plot_traffic_matrix_zoom(sd_rows, n_groups, output_dir, section)
+        plot_traffic_matrix_full(sd_rows, topology, output_dir, section)
+        plot_traffic_matrix_group(sd_rows, topology, output_dir, section)
 
     if "locality" in figs:
         print("\n[3/5] Locality & latency …")
@@ -1920,13 +2095,13 @@ def main(argv=None):
             plot_per_tile_group_latency(ts_rows, n_groups, output_dir,
                                         section, target_group=tg)
 
-    if "contention" in figs:
-        print("\n[7/7] Traffic volume vs. latency …")
-        plot_traffic_vs_latency(paths["events"], n_groups, output_dir, section)
+    if "latency_matrix" in figs:
+        print("\n[7/7] Tile-pair latency heatmap …")
+        plot_traffic_vs_latency(paths["events"], topology, output_dir, section)
 
     if "latency_over_minimum" in figs:
         print("\n[7b] Latency above hierarchy minimum …")
-        plot_latency_over_minimum(paths["events"], n_groups, output_dir, section)
+        plot_latency_over_minimum(paths["events"], topology, output_dir, section)
 
     print("\nDone.")
 

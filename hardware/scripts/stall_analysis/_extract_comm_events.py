@@ -53,14 +53,23 @@ _LS_SIZE_LABELS = {0: "Byte", 1: "Half", 2: "Word", 3: "Doub"}
 _LS_SIZE_BYTES = {0: 1, 1: 2, 2: 4, 3: 8}
 _SIZE_NAME_TO_BYTES = {name: _LS_SIZE_BYTES[idx] for idx, name in _LS_SIZE_LABELS.items()}
 _MEM_REGION_LABELS = {0: "other", 1: "sequential", 2: "interleaved"}
+_IGNORABLE_TRACE_PREFIXES = (
+    "## Performance metrics",
+    "Performance metrics for section ",
+    "Wrote performance metrics to ",
+    "Sanity check failed!",
+    "total_stalls do not add up.",
+)
 
 _KNOWN_KEYS = [
     "section",
     "cycle",
     "core",
     "group",
+    "subgroup",
     "tile",
     "tile_in_group",
+    "tile_in_subgroup",
     "core_in_tile",
     "core_in_group",
     "event_type",
@@ -75,8 +84,10 @@ _KNOWN_KEYS = [
     "region",
     "dest_tile",
     "dest_group",
+    "dest_subgroup",
     "is_local",
     "is_same_group",
+    "is_same_subgroup",
     "issue_cycle",
     "return_cycle",
     "latency",
@@ -96,9 +107,12 @@ _NUM_GROUPS = _getenv_int("NUM_GROUPS", "num_groups", default=1)
 _NUM_CORES_PER_TILE = _getenv_int("NUM_CORES_PER_TILE", "num_cores_per_tile", default=4)
 _BANKING_FACTOR = _getenv_int("BANKING_FACTOR", "banking_factor", default=4)
 _L1_BANK_SIZE = _getenv_int("L1_BANK_SIZE", "l1_bank_size", default=1024)
+_NUM_SUB_GROUPS_PER_GROUP = _getenv_int("NUM_SUB_GROUPS_PER_GROUP", "num_sub_groups_per_group", default=1)
 _NUM_BANKS_PER_TILE = _NUM_CORES_PER_TILE * _BANKING_FACTOR
 _SEQ_MEM_SIZE = _NUM_CORES_PER_TILE * _getenv_int("SEQ_MEM_SIZE", "seq_mem_size", default=512)
 _NUM_TILES = _NUM_CORES // _NUM_CORES_PER_TILE if _NUM_CORES_PER_TILE else 0
+_TILES_PER_GROUP = _NUM_TILES // _NUM_GROUPS if _NUM_GROUPS else _NUM_TILES
+_TILES_PER_SUBGROUP = _TILES_PER_GROUP // _NUM_SUB_GROUPS_PER_GROUP if _NUM_SUB_GROUPS_PER_GROUP else _TILES_PER_GROUP
 _INTERLEAVE_STRIDE = 4 * _NUM_BANKS_PER_TILE
 _TCDM_SIZE = _NUM_BANKS_PER_TILE * _L1_BANK_SIZE * _NUM_TILES
 
@@ -120,6 +134,23 @@ def _detect_marker(line: str) -> bool:
 
 def _parse_int_literal(raw: str) -> int:
     return int(raw.strip().rstrip(","), 0)
+
+
+def _is_ignorable_trace_line(line: str) -> bool:
+    stripped = line.strip()
+    if not stripped:
+        return True
+    if stripped.startswith(_IGNORABLE_TRACE_PREFIXES):
+        return True
+    key, sep, value = stripped.partition(" ")
+    if sep and value and key.replace("_", "").isalnum():
+        try:
+            float(value)
+            return True
+        except ValueError:
+            if value.lower() == "nan":
+                return True
+    return False
 
 
 def _format_address(address: int | None) -> str:
@@ -144,24 +175,28 @@ def _get_core_hierarchy(core_id: int) -> dict:
     if core_id < 0:
         return {
             "group": -1,
+            "subgroup": -1,
             "tile": -1,
             "tile_in_group": -1,
+            "tile_in_subgroup": -1,
             "core_in_tile": -1,
             "core_in_group": -1,
         }
-    tiles_per_group = _NUM_TILES // _NUM_GROUPS if _NUM_GROUPS else _NUM_TILES
     cores_per_group = _NUM_CORES // _NUM_GROUPS if _NUM_GROUPS else _NUM_CORES
     tile_id = core_id // _NUM_CORES_PER_TILE if _NUM_CORES_PER_TILE else -1
+    tile_in_group = tile_id % _TILES_PER_GROUP if _TILES_PER_GROUP else 0
     return {
-        "group": tile_id // tiles_per_group if tiles_per_group else 0,
+        "group": tile_id // _TILES_PER_GROUP if _TILES_PER_GROUP else 0,
+        "subgroup": tile_in_group // _TILES_PER_SUBGROUP if _TILES_PER_SUBGROUP else 0,
         "tile": tile_id,
-        "tile_in_group": tile_id % tiles_per_group if tiles_per_group else 0,
+        "tile_in_group": tile_in_group,
+        "tile_in_subgroup": tile_in_group % _TILES_PER_SUBGROUP if _TILES_PER_SUBGROUP else 0,
         "core_in_tile": core_id % _NUM_CORES_PER_TILE if _NUM_CORES_PER_TILE else 0,
         "core_in_group": core_id % cores_per_group if cores_per_group else 0,
     }
 
 
-def _addr_to_meta(address: int) -> tuple[str, int, int]:
+def _addr_to_meta(address: int) -> tuple[str, int, int, int]:
     region_code = 0
     dest_tile = -1
     if 0 <= address < _SEQ_MEM_SIZE * _NUM_TILES:
@@ -171,10 +206,11 @@ def _addr_to_meta(address: int) -> tuple[str, int, int]:
         region_code = 2
         dest_tile = (address // _INTERLEAVE_STRIDE) % _NUM_TILES if _NUM_TILES else -1
     if dest_tile < 0:
-        return _MEM_REGION_LABELS[region_code], -1, -1
-    tiles_per_group = _NUM_TILES // _NUM_GROUPS if _NUM_GROUPS else _NUM_TILES
-    dest_group = dest_tile // tiles_per_group if tiles_per_group else 0
-    return _MEM_REGION_LABELS[region_code], int(dest_tile), int(dest_group)
+        return _MEM_REGION_LABELS[region_code], -1, -1, -1
+    dest_group = dest_tile // _TILES_PER_GROUP if _TILES_PER_GROUP else 0
+    dest_tile_in_group = dest_tile % _TILES_PER_GROUP if _TILES_PER_GROUP else 0
+    dest_subgroup = dest_tile_in_group // _TILES_PER_SUBGROUP if _TILES_PER_SUBGROUP else 0
+    return _MEM_REGION_LABELS[region_code], int(dest_tile), int(dest_group), int(dest_subgroup)
 
 
 def _issue_event_type_dict(extras: dict) -> list[dict]:
@@ -233,7 +269,7 @@ def _issue_event_type_annotated(annotation: str) -> list[dict]:
 
 def _parse_line_events(line: str, permissive: bool) -> dict | None:
     line = line.rstrip("\n")
-    if not line.strip():
+    if _is_ignorable_trace_line(line):
         return None
     match = _TRACE_IN_REGEX.search(line)
     if match is not None:
@@ -274,19 +310,23 @@ def _parse_line_events(line: str, permissive: bool) -> dict | None:
 def _make_row(section: int, cycle: int, core_id: int, hierarchy: dict, *, event_type: str,
               request_id: int | str, pc: str, insn: str, origin_pc: str, origin_insn: str,
               rd_index: int | None, size_bytes, address: int | None, issue_cycle, return_cycle, latency):
-    region, dest_tile, dest_group = _addr_to_meta(address) if address is not None else ("", -1, -1)
+    region, dest_tile, dest_group, dest_subgroup = _addr_to_meta(address) if address is not None else ("", -1, -1, -1)
     is_local = ""
     is_same_group = ""
+    is_same_subgroup = ""
     if dest_tile >= 0:
         is_local = int(dest_tile == hierarchy["tile"])
         is_same_group = int(dest_group == hierarchy["group"])
+        is_same_subgroup = int(is_same_group and dest_subgroup == hierarchy["subgroup"])
     return {
         "section": section,
         "cycle": cycle,
         "core": core_id,
         "group": hierarchy["group"],
+        "subgroup": hierarchy["subgroup"],
         "tile": hierarchy["tile"],
         "tile_in_group": hierarchy["tile_in_group"],
+        "tile_in_subgroup": hierarchy["tile_in_subgroup"],
         "core_in_tile": hierarchy["core_in_tile"],
         "core_in_group": hierarchy["core_in_group"],
         "event_type": event_type,
@@ -301,8 +341,10 @@ def _make_row(section: int, cycle: int, core_id: int, hierarchy: dict, *, event_
         "region": region,
         "dest_tile": dest_tile if dest_tile >= 0 else "",
         "dest_group": dest_group if dest_group >= 0 else "",
+        "dest_subgroup": dest_subgroup if dest_subgroup >= 0 else "",
         "is_local": is_local,
         "is_same_group": is_same_group,
+        "is_same_subgroup": is_same_subgroup,
         "issue_cycle": issue_cycle,
         "return_cycle": return_cycle,
         "latency": latency,
