@@ -35,9 +35,6 @@ int main() {
     // --------------------------------------------
     uint32_t num_tiles_per_partition = 32;
     uint32_t array_size = NUM_PARTITION_ROWS * NUM_BANKS;
-    uint32_t array_size_partition = NUM_PARTITION_ROWS *
-                                    num_tiles_per_partition *
-                                    NUM_CORES_PER_TILE * BANKING_FACTOR;
     // Initialize L2 array
     for (uint32_t i = 0; i < array_size; i++) {
       l2_array[i] = i;
