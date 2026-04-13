@@ -28,7 +28,7 @@ module idma_split_midend #(
   input  logic       rst_ni,
 `ifdef DAS
   // DAS signals
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] partition_sel_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] tiles_das_i,
   input  logic [NumDASPartitions-1:0][AddrWidth-1:0]      start_das_i,
   input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] rows_das_i,
   output logic [$clog2(NumTiles):0]                       rows_das_o,
@@ -96,7 +96,7 @@ module idma_split_midend #(
   ) i_idma_address_scrambler_src (
     .address_i          (burst_req_i.src),
     .num_bytes_i        (burst_req_i.num_bytes),
-    .group_factor_i     (partition_sel_i),
+    .group_factor_i     (tiles_das_i),
     .allocated_size_i   (rows_das_i),
     .start_addr_scheme_i(start_das_i),
     .group_factor_o     (group_factor_src),
@@ -114,7 +114,7 @@ module idma_split_midend #(
   ) i_idma_address_scrambler_dst (
     .address_i          (burst_req_i.dst),
     .num_bytes_i        (burst_req_i.num_bytes),
-    .group_factor_i     (partition_sel_i),
+    .group_factor_i     (tiles_das_i),
     .allocated_size_i   (rows_das_i),
     .start_addr_scheme_i(start_das_i),
     .group_factor_o     (group_factor_dst),

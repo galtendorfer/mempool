@@ -50,7 +50,7 @@ package control_registers_reg_pkg;
   typedef struct packed {
     logic [31:0] q;
     logic        qe;
-  } control_registers_reg2hw_partition_sel_mreg_t;
+  } control_registers_reg2hw_tiles_das_mreg_t;
 
   typedef struct packed {
     logic [31:0] q;
@@ -81,7 +81,7 @@ package control_registers_reg_pkg;
 
   typedef struct packed {
     logic [31:0] d;
-  } control_registers_hw2reg_partition_sel_mreg_t;
+  } control_registers_hw2reg_tiles_das_mreg_t;
 
   typedef struct packed {
     logic [31:0] d;
@@ -115,7 +115,7 @@ package control_registers_reg_pkg;
     control_registers_reg2hw_wake_up_group_reg_t wake_up_group; // [818:786]
     control_registers_reg2hw_wake_up_strd_reg_t wake_up_strd; // [785:753]
     control_registers_reg2hw_wake_up_offst_reg_t wake_up_offst; // [752:720]
-    control_registers_reg2hw_partition_sel_mreg_t [3:0] partition_sel; // [719:588]
+    control_registers_reg2hw_tiles_das_mreg_t [3:0] tiles_das; // [719:588]
     control_registers_reg2hw_start_das_mreg_t [3:0] start_das; // [587:456]
     control_registers_reg2hw_rows_das_mreg_t [3:0] rows_das; // [455:328]
     control_registers_reg2hw_ro_cache_enable_reg_t ro_cache_enable; // [327:296]
@@ -126,7 +126,7 @@ package control_registers_reg_pkg;
 
   // HW -> register type
   typedef struct packed {
-    control_registers_hw2reg_partition_sel_mreg_t [3:0] partition_sel; // [607:480]
+    control_registers_hw2reg_tiles_das_mreg_t [3:0] tiles_das; // [607:480]
     control_registers_hw2reg_start_das_mreg_t [3:0] start_das; // [479:352]
     control_registers_hw2reg_tcdm_start_address_reg_t tcdm_start_address; // [351:320]
     control_registers_hw2reg_tcdm_end_address_reg_t tcdm_end_address; // [319:288]
@@ -149,10 +149,10 @@ package control_registers_reg_pkg;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_WAKE_UP_GROUP_OFFSET = 8'h 28;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_WAKE_UP_STRD_OFFSET = 8'h 2c;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_WAKE_UP_OFFST_OFFSET = 8'h 30;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_PARTITION_SEL_0_OFFSET = 8'h 34;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_PARTITION_SEL_1_OFFSET = 8'h 38;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_PARTITION_SEL_2_OFFSET = 8'h 3c;
-  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_PARTITION_SEL_3_OFFSET = 8'h 40;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_TILES_DAS_0_OFFSET = 8'h 34;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_TILES_DAS_1_OFFSET = 8'h 38;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_TILES_DAS_2_OFFSET = 8'h 3c;
+  parameter logic [BlockAw-1:0] CONTROL_REGISTERS_TILES_DAS_3_OFFSET = 8'h 40;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_DAS_0_OFFSET = 8'h 44;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_DAS_1_OFFSET = 8'h 48;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_START_DAS_2_OFFSET = 8'h 4c;
@@ -176,10 +176,10 @@ package control_registers_reg_pkg;
   parameter logic [BlockAw-1:0] CONTROL_REGISTERS_RO_CACHE_END_3_OFFSET = 8'h 94;
 
   // Reset values for hwext registers and their fields
-  parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_0_RESVAL = 32'h 0;
-  parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_1_RESVAL = 32'h 0;
-  parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_2_RESVAL = 32'h 0;
-  parameter logic [31:0] CONTROL_REGISTERS_PARTITION_SEL_3_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_TILES_DAS_0_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_TILES_DAS_1_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_TILES_DAS_2_RESVAL = 32'h 0;
+  parameter logic [31:0] CONTROL_REGISTERS_TILES_DAS_3_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_START_DAS_0_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_START_DAS_1_RESVAL = 32'h 0;
   parameter logic [31:0] CONTROL_REGISTERS_START_DAS_2_RESVAL = 32'h 0;
@@ -211,10 +211,10 @@ package control_registers_reg_pkg;
     CONTROL_REGISTERS_WAKE_UP_GROUP,
     CONTROL_REGISTERS_WAKE_UP_STRD,
     CONTROL_REGISTERS_WAKE_UP_OFFST,
-    CONTROL_REGISTERS_PARTITION_SEL_0,
-    CONTROL_REGISTERS_PARTITION_SEL_1,
-    CONTROL_REGISTERS_PARTITION_SEL_2,
-    CONTROL_REGISTERS_PARTITION_SEL_3,
+    CONTROL_REGISTERS_TILES_DAS_0,
+    CONTROL_REGISTERS_TILES_DAS_1,
+    CONTROL_REGISTERS_TILES_DAS_2,
+    CONTROL_REGISTERS_TILES_DAS_3,
     CONTROL_REGISTERS_START_DAS_0,
     CONTROL_REGISTERS_START_DAS_1,
     CONTROL_REGISTERS_START_DAS_2,
@@ -253,10 +253,10 @@ package control_registers_reg_pkg;
     4'b 1111, // index[10] CONTROL_REGISTERS_WAKE_UP_GROUP
     4'b 1111, // index[11] CONTROL_REGISTERS_WAKE_UP_STRD
     4'b 1111, // index[12] CONTROL_REGISTERS_WAKE_UP_OFFST
-    4'b 1111, // index[13] CONTROL_REGISTERS_PARTITION_SEL_0
-    4'b 1111, // index[14] CONTROL_REGISTERS_PARTITION_SEL_1
-    4'b 1111, // index[15] CONTROL_REGISTERS_PARTITION_SEL_2
-    4'b 1111, // index[16] CONTROL_REGISTERS_PARTITION_SEL_3
+    4'b 1111, // index[13] CONTROL_REGISTERS_TILES_DAS_0
+    4'b 1111, // index[14] CONTROL_REGISTERS_TILES_DAS_1
+    4'b 1111, // index[15] CONTROL_REGISTERS_TILES_DAS_2
+    4'b 1111, // index[16] CONTROL_REGISTERS_TILES_DAS_3
     4'b 1111, // index[17] CONTROL_REGISTERS_START_DAS_0
     4'b 1111, // index[18] CONTROL_REGISTERS_START_DAS_1
     4'b 1111, // index[19] CONTROL_REGISTERS_START_DAS_2

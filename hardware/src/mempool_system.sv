@@ -92,7 +92,7 @@ module mempool_system
   ro_cache_ctrl_t                       ro_cache_ctrl;
 `ifdef DAS
   // For dynamic partitioning
-  logic             [NumDASPartitions-1:0][TileInterleavingWidth-1:0] partition_sel;
+  logic             [NumDASPartitions-1:0][TileInterleavingWidth-1:0] tiles_das;
   logic             [NumDASPartitions-1:0][AddrWidth-1:0]             start_das;
   logic             [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das;
 `endif
@@ -147,7 +147,7 @@ module mempool_system
     .rst_ni          (rst_ni                         ),
     .wake_up_i       (wake_up                        ),
 `ifdef DAS
-    .partition_sel_i (partition_sel                  ),
+    .tiles_das_i (tiles_das                  ),
     .start_das_i     (start_das                      ),
     .rows_das_i      (rows_das                       ),
 `endif
@@ -813,7 +813,7 @@ module mempool_system
     .eoc_o                (/* Unused */                    ),
     .eoc_valid_o          (eoc_valid_o                     ),
 `ifdef DAS
-    .partition_sel_o      (partition_sel                   ),
+    .tiles_das_o      (tiles_das                   ),
     .start_das_o          (start_das                       ),
     .rows_das_o           (rows_das                        ),
 `endif

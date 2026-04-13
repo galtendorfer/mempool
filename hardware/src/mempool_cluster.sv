@@ -26,7 +26,7 @@ module mempool_cluster
   output logic                               scan_data_o,
 `ifdef DAS
   // Partition Selection
-  input  logic           [NumDASPartitions-1:0][TileInterleavingWidth-1:0] partition_sel_i,
+  input  logic           [NumDASPartitions-1:0][TileInterleavingWidth-1:0] tiles_das_i,
   input  logic           [NumDASPartitions-1:0][AddrWidth-1:0]             start_das_i,
   input  logic           [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das_i,
 `endif
@@ -109,7 +109,7 @@ module mempool_cluster
     .clk_i           (clk_i              ),
     .rst_ni          (rst_ni             ),
 `ifdef DAS
-    .partition_sel_i (partition_sel_i    ),
+    .tiles_das_i (tiles_das_i    ),
     .start_das_i     (start_das_i        ),
     .rows_das_i      (rows_das_i         ),
     .rows_das_o      (dma_rows_das       ),
@@ -320,7 +320,7 @@ module mempool_cluster
           .tcdm_slave_resp_valid_o (tcdm_slave_resp_valid[g]                                        ),
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
-          .partition_sel_i         (partition_sel_i                                                 ),
+          .tiles_das_i         (tiles_das_i                                                 ),
           .start_das_i             (start_das_i                                                     ),
           .rows_das_i              (rows_das_i                                                      ),
           .dma_rows_das_i          (dma_rows_das                                                    ),
@@ -367,7 +367,7 @@ module mempool_cluster
           .tcdm_slave_resp_valid_o (tcdm_slave_resp_valid[g]                                        ),
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
-          .partition_sel_i         (partition_sel_i                                                 ),
+          .tiles_das_i         (tiles_das_i                                                 ),
           .start_das_i             (start_das_i                                                     ),
           .rows_das_i              (rows_das_i                                                      ),
           .dma_rows_das_i          (dma_rows_das                                                    ),
@@ -411,7 +411,7 @@ module mempool_cluster
           .tcdm_slave_resp_valid_o (tcdm_slave_resp_valid[g]                                        ),
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
-          .partition_sel_i         (partition_sel_i                                                 ),
+          .tiles_das_i         (tiles_das_i                                                 ),
           .start_das_i             (start_das_i                                                     ),
           .rows_das_i              (rows_das_i                                                      ),
           .dma_rows_das_i          (dma_rows_das                                                    ),
@@ -500,7 +500,7 @@ module mempool_cluster
         .tcdm_slave_resp_valid_o   (tcdm_slave_resp_valid[g]                                        ),
         .tcdm_slave_resp_ready_i   (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
-        .partition_sel_i           (partition_sel_i                                                 ),
+        .tiles_das_i           (tiles_das_i                                                 ),
         .start_das_i               (start_das_i                                                     ),
         .rows_das_i                (rows_das_i                                                      ),
         .dma_rows_das_i            (dma_rows_das                                                    ),

@@ -79,7 +79,7 @@
 
     { multireg:
       {
-        name: "partition_sel"
+        name: "tiles_das"
         desc: "Tile grouping for DAS partition"
         swaccess: "wo"
         hwaccess: "hrw"
@@ -87,7 +87,7 @@
         // External because we want to define the reset from a parameter
         hwext: "true"
         count: "NumDASPartitions"
-        cname: "partition_sel"
+        cname: "tiles_das"
         fields: [{ bits: "31:0" }]
       },
     },

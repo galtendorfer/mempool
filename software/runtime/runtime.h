@@ -57,18 +57,18 @@ static uint32_t volatile *wake_up_offset_reg =
 #ifdef NUM_DAS_PARTITIONS
 /* DAS-related regs */
 
-static uint32_t volatile *partition_0_reg =
+static uint32_t volatile *tiles_das_0_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_PARTITION_SEL_0_REG_OFFSET);
-static uint32_t volatile *partition_1_reg =
+                          CONTROL_REGISTERS_TILES_DAS_0_REG_OFFSET);
+static uint32_t volatile *tiles_das_1_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_PARTITION_SEL_1_REG_OFFSET);
-static uint32_t volatile *partition_2_reg =
+                          CONTROL_REGISTERS_TILES_DAS_1_REG_OFFSET);
+static uint32_t volatile *tiles_das_2_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_PARTITION_SEL_2_REG_OFFSET);
-static uint32_t volatile *partition_3_reg =
+                          CONTROL_REGISTERS_TILES_DAS_2_REG_OFFSET);
+static uint32_t volatile *tiles_das_3_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
-                          CONTROL_REGISTERS_PARTITION_SEL_3_REG_OFFSET);
+                          CONTROL_REGISTERS_TILES_DAS_3_REG_OFFSET);
 
 static uint32_t volatile *start_das_0_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
@@ -311,27 +311,27 @@ static inline void das_config(uint32_t reg_sel, uint32_t tiles_per_partition,
   // Program DAS registers
   switch (reg_sel) {
   case 0:
-    *partition_0_reg = tiles_per_partition;
+    *tiles_das_0_reg = tiles_per_partition;
     *start_das_0_reg = addr;
     *rows_das_0_reg = rows_das;
     break;
   case 1:
-    *partition_1_reg = tiles_per_partition;
+    *tiles_das_1_reg = tiles_per_partition;
     *start_das_1_reg = addr;
     *rows_das_1_reg = rows_das;
     break;
   case 2:
-    *partition_2_reg = tiles_per_partition;
+    *tiles_das_2_reg = tiles_per_partition;
     *start_das_2_reg = addr;
     *rows_das_2_reg = rows_das;
     break;
   case 3:
-    *partition_3_reg = tiles_per_partition;
+    *tiles_das_3_reg = tiles_per_partition;
     *start_das_3_reg = addr;
     *rows_das_3_reg = rows_das;
     break;
   default:
-    *partition_0_reg = tiles_per_partition;
+    *tiles_das_0_reg = tiles_per_partition;
     *start_das_0_reg = addr;
     *rows_das_0_reg = rows_das;
     break;

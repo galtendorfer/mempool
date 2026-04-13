@@ -27,7 +27,7 @@ module ctrl_registers
   input  axi_lite_req_t                           axi_lite_slave_req_i,
   output axi_lite_resp_t                          axi_lite_slave_resp_o,
   // Control registers
-  output logic      [NumDASPartitions-1:0][TileInterleavingWidth-1:0] partition_sel_o,
+  output logic      [NumDASPartitions-1:0][TileInterleavingWidth-1:0] tiles_das_o,
   output logic      [NumDASPartitions-1:0][AddrWidth-1:0]             start_das_o,
   output logic      [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das_o,
   output logic      [DataWidth-1:0]                                   eoc_o,
@@ -106,9 +106,9 @@ module ctrl_registers
   end
 
   for (genvar i = 0; i < mempool_pkg::NumDASPartitions; i++) begin: gen_das_regs
-    `FFL(ctrl_hw2reg.partition_sel[i].d, ctrl_reg2hw.partition_sel[i].q, ctrl_reg2hw.partition_sel[i].qe, mempool_pkg::NumTiles);
+    `FFL(ctrl_hw2reg.tiles_das[i].d, ctrl_reg2hw.tiles_das[i].q, ctrl_reg2hw.tiles_das[i].qe, mempool_pkg::NumTiles);
     `FFL(ctrl_hw2reg.start_das[i].d, ctrl_reg2hw.start_das[i].q, ctrl_reg2hw.start_das[i].qe, mempool_pkg::DASStartAddr);
-     assign partition_sel_o[i] = ctrl_hw2reg.partition_sel[i].d[TileInterleavingWidth-1:0];
+     assign tiles_das_o[i] = ctrl_hw2reg.tiles_das[i].d[TileInterleavingWidth-1:0];
      assign start_das_o[i]     = ctrl_hw2reg.start_das[i].d;
      assign rows_das_o[i]      = ctrl_reg2hw.rows_das[i].q[RowsInterleavingWidth-1:0];
   end

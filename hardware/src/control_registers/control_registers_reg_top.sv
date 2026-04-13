@@ -95,14 +95,14 @@ module control_registers_reg_top #(
   logic wake_up_strd_we;
   logic [31:0] wake_up_offst_wd;
   logic wake_up_offst_we;
-  logic [31:0] partition_sel_0_wd;
-  logic partition_sel_0_we;
-  logic [31:0] partition_sel_1_wd;
-  logic partition_sel_1_we;
-  logic [31:0] partition_sel_2_wd;
-  logic partition_sel_2_we;
-  logic [31:0] partition_sel_3_wd;
-  logic partition_sel_3_we;
+  logic [31:0] tiles_das_0_wd;
+  logic tiles_das_0_we;
+  logic [31:0] tiles_das_1_wd;
+  logic tiles_das_1_we;
+  logic [31:0] tiles_das_2_wd;
+  logic tiles_das_2_we;
+  logic [31:0] tiles_das_3_wd;
+  logic tiles_das_3_we;
   logic [31:0] start_das_0_wd;
   logic start_das_0_we;
   logic [31:0] start_das_1_wd;
@@ -507,67 +507,67 @@ module control_registers_reg_top #(
 
 
 
-  // Subregister 0 of Multireg partition_sel
-  // R[partition_sel_0]: V(True)
+  // Subregister 0 of Multireg tiles_das
+  // R[tiles_das_0]: V(True)
 
   prim_subreg_ext #(
     .DW    (32)
-  ) u_partition_sel_0 (
+  ) u_tiles_das_0 (
     .re     (1'b0),
-    .we     (partition_sel_0_we),
-    .wd     (partition_sel_0_wd),
-    .d      (hw2reg.partition_sel[0].d),
+    .we     (tiles_das_0_we),
+    .wd     (tiles_das_0_wd),
+    .d      (hw2reg.tiles_das[0].d),
     .qre    (),
-    .qe     (reg2hw.partition_sel[0].qe),
-    .q      (reg2hw.partition_sel[0].q ),
+    .qe     (reg2hw.tiles_das[0].qe),
+    .q      (reg2hw.tiles_das[0].q ),
     .qs     ()
   );
 
-  // Subregister 1 of Multireg partition_sel
-  // R[partition_sel_1]: V(True)
+  // Subregister 1 of Multireg tiles_das
+  // R[tiles_das_1]: V(True)
 
   prim_subreg_ext #(
     .DW    (32)
-  ) u_partition_sel_1 (
+  ) u_tiles_das_1 (
     .re     (1'b0),
-    .we     (partition_sel_1_we),
-    .wd     (partition_sel_1_wd),
-    .d      (hw2reg.partition_sel[1].d),
+    .we     (tiles_das_1_we),
+    .wd     (tiles_das_1_wd),
+    .d      (hw2reg.tiles_das[1].d),
     .qre    (),
-    .qe     (reg2hw.partition_sel[1].qe),
-    .q      (reg2hw.partition_sel[1].q ),
+    .qe     (reg2hw.tiles_das[1].qe),
+    .q      (reg2hw.tiles_das[1].q ),
     .qs     ()
   );
 
-  // Subregister 2 of Multireg partition_sel
-  // R[partition_sel_2]: V(True)
+  // Subregister 2 of Multireg tiles_das
+  // R[tiles_das_2]: V(True)
 
   prim_subreg_ext #(
     .DW    (32)
-  ) u_partition_sel_2 (
+  ) u_tiles_das_2 (
     .re     (1'b0),
-    .we     (partition_sel_2_we),
-    .wd     (partition_sel_2_wd),
-    .d      (hw2reg.partition_sel[2].d),
+    .we     (tiles_das_2_we),
+    .wd     (tiles_das_2_wd),
+    .d      (hw2reg.tiles_das[2].d),
     .qre    (),
-    .qe     (reg2hw.partition_sel[2].qe),
-    .q      (reg2hw.partition_sel[2].q ),
+    .qe     (reg2hw.tiles_das[2].qe),
+    .q      (reg2hw.tiles_das[2].q ),
     .qs     ()
   );
 
-  // Subregister 3 of Multireg partition_sel
-  // R[partition_sel_3]: V(True)
+  // Subregister 3 of Multireg tiles_das
+  // R[tiles_das_3]: V(True)
 
   prim_subreg_ext #(
     .DW    (32)
-  ) u_partition_sel_3 (
+  ) u_tiles_das_3 (
     .re     (1'b0),
-    .we     (partition_sel_3_we),
-    .wd     (partition_sel_3_wd),
-    .d      (hw2reg.partition_sel[3].d),
+    .we     (tiles_das_3_we),
+    .wd     (tiles_das_3_wd),
+    .d      (hw2reg.tiles_das[3].d),
     .qre    (),
-    .qe     (reg2hw.partition_sel[3].qe),
-    .q      (reg2hw.partition_sel[3].q ),
+    .qe     (reg2hw.tiles_das[3].qe),
+    .q      (reg2hw.tiles_das[3].q ),
     .qs     ()
   );
 
@@ -996,10 +996,10 @@ module control_registers_reg_top #(
     addr_hit[10] = (reg_addr == CONTROL_REGISTERS_WAKE_UP_GROUP_OFFSET);
     addr_hit[11] = (reg_addr == CONTROL_REGISTERS_WAKE_UP_STRD_OFFSET);
     addr_hit[12] = (reg_addr == CONTROL_REGISTERS_WAKE_UP_OFFST_OFFSET);
-    addr_hit[13] = (reg_addr == CONTROL_REGISTERS_PARTITION_SEL_0_OFFSET);
-    addr_hit[14] = (reg_addr == CONTROL_REGISTERS_PARTITION_SEL_1_OFFSET);
-    addr_hit[15] = (reg_addr == CONTROL_REGISTERS_PARTITION_SEL_2_OFFSET);
-    addr_hit[16] = (reg_addr == CONTROL_REGISTERS_PARTITION_SEL_3_OFFSET);
+    addr_hit[13] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_0_OFFSET);
+    addr_hit[14] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_1_OFFSET);
+    addr_hit[15] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_2_OFFSET);
+    addr_hit[16] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_3_OFFSET);
     addr_hit[17] = (reg_addr == CONTROL_REGISTERS_START_DAS_0_OFFSET);
     addr_hit[18] = (reg_addr == CONTROL_REGISTERS_START_DAS_1_OFFSET);
     addr_hit[19] = (reg_addr == CONTROL_REGISTERS_START_DAS_2_OFFSET);
@@ -1107,17 +1107,17 @@ module control_registers_reg_top #(
   assign wake_up_offst_we = addr_hit[12] & reg_we & !reg_error;
   assign wake_up_offst_wd = reg_wdata[31:0];
 
-  assign partition_sel_0_we = addr_hit[13] & reg_we & !reg_error;
-  assign partition_sel_0_wd = reg_wdata[31:0];
+  assign tiles_das_0_we = addr_hit[13] & reg_we & !reg_error;
+  assign tiles_das_0_wd = reg_wdata[31:0];
 
-  assign partition_sel_1_we = addr_hit[14] & reg_we & !reg_error;
-  assign partition_sel_1_wd = reg_wdata[31:0];
+  assign tiles_das_1_we = addr_hit[14] & reg_we & !reg_error;
+  assign tiles_das_1_wd = reg_wdata[31:0];
 
-  assign partition_sel_2_we = addr_hit[15] & reg_we & !reg_error;
-  assign partition_sel_2_wd = reg_wdata[31:0];
+  assign tiles_das_2_we = addr_hit[15] & reg_we & !reg_error;
+  assign tiles_das_2_wd = reg_wdata[31:0];
 
-  assign partition_sel_3_we = addr_hit[16] & reg_we & !reg_error;
-  assign partition_sel_3_wd = reg_wdata[31:0];
+  assign tiles_das_3_we = addr_hit[16] & reg_we & !reg_error;
+  assign tiles_das_3_wd = reg_wdata[31:0];
 
   assign start_das_0_we = addr_hit[17] & reg_we & !reg_error;
   assign start_das_0_wd = reg_wdata[31:0];

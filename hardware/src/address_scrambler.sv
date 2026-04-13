@@ -26,7 +26,7 @@ module address_scrambler #(
   parameter int unsigned MemSizePerRow        = (1 << ByteOffset)*NumBanksPerTile*NumTiles
 ) (
   input  logic [AddrWidth-1:0]                                       address_i,
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0]            partition_sel_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0]            tiles_das_i,
   input  logic [NumDASPartitions-1:0][AddrWidth-1:0]                 start_das_i,
   input  logic [NumDASPartitions-1:0][MaxPartitionRowWidth-1:0]      rows_das_i,
   output logic [AddrWidth-1:0]                                       address_o
@@ -65,7 +65,7 @@ module address_scrambler #(
         .WIDTH   ($clog2(NumTiles)+1 ),
         .MODE    (1'b0               )
       ) i_log_tile_bits (
-        .in_i    (partition_sel_i[i] ),
+        .in_i    (tiles_das_i[i] ),
         .cnt_o   (tile_bits[i]       ),
         .empty_o (/* Unused */       )
       );
@@ -101,7 +101,7 @@ module address_scrambler #(
       end else begin: gen_das_scrambling
 
         for (int p = 0; p < NumDASPartitions; p++) begin
-          if ( (address_i >= start_das_i[p]) && (address_i < start_das_i[p]+MemSizePerRow*rows_das_i[p]) && (partition_sel_i[p] != NumTiles) ) begin
+          if ( (address_i >= start_das_i[p]) && (address_i < start_das_i[p]+MemSizePerRow*rows_das_i[p]) && (tiles_das_i[p] != NumTiles) ) begin
 
             lsb_addr[p]       = address_i & ((1 << (tile_bits[p]+ConstantBitsLSB)) - 1);
             msb_addr[p]       = address_i & ~((1 << (row_bits[p]+TileIdBits+ConstantBitsLSB)) - 1);

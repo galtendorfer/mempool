@@ -63,7 +63,7 @@ module mempool_sub_group
   // RO-Cache configuration
   input  `STRUCT_PORT(ro_cache_ctrl_t)                                                         ro_cache_ctrl_i,
 `ifdef DAS
-  input  logic                            [NumDASPartitions-1:0][TileInterleavingWidth-1:0]    partition_sel_i,
+  input  logic                            [NumDASPartitions-1:0][TileInterleavingWidth-1:0]    tiles_das_i,
   input  logic                            [NumDASPartitions-1:0][AddrWidth-1:0]                start_das_i,
   input  logic                            [NumDASPartitions-1:0][RowsInterleavingWidth-1:0]    rows_das_i,
 `endif
@@ -204,7 +204,7 @@ module mempool_sub_group
       .axi_mst_req_o           (axi_tile_req[t]                                ),
       .axi_mst_resp_i          (axi_tile_resp[t]                               ),
 `ifdef DAS
-      .partition_sel_i         (partition_sel_i                                ),
+      .tiles_das_i         (tiles_das_i                                ),
       .start_das_i             (start_das_i                                    ),
       .rows_das_i              (rows_das_i                                     ),
 `endif
