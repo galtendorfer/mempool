@@ -15,9 +15,10 @@
 #include "runtime.h"
 #include "synchronization.h"
 
-#define NUM_TILES          (NUM_CORES / NUM_CORES_PER_TILE)
+#define NUM_TILES (NUM_CORES / NUM_CORES_PER_TILE)
 #define NUM_PARTITION_ROWS (2)
-uint32_t l2_array[NUM_PARTITION_ROWS * NUM_BANKS] __attribute__((section(".l2")));
+uint32_t l2_array[NUM_PARTITION_ROWS * NUM_BANKS]
+    __attribute__((section(".l2")));
 
 int main() {
   uint32_t core_id = mempool_get_core_id();
@@ -33,8 +34,10 @@ int main() {
     // Initialize
     // --------------------------------------------
     uint32_t num_tiles_per_partition = 32;
-    uint32_t array_size           = NUM_PARTITION_ROWS * NUM_BANKS;
-    uint32_t array_size_partition = NUM_PARTITION_ROWS * num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR;
+    uint32_t array_size = NUM_PARTITION_ROWS * NUM_BANKS;
+    uint32_t array_size_partition = NUM_PARTITION_ROWS *
+                                    num_tiles_per_partition *
+                                    NUM_CORES_PER_TILE * BANKING_FACTOR;
     // Initialize L2 array
     for (uint32_t i = 0; i < array_size; i++) {
       l2_array[i] = i;
@@ -60,7 +63,8 @@ int main() {
         dynamic_heap_alloc, array_size * sizeof(uint32_t));
 
     // 5. Config the hardware registers
-    das_config(part_id, num_tiles_per_partition, (uint32_t)(array), array_size * sizeof(uint32_t));
+    das_config(part_id, num_tiles_per_partition, (uint32_t)(array),
+               array_size * sizeof(uint32_t));
 
     // 6. Move data
     dma_memcpy_blocking(array, l2_array, array_size * sizeof(uint32_t));
@@ -68,22 +72,25 @@ int main() {
     printf("%4d at address %8X.\n", array[0], &array[0]);
 
     // 7. Change addressing scheme (to fully interleaved)
-    das_config(part_id, NUM_TILES, (uint32_t)(array), array_size * sizeof(uint32_t));
+    das_config(part_id, NUM_TILES, (uint32_t)(array),
+               array_size * sizeof(uint32_t));
 
     printf("%4d at address %8X.\n", array[0], &array[0]);
 
     // 8. check
     for (uint32_t i = 0; i < array_size; i++) {
-      uint32_t partition_width  = num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR;
-      uint32_t ele_offset       = i % partition_width;
-      uint32_t row_offset       = (i / partition_width) % NUM_PARTITION_ROWS;
+      uint32_t partition_width =
+          num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR;
+      uint32_t ele_offset = i % partition_width;
+      uint32_t row_offset = (i / partition_width) % NUM_PARTITION_ROWS;
       uint32_t partition_offset = (i / (partition_width * NUM_PARTITION_ROWS));
-      uint32_t *fetch_address = &array[0] +
-          ele_offset + row_offset * NUM_BANKS + partition_offset * partition_width;
-     if (l2_array[i] != *fetch_address) {
-       printf("%4d != %4d at address %8X.\n", i, *fetch_address,
-              fetch_address);
-     }
+      uint32_t *fetch_address = &array[0] + ele_offset +
+                                row_offset * NUM_BANKS +
+                                partition_offset * partition_width;
+      if (l2_array[i] != *fetch_address) {
+        printf("%4d != %4d at address %8X.\n", i, *fetch_address,
+               fetch_address);
+      }
     }
 
     // 9. Free array

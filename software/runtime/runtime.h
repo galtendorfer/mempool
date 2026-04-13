@@ -296,15 +296,17 @@ static inline void set_wake_up_offset(uint32_t offset) {
 
 #ifdef NUM_DAS_PARTITIONS
 // Partition Configuration
-static inline void das_config(uint32_t reg_sel, uint32_t tiles_per_partition, uint32_t addr, uint32_t size) {
+static inline void das_config(uint32_t reg_sel, uint32_t tiles_per_partition,
+                              uint32_t addr, uint32_t size) {
   asm volatile("" ::: "memory");
   // Compute number of rows
   uint32_t row_bytes = NUM_BANKS * sizeof(uint32_t);
-  uint32_t rows_das  = (size + (row_bytes-1)) / row_bytes;
+  uint32_t rows_das = (size + (row_bytes - 1)) / row_bytes;
 
   // enforce minimum 2 rows per partition
   // TODO (bowwang): should add protection to enforce `rows_das` is power of 2
-  if (rows_das < 2) rows_das = 2;
+  if (rows_das < 2)
+    rows_das = 2;
 
   // Program DAS registers
   switch (reg_sel) {

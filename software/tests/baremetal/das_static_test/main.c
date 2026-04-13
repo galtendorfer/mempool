@@ -17,7 +17,8 @@
 #define NUM_TILES (NUM_CORES / NUM_CORES_PER_TILE)
 #define ARRAY_SIZE (4096)
 
-uint32_t array[ARRAY_SIZE] __attribute__((aligned(NUM_BANKS*sizeof(int32_t)), section(".l1_prio")));
+uint32_t array[ARRAY_SIZE]
+    __attribute__((aligned(NUM_BANKS * sizeof(int32_t)), section(".l1_prio")));
 
 int main() {
   uint32_t core_id = mempool_get_core_id();
@@ -37,21 +38,29 @@ int main() {
     uint32_t num_partitions = NUM_TILES / num_tiles_per_partition;
     uint32_t size_partition = ARRAY_SIZE / num_partitions;
 
-    das_config(part_id, num_tiles_per_partition, (uint32_t)(array), ARRAY_SIZE * sizeof(uint32_t));
+    das_config(part_id, num_tiles_per_partition, (uint32_t)(array),
+               ARRAY_SIZE * sizeof(uint32_t));
     for (uint32_t i = 0; i < ARRAY_SIZE; i++) {
       array[i] = i;
     }
 
-    das_config(part_id, NUM_TILES, (uint32_t)(array), ARRAY_SIZE * sizeof(uint32_t));
+    das_config(part_id, NUM_TILES, (uint32_t)(array),
+               ARRAY_SIZE * sizeof(uint32_t));
     for (uint32_t j = 0; j < num_partitions; j++) {
       for (uint32_t i = 0; i < size_partition; i++) {
 
-        uint32_t *fetch_address = &array[0] +
-            j *  (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR) +
-            (i % (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) +
-            (i / (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) * NUM_BANKS;
+        uint32_t *fetch_address =
+            &array[0] +
+            j * (num_tiles_per_partition * NUM_CORES_PER_TILE *
+                 BANKING_FACTOR) +
+            (i %
+             (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) +
+            (i /
+             (num_tiles_per_partition * NUM_CORES_PER_TILE * BANKING_FACTOR)) *
+                NUM_BANKS;
         if (i + j * size_partition != *fetch_address) {
-          printf("%4d != %4d at address %8X.\n", i + j * size_partition, *fetch_address, fetch_address);
+          printf("%4d != %4d at address %8X.\n", i + j * size_partition,
+                 *fetch_address, fetch_address);
           return 1;
         }
       }

@@ -139,7 +139,7 @@ static void *allocate_memory(alloc_t *alloc, const uint32_t size) {
 
 // ------ Function to calculate the aligned size ------ //
 static uint32_t calc_aligned_row_size(uint32_t *addr) {
-  
+
   const uint32_t row_bytes = NUM_BANKS * sizeof(uint32_t);
   const uint32_t mask = (uint32_t)(row_bytes - 1);
   uint32_t offset = ((uint32_t)addr) & mask;
@@ -284,7 +284,6 @@ void *partition_malloc(alloc_t *alloc, const uint32_t size) {
   // allocate
   void *block_ptr = NULL;
   block_ptr = allocate_memory_aligned(alloc, block_size);
-
 
   if (!block_ptr) {
     printf("Memory allocator: No large enough block found (%d)\n", block_size);

@@ -50,13 +50,15 @@ int main() {
       printf("start_addr at 0x%8x\n", array);
 
       // 5. Config the hardware registers
-      das_config(part_id, num_tiles_per_partition, (uint32_t)(array), array_size * sizeof(uint32_t));
+      das_config(part_id, num_tiles_per_partition, (uint32_t)(array),
+                 array_size * sizeof(uint32_t));
       // 6. Move data
       for (uint32_t i = 0; i < array_size; i++) {
         array[i] = i;
       }
       // 7. Change addressing scheme (to fully interleaved)
-      das_config(part_id, NUM_TILES, (uint32_t)(array), array_size * sizeof(uint32_t));
+      das_config(part_id, NUM_TILES, (uint32_t)(array),
+                 array_size * sizeof(uint32_t));
       // 8. check
       for (uint32_t i = 0; i < array_size; i++) {
         uint32_t *fetch_address =
@@ -89,10 +91,11 @@ int main() {
       alloc_dump(dynamic_heap_alloc);
 
       // 4.0 inject misalignment
-      uint32_t offset = 32 * (1+part_id);
+      uint32_t offset = 32 * (1 + part_id);
       uint32_t *misalign = (uint32_t *)partition_malloc(
-          dynamic_heap_alloc, (2*NUM_BANKS + offset) * sizeof(uint32_t));
-      printf("Inject misalignment at 0x%8x with size 0x%8x in byte\n", misalign, offset*part_id);
+          dynamic_heap_alloc, (2 * NUM_BANKS + offset) * sizeof(uint32_t));
+      printf("Inject misalignment at 0x%8x with size 0x%8x in byte\n", misalign,
+             offset * part_id);
 
       // 4. Allocate memory
       uint32_t *array = (uint32_t *)partition_malloc(
@@ -100,13 +103,15 @@ int main() {
       printf("Aligned start_addr at 0x%8x\n", array);
 
       // 5. Config the hardware registers
-      das_config(part_id, num_tiles_per_partition, (uint32_t)(array), array_size * sizeof(uint32_t));
+      das_config(part_id, num_tiles_per_partition, (uint32_t)(array),
+                 array_size * sizeof(uint32_t));
       // 6. Move data
       for (uint32_t i = 0; i < array_size; i++) {
         array[i] = i;
       }
       // 7. Change addressing scheme (to fully interleaved)
-      das_config(part_id, NUM_TILES, (uint32_t)(array), array_size * sizeof(uint32_t));
+      das_config(part_id, NUM_TILES, (uint32_t)(array),
+                 array_size * sizeof(uint32_t));
       // 8. check
       for (uint32_t i = 0; i < array_size; i++) {
         uint32_t *fetch_address =
@@ -146,13 +151,15 @@ int main() {
       uint32_t *array = (uint32_t *)partition_malloc(
           dynamic_heap_alloc, array_size * sizeof(uint32_t));
       // 5. Config the hardware registers
-      das_config(part_id, num_tiles_per_partition, (uint32_t)(array), array_size * sizeof(uint32_t));
+      das_config(part_id, num_tiles_per_partition, (uint32_t)(array),
+                 array_size * sizeof(uint32_t));
       // 6. Move data
       for (uint32_t i = 0; i < array_size; i++) {
         array[i] = i;
       }
       // 7. Change addressing scheme (to fully interleaved)
-      das_config(part_id, NUM_TILES, (uint32_t)(array), array_size * sizeof(uint32_t));
+      das_config(part_id, NUM_TILES, (uint32_t)(array),
+                 array_size * sizeof(uint32_t));
       // partition_config(part_id, NUM_TILES);
       // 8. check
       for (uint32_t i = 0; i < array_size; i++) {
