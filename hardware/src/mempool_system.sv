@@ -91,7 +91,7 @@ module mempool_system
   logic             [DataWidth-1:0]     eoc;
   ro_cache_ctrl_t                       ro_cache_ctrl;
 `ifdef DAS
-  // For dynamic partitioning 
+  // For dynamic partitioning
   logic             [NumDASPartitions-1:0][TileInterleavingWidth-1:0] partition_sel;
   logic             [NumDASPartitions-1:0][AddrWidth-1:0]             start_das;
   logic             [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das;

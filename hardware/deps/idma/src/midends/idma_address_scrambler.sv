@@ -93,7 +93,7 @@ module idma_address_scrambler #(
           end
         end
 
-      end 
+      end
     end
 
   end

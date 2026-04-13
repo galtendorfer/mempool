@@ -21,7 +21,7 @@ module address_scrambler #(
   parameter int unsigned NumDASPartitions  = 4,
   // Dependant parameters, do not change
   parameter int unsigned RowsWidth            = $clog2(TCDMSizePerBank) - ByteOffset + 1,
-  parameter int unsigned MaxPartitionRowWidth = $clog2(TCDMSizePerBank) - ByteOffset,     // maximum half of L1 
+  parameter int unsigned MaxPartitionRowWidth = $clog2(TCDMSizePerBank) - ByteOffset,     // maximum half of L1
   parameter int unsigned MemSizePerTile       = NumBanksPerTile*TCDMSizePerBank,
   parameter int unsigned MemSizePerRow        = (1 << ByteOffset)*NumBanksPerTile*NumTiles
 ) (
@@ -54,7 +54,7 @@ module address_scrambler #(
     assign tile_id  = address_i[SeqTotalBits-1:SeqPerTileBits];
 
     // ------ Heap Sequential Signals ------ //
-    
+
     // `tile_bits` : how many fixed TileID bits
     // `row_bits`  : how many bits need to swap to the start of Row Index
     logic [NumDASPartitions-1:0][$clog2($clog2(NumTiles)+1)-1:0]   tile_bits;
@@ -116,7 +116,7 @@ module address_scrambler #(
           end
         end
 
-      end 
+      end
     end
   end
 
