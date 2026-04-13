@@ -54,6 +54,7 @@ static uint32_t volatile *wake_up_offset_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
                           CONTROL_REGISTERS_WAKE_UP_OFFST_REG_OFFSET);
 
+#ifdef NUM_DAS_PARTITIONS
 /* DAS-related regs */
 
 static uint32_t volatile *partition_0_reg =
@@ -94,6 +95,7 @@ static uint32_t volatile *rows_das_2_reg =
 static uint32_t volatile *rows_das_3_reg =
     (uint32_t volatile *)(CONTROL_REGISTER_OFFSET +
                           CONTROL_REGISTERS_ROWS_DAS_3_REG_OFFSET);
+#endif /* NUM_DAS_PARTITIONS */
 
 typedef uint32_t mempool_id_t;
 typedef uint32_t mempool_timer_t;
@@ -182,6 +184,7 @@ static inline void mempool_reset_heap(const uint32_t core_id,
   }
 }
 
+#ifdef DAS_MEM_SIZE
 // Initialize Dynamic Heap Allocator, as default specified in the linker script
 static inline void mempool_dynamic_heap_alloc_init(const uint32_t core_id) {
   if (core_id == 0) {
@@ -195,6 +198,7 @@ static inline void mempool_dynamic_heap_alloc_init(const uint32_t core_id) {
                seq_heap_size);
   }
 }
+#endif /* DAS_MEM_SIZE */
 
 // Reset Dynamic Heap region with explicit start address specification
 // A UNIFIED allocator will be used
@@ -290,6 +294,7 @@ static inline void set_wake_up_offset(uint32_t offset) {
   *wake_up_offset_reg = offset;
 }
 
+#ifdef NUM_DAS_PARTITIONS
 // Partition Configuration
 static inline void das_config(uint32_t reg_sel, uint32_t tiles_per_partition, uint32_t addr, uint32_t size) {
   asm volatile("" ::: "memory");
@@ -331,6 +336,7 @@ static inline void das_config(uint32_t reg_sel, uint32_t tiles_per_partition, ui
   }
   asm volatile("" ::: "memory");
 }
+#endif /* NUM_DAS_PARTITIONS */
 
 // Dump a value via CSR
 // This is only supported in simulation and an experimental feature. All writes
