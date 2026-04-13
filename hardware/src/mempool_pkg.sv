@@ -46,8 +46,7 @@ package mempool_pkg;
   localparam integer unsigned TCDMAddrWidth    = TCDMAddrMemWidth + idx_width(NumBanksPerGroup);
   // DAS parameters
   localparam integer unsigned NumDASPartitions = `ifdef NUM_DAS_PARTITIONS `NUM_DAS_PARTITIONS `else 0 `endif;
-  localparam integer unsigned DASMemSize       = `ifdef DAS_MEM_SIZE `DAS_MEM_SIZE `else 0 `endif;
-  localparam integer unsigned DASStartAddr     = (NumBanks * TCDMSizePerBank) - NumCores * DASMemSize;
+  localparam integer unsigned DASStartAddr     = (NumBanks * TCDMSizePerBank) - NumCores * (`ifdef DAS_MEM_SIZE `DAS_MEM_SIZE `else 0 `endif);
   localparam integer unsigned TileInterleavingWidth = idx_width(NumTiles) + 1;  // only support {128, 64, 32, 16, 8, 4, 2, 1};
   localparam integer unsigned RowsInterleavingWidth = idx_width(TCDMSizePerBank) - ByteOffset;
 
