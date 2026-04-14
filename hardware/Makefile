@@ -45,7 +45,7 @@
 #                     Setting this bypasses the kernel/variant requirements.
 #   force=1           Allow overwriting an existing result directory.
 #                     Without this, `make benchmark` refuses to run if
-#                     result_dir/traces/ already contains files.
+#                     result_dir/traces_dasm/ already contains files.
 #   plot_overview=1   For `make plots`: also generate the cluster overview.
 #                     Default: enabled. Set plot_overview=0 to skip it.
 #   plot_window=<N>   For `make plots`: sliding aggregation window.
@@ -64,8 +64,8 @@
 #
 # The pipeline produces:
 #   result_dir/
-#     real_traces/     canonical analysis trace_hart_* files (1 per core)
-#     traces/          trace_hart_*.trace (1 per core)
+#     traces_raw/      raw simulator trace_hart_* files (1 per core)
+#     traces_dasm/     disassembled trace_hart_*.trace (1 per core)
 #     data/            results.csv, comm_events_benchmark.csv,
 #                      stall_timeseries_benchmark.csv
 #     avg.txt          Average performance stats
@@ -491,7 +491,7 @@ plot_tiles_args = $(if $(strip $(plot_tiles)),--tiles $(plot_tiles),)
 plot_topology_args = $(if $(strip $(plot_topology)),--topology $(plot_topology),)
 rerun_force_args = $(if $(filter 1,$(force)),--force,)
 
-.PHONY: build_app benchmark plots plots_parallel plots_comm rerun_stall_timeseries save_transcript comm_events_real
+.PHONY: build_app benchmark plots plots_parallel plots_comm rerun_stall_timeseries save_transcript comm_events_real stall_timeseries_build
 
 build_app:
 ifdef app
@@ -500,8 +500,8 @@ endif
 
 benchmark: build_app
 	@# Guard: refuse to overwrite existing results unless force=1
-	@if [ -d "$(result_dir)/traces" ] && [ "$$(ls -A '$(result_dir)/traces' 2>/dev/null)" ] && [ "$(force)" != "1" ]; then \
-		echo "ERROR: result_dir already has data: $(result_dir)/traces/" >&2; \
+	@if [ -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ] && [ "$(force)" != "1" ]; then \
+		echo "ERROR: result_dir already has data: $(result_dir)/data/" >&2; \
 		echo "       Set force=1 to overwrite." >&2; \
 		exit 1; \
 	fi
@@ -514,8 +514,12 @@ benchmark: build_app
 	fi
 	# Call `make` again to get variable extension with all traces
 	result_dir=$(result_dir) $(MAKE) trace
+	# Extract CSVs directly from build/ — no copies to result_dir
 	result_dir=$(result_dir) $(MAKE) comm_events_real
-	result_dir=$(result_dir) $(MAKE) stall_timeseries
+	result_dir=$(result_dir) $(MAKE) stall_timeseries_build
+	# Clean build intermediates — CSVs are in result_dir/data/
+	rm -f $(buildpath)/trace_hart_*.dasm $(buildpath)/trace_hart_*.trace
+	rm -rf $(tracepath)
 
 log:
 	mkdir -p "$(result_dir)"
@@ -556,23 +560,28 @@ pre_trace:
 	rm -f $(buildpath)/trace_hart_*.trace
 
 post_trace:
-	rm -rf "$(result_dir)/real_traces" "$(result_dir)/traces"
-	mkdir -p "$(result_dir)/real_traces" "$(result_dir)/traces" "$(result_dir)/data"
+	mkdir -p "$(result_dir)/data"
 	result_dir="$(result_dir)" $(MAKE) save_transcript
-	cp $(tracepath)/trace_hart_* "$(result_dir)/real_traces/"
 	cp $(traceresult) "$(result_dir)/data/"
 	[ -e "$(timeline_result)" ] && cp $(timeline_result) "$(result_dir)/data/" || true
-	cp $(trace) "$(result_dir)/traces/"
 	$(python) $(ROOT_DIR)/scripts/gen_avg.py --folder "$(result_dir)/data" | tee $(result_dir)/avg.txt
 
+# Read .trace files from build/ during benchmark (no copy needed)
+stall_timeseries_build:
+	$(trace_env) $(python) $(ROOT_DIR)/scripts/trace_analysis/extract/_gen_stall_timeseries_batch.py \
+		--folder "$(buildpath)" \
+		--csv "$(result_dir)/data/stall_timeseries_benchmark.csv" \
+		--benchmark-only -p --force
+
+# Read .trace files from an archived result dir (for rerun_stall_timeseries)
 stall_timeseries:
-	$(trace_env) $(python) $(ROOT_DIR)/scripts/stall_analysis/_gen_stall_timeseries_batch.py \
-		--folder "$(result_dir)/traces" \
+	$(trace_env) $(python) $(ROOT_DIR)/scripts/trace_analysis/extract/_gen_stall_timeseries_batch.py \
+		--folder "$(result_dir)/traces_dasm" \
 		--csv "$(result_dir)/data/stall_timeseries_benchmark.csv" \
 		--benchmark-only -p --force
 
 comm_events_real:
-	$(trace_env) $(python_venv) $(ROOT_DIR)/scripts/stall_analysis/extract_comm_events_batch.py \
+	$(trace_env) $(python_venv) $(ROOT_DIR)/scripts/trace_analysis/extract/extract_comm_events_batch.py \
 		--folder "$(tracepath)" \
 		--csv "$(result_dir)/data/comm_events_benchmark.csv" \
 		--benchmark-only -p --force \
@@ -589,7 +598,7 @@ plots:
 		echo "       Run 'make benchmark' first or point result_dir at an existing run." >&2; \
 		exit 1; \
 	fi
-	$(python) $(ROOT_DIR)/scripts/stall_analysis/plot_all_tiles.py \
+	$(python) $(ROOT_DIR)/scripts/trace_analysis/plot/plot_all_tiles.py \
 		"$(result_dir)" \
 		$(plot_section_args) \
 		$(plot_overview_args) \
@@ -600,7 +609,7 @@ plots:
 		-j $(plot_jobs)
 	@if [ "$(plot_comm)" = "1" ]; then \
 		if [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ]; then \
-			$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/extract_comm_events.py \
+			$(python_venv) $(ROOT_DIR)/scripts/trace_analysis/extract/extract_comm_events.py \
 				"$(result_dir)" \
 				-p \
 				-j $(plot_jobs); \
@@ -608,15 +617,10 @@ plots:
 			echo "INFO: keeping existing communication CSV: $(result_dir)/data/comm_events_benchmark.csv"; \
 			if [ "$(force)" = "1" ]; then \
 				echo "INFO: force=1 affects plot outputs only; it does not rebuild communication CSVs."; \
-				echo "INFO: To rebuild from archived real traces in real_traces/, run extract_comm_events.py explicitly."; \
+				echo "INFO: To rebuild from raw traces in traces_raw/, run extract_comm_events.py explicitly."; \
 			fi; \
 		fi; \
 			set -e; \
-			$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/summarize_comm_events.py \
-				"$(result_dir)"; \
-			$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/summarize_comm_timeseries.py \
-				"$(result_dir)" \
-				--window $(plot_window); \
 			$(MAKE) --no-print-directory \
 				result_dir="$(result_dir)" \
 				plot_section="$(plot_section)" \
@@ -666,19 +670,19 @@ plots_parallel:
 
 # Public communication-analysis plotting entry point.
 # Generates thesis-quality communication figures (PNG + PDF).
-# Usually invoked automatically by `make plots`; can also be run directly after
-# summarize_comm_events.py and summarize_comm_timeseries.py.
+# Usually invoked automatically by `make plots`; can also be run directly
+# after extracting communication events.
 # Usage:
 #   app=matmul_i32 kernel=4x4 variant=baseline make plots_comm
 #   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make plots_comm
 #   result_dir=results/matmul_i32_mempool/4x4/baseline make plots_comm
 plots_comm:
-	@if [ ! -d "$(result_dir)/data/comm_summary" ]; then \
-		echo "ERROR: comm_summary missing: $(result_dir)/data/comm_summary/" >&2; \
-		echo "       Run summarize_comm_events.py first." >&2; \
+	@if [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ]; then \
+		echo "ERROR: comm_events_benchmark.csv missing: $(result_dir)/data/comm_events_benchmark.csv" >&2; \
+		echo "       Run extract_comm_events.py first." >&2; \
 		exit 1; \
 	fi
-	$(python_venv) $(ROOT_DIR)/scripts/stall_analysis/plot_comm_thesis.py \
+	$(python_venv) $(ROOT_DIR)/scripts/trace_analysis/plot/plot_comm_thesis.py \
 		"$(result_dir)" \
 		$(plot_section_args)
 
@@ -687,12 +691,12 @@ plots_comm:
 #   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
 # This reuses saved traces and metadata; it does not re-run simulation.
 rerun_stall_timeseries:
-	@if [ ! -d "$(result_dir)/traces" ]; then \
-		echo "ERROR: traces directory missing: $(result_dir)/traces" >&2; \
+	@if [ ! -d "$(result_dir)/traces_dasm" ]; then \
+		echo "ERROR: traces directory missing: $(result_dir)/traces_dasm" >&2; \
 		echo "       Point result_dir at an existing benchmark run." >&2; \
 		exit 1; \
 	fi
-	$(python) $(ROOT_DIR)/scripts/stall_analysis/rerun_stall_timeseries.py \
+	$(python) $(ROOT_DIR)/scripts/trace_analysis/extract/rerun_stall_timeseries.py \
 		"$(result_dir)" \
 		--benchmark-only -p \
 		$(rerun_force_args)
@@ -701,9 +705,6 @@ $(buildpath)/%.trace: $(buildpath)/%.dasm
 	mkdir -p $(tracepath)
 	$(INSTALL_DIR)/riscv-isa-sim/bin/spike-dasm < $< > $(tracepath)/$*
 	$(trace_env) $(python) $(ROOT_DIR)/scripts/gen_trace.py -p --csv $(traceresult) $(tracepath)/$* > $@
-	@if [ -n "$(timeline_window)" ]; then \
-		$(trace_env) $(python) $(ROOT_DIR)/scripts/stall_analysis/outdated_gen_timeseries_windowed.py -p --csv $(timeline_result) --window $(timeline_window) $(trace_timeline_section_args) $(trace_timeline_benchmark_args) $(trace_timeline_delta_args) $(tracepath)/$*; \
-	fi
 
 tracevis:
 	$(MEMPOOL_DIR)/scripts/tracevis.py $(preload) $(buildpath)/*.trace -o $(buildpath)/tracevis.json
