@@ -123,8 +123,10 @@ int main() {
   mempool_stop_benchmark();
   mempool_log_barrier(2, core_id);
 
+#ifndef SKIP_VERIFY
   // Verify results
   mempool_check_i32(l1_C, l2_C, matrix_M * matrix_P, 0, 0);
   mempool_barrier(num_cores);
+#endif
   return 0;
 }

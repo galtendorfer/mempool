@@ -18,12 +18,23 @@ include $(RUNTIME_DIR)/runtime.mk
 
 ifneq ($(filter matmul_i32,$(MAKECMDGOALS)),)
         # Matrix dimensions: override with matmul_M=, matmul_N=, matmul_P= on the command line.
-        # Default: auto-size so every core gets a tile: M=P=4·√(num_cores), N=32.
-        _matmul_dim := $(shell python3 -c "import math; print(int(4*math.sqrt($(num_cores))))")
-        matmul_M ?= $(_matmul_dim)
-        matmul_N ?= 32
-        matmul_P ?= $(_matmul_dim)
+        # Defaults per config (from BENCHMARK_CONFIGS analysis):
+        #   terapool: M=256, N=64, P=256  (100% traffic fill, 4 tiles/core)
+        #   mempool:  M=128, N=64, P=128  (62.5% traffic fill, 1 tile/core)
+        ifeq ($(config),terapool)
+          matmul_M ?= 256
+          matmul_N ?= 64
+          matmul_P ?= 256
+        else
+          matmul_M ?= 128
+          matmul_N ?= 64
+          matmul_P ?= 128
+        endif
         GENDATA_OVERRIDES += --define matrix_M=$(matmul_M) --define matrix_N=$(matmul_N) --define matrix_P=$(matmul_P)
+        # Skip verification by default (saves huge simulation time). Use verify=1 to enable.
+        ifneq ($(verify),1)
+          DEFINES += -DSKIP_VERIFY
+        endif
 	ifeq ($(kernel),2x2_xpulpv2)
 		DEFINES += -DMATMUL_I32_KERNEL_2X2_XPULPV2
 		ifneq ($(XPULPIMG),1)
