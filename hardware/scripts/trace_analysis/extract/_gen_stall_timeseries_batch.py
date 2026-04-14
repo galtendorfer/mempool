@@ -13,7 +13,7 @@ This underscore-prefixed script is kept as an internal building block.
 
 Required flags:
   --folder <dir>    Directory containing trace_hart_*.trace files.
-                    Typically: result_dir/traces/
+                    Typically: result_dir/traces_dasm/
   --csv <path>      Output CSV path.
                     Typically: result_dir/data/stall_timeseries_benchmark.csv
 
@@ -37,19 +37,19 @@ Topology handling:
 Examples:
   # First run
   python _gen_stall_timeseries_batch.py \
-      --folder results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces \
+      --folder results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces_dasm \
       --csv results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/stall_timeseries_benchmark.csv \
       --benchmark-only -p
 
   # Re-generate (must pass --force)
   python _gen_stall_timeseries_batch.py \
-      --folder results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces \\
+      --folder results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces_dasm \
       --csv results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/stall_timeseries_benchmark.csv \\
       --benchmark-only -p --force
 
   # Standalone run outside a saved result directory
   python _gen_stall_timeseries_batch.py \
-      --folder scratch/traces \
+      --folder scratch/traces_dasm \
       --csv scratch/data/stall_timeseries_benchmark.csv \
       --benchmark-only -p --topology mempool
 """
@@ -60,64 +60,14 @@ import subprocess
 import sys
 from pathlib import Path
 
+_root = str(Path(__file__).resolve().parent.parent)
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 from _workflow_metadata import (
     TOPOLOGY_KEYS,
-    find_result_dir,
     format_topology,
-    load_config_topology,
-    load_env_topology,
-    load_result_dir_topology,
-    validate_topology_consistency,
+    resolve_topology,
 )
-
-
-def resolve_topology(args, parser, folder, output_path):
-    result_dir = find_result_dir(folder, output_path)
-
-    try:
-        env_topology = load_env_topology(os.environ)
-    except ValueError as exc:
-        parser.error(str(exc))
-
-    requested_topology = None
-    if args.topology:
-        requested_topology = load_config_topology(args.topology)
-        if requested_topology is None:
-            parser.error(f'Unknown topology/config: {args.topology}')
-
-    detected_topology = load_result_dir_topology(result_dir)
-    topology = requested_topology or detected_topology or env_topology
-    if topology is None:
-        parser.error(
-            'Cannot determine topology. Run inside a benchmark result directory, '
-            'pass --topology <config>, or set all of: ' + ', '.join(TOPOLOGY_KEYS))
-
-    if detected_topology and requested_topology:
-        try:
-            validate_topology_consistency(detected_topology, requested_topology)
-        except ValueError as exc:
-            parser.error(f'--topology disagrees with result metadata: {exc}')
-
-    if detected_topology and env_topology:
-        try:
-            validate_topology_consistency(detected_topology, env_topology)
-        except ValueError as exc:
-            parser.error(f'Environment disagrees with result metadata: {exc}')
-
-    if requested_topology and env_topology:
-        try:
-            validate_topology_consistency(requested_topology, env_topology)
-        except ValueError as exc:
-            parser.error(f'Environment disagrees with --topology: {exc}')
-
-    trace_files = sorted(folder.glob('trace_hart_*.trace'))
-    if trace_files and len(trace_files) != int(topology['NUM_CORES']):
-        print(
-            f'Warning: found {len(trace_files)} traces, but topology expects {topology["NUM_CORES"]} cores.',
-            file=sys.stderr,
-        )
-
-    return topology, trace_files
 
 
 def main():
@@ -158,7 +108,17 @@ def main():
         parser.error(f'--folder is not a directory: {folder}')
 
     output_path = Path(args.csv)
-    topology, trace_files = resolve_topology(args, parser, folder, output_path)
+    try:
+        topology = resolve_topology(args.topology, folder, output_path)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    trace_files = sorted(folder.glob('trace_hart_*.trace'))
+    if trace_files and len(trace_files) != int(topology['NUM_CORES']):
+        print(
+            f'Warning: found {len(trace_files)} traces, but topology expects {topology["NUM_CORES"]} cores.',
+            file=sys.stderr,
+        )
     if not trace_files:
         parser.error(f'No trace_hart_*.trace files found in {folder}')
 

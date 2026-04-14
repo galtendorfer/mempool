@@ -17,16 +17,16 @@ from pathlib import Path
 
 
 def _resolve_trace_dir(result_dir: Path) -> Path:
-    trace_dir = result_dir / "real_traces"
-    reconstructed_dir = result_dir / "traces"
+    trace_dir = result_dir / "traces_raw"
+    reconstructed_dir = result_dir / "traces_dasm"
 
     if trace_dir.is_dir():
         return trace_dir
 
-    message = [f"Canonical analysis trace directory not found: {trace_dir}"]
+    message = [f"Raw trace directory not found: {trace_dir}"]
     if reconstructed_dir.is_dir():
         message.append(
-            "Reconstructed traces are still present, but they are decommissioned for the standard communication-analysis pipeline."
+            "Disassembled traces (traces_dasm/) are present, but the communication-analysis pipeline requires raw traces (traces_raw/)."
         )
     raise SystemExit("\n".join(message))
 
@@ -35,7 +35,7 @@ def _parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="Extract communication events for an existing benchmark result directory."
     )
-    parser.add_argument("result_dir", help="Benchmark result directory containing real_traces/ and data/")
+    parser.add_argument("result_dir", help="Benchmark result directory containing traces_raw/ and data/")
     parser.add_argument("--csv", help="Optional output CSV path (default: <result_dir>/data/comm_events_benchmark.csv)")
     parser.add_argument("--section", type=int, action="append", help="Emit rows only for the specified section; may be repeated")
     parser.add_argument("--benchmark-only", action="store_true", help="Shortcut for --section 1")

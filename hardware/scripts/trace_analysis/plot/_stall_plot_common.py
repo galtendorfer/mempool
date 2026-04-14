@@ -113,7 +113,7 @@ def locate_trace_file(csv_path, core_id, traces_dir=None):
         search_roots.append(Path(traces_dir))
     for root in (csv_path.parent, csv_path.parent.parent):
         search_roots.append(root)
-        traces_sub = root / "traces"
+        traces_sub = root / "traces_dasm"
         if traces_sub.is_dir():
             search_roots.append(traces_sub)
     for root in search_roots:
@@ -240,26 +240,10 @@ def set_cycle_ticks(ax, positions, labels=None, max_ticks=25):
     ax.set_xticklabels(filtered_lbl)
 
 
-def plot_series(ax, cycles, values, title, color, ylabel, mode="step"):
-    """Draw a single time series.  mode='step' for per-cycle, 'line' for cumulative."""
-    if mode == "step":
-        ax.step(cycles, values, where="post", color=color, linewidth=2.0)
-        ax.fill_between(cycles, 0, values, step="post", color=color, alpha=0.15)
-    else:
-        ax.plot(cycles, values, color=color, linewidth=2.0)
-        ax.fill_between(cycles, 0, values, color=color, alpha=0.10)
-    vmax = float(np.max(values)) if len(values) else 0
-    ax.set_xlim(cycles[0], cycles[-1])
-    ax.set_ylim(0, max(1.0, vmax * 1.08))
-    ax.set_title(title)
-    ax.set_ylabel(ylabel)
-    ax.grid(True, axis="y", alpha=0.25)
-
-
 def plot_outstanding_loads(ax, cycles, outstanding, title):
     """Draw outstanding loads."""
-    line = ax.step(cycles, outstanding, where="post", color="#7F3C8D",
-                      linewidth=2.0, label="Outstanding loads")[0]
+    ax.step(cycles, outstanding, where="post", color="#7F3C8D",
+             linewidth=2.0, label="Outstanding loads")
     from matplotlib.ticker import MultipleLocator
     ax.yaxis.set_major_locator(MultipleLocator(1))
     ax.fill_between(cycles, 0, outstanding, step="post", color="#7F3C8D", alpha=0.15)
@@ -277,81 +261,6 @@ def plot_outstanding_loads(ax, cycles, outstanding, title):
     ax.set_title(title)
     ax.set_ylabel("Outstanding requests")
     ax.grid(True, axis="y", alpha=0.25)
-
-
-def plot_issue_stall(ax, cycles, issue, stall, title, ylabel, mode="step"):
-    """Draw the issue vs stall dual-series with legend."""
-    from matplotlib.ticker import MaxNLocator
-    if mode == "step":
-        # Stacked area: issuing on bottom, stalled on top
-        ax.stackplot(cycles, [issue, stall],
-                     labels=["issuing", "stalled"],
-                     colors=[STALL_COLORS["issue"], "#BFBFBF"],
-                     alpha=0.85, step="post")
-        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-    else:
-        il = ax.plot(cycles, issue, color=STALL_COLORS["issue"], lw=2.2)[0]
-        ax.fill_between(cycles, 0, issue, color=STALL_COLORS["issue"], alpha=0.12)
-        sl = ax.plot(cycles, stall, color="#2F2F2F", lw=2.0)[0]
-        ax.fill_between(cycles, 0, stall, color="#2F2F2F", alpha=0.08)
-    vmax = float(max(np.max(issue), np.max(stall))) if len(issue) else 0
-    if mode == "step":
-        vmax = float(np.max(issue + stall)) if len(issue) else 0
-    ax.set_xlim(cycles[0], cycles[-1])
-    ax.set_ylim(0, max(1.0, vmax * 1.08))
-    ax.set_title(title)
-    ax.set_ylabel(ylabel)
-    ax.grid(True, axis="y", alpha=0.25)
-    if mode == "step":
-        ax.legend(loc="upper right", frameon=False)
-    else:
-        ax.legend([il, sl], ["issuing", "stalled"], loc="upper right", frameon=False)
-
-
-def plot_rolling_fraction(ax, cycles, numerator, denominator, title, ylabel,
-                          window=64, color="#78C679"):
-    """Draw a rolling percentage for a ratio-like series over a cycle window."""
-    if len(cycles) == 0:
-        return
-
-    num = np.asarray(numerator, dtype=float)
-    den = np.asarray(denominator, dtype=float)
-    ratio = np.divide(num, den, out=np.full_like(num, np.nan), where=den > 0)
-
-    window = max(1, min(int(window), len(ratio)))
-    valid = np.isfinite(ratio).astype(float)
-    filled = np.nan_to_num(ratio, nan=0.0)
-    kernel = np.ones(window, dtype=float)
-    weighted = np.convolve(filled, kernel, mode="same")
-    counts = np.convolve(valid, kernel, mode="same")
-    rolling = np.divide(weighted, counts, out=np.full_like(weighted, np.nan), where=counts > 0)
-    percent = rolling * 100.0
-
-    ax.plot(cycles, percent, color=color, linewidth=2.2)
-    ax.fill_between(cycles, 0, percent, color=color, alpha=0.14)
-    ax.axhline(50.0, color="#8C8C8C", linewidth=1.0, linestyle="--", alpha=0.5)
-    ax.set_xlim(cycles[0], cycles[-1])
-    ax.set_ylim(0, 100)
-    ax.set_title(title)
-    ax.set_ylabel(ylabel)
-    ax.grid(True, axis="y", alpha=0.25)
-
-
-def plot_memory_accounting(ax, cycles, load_iss, load_ret, store_iss, title):
-    """Draw cumulative memory-request accounting (3 lines)."""
-    ax.plot(cycles, load_iss, color="#4C78A8", lw=2.0, label="load-like issues")
-    ax.fill_between(cycles, 0, load_iss, color="#4C78A8", alpha=0.10)
-    ax.plot(cycles, load_ret, color="#54A24B", lw=2.0, label="load-like returns")
-    ax.fill_between(cycles, 0, load_ret, color="#54A24B", alpha=0.10)
-    ax.plot(cycles, store_iss, color="#F58518", lw=2.0, label="store issues")
-    ax.fill_between(cycles, 0, store_iss, color="#F58518", alpha=0.10)
-    ax.set_title(title)
-    ax.set_ylabel("Accumulated requests")
-    vmax = float(np.max([load_iss.max(), load_ret.max(), store_iss.max()]))
-    ax.set_xlim(cycles[0], cycles[-1])
-    ax.set_ylim(0, max(1.0, vmax * 1.05))
-    ax.grid(True, axis="y", alpha=0.25)
-    ax.legend(loc="upper left", frameon=False)
 
 
 def plot_categories_current(ax, cycles, cat_current, present, title, ylabel="Stalled cores"):

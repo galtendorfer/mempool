@@ -51,6 +51,9 @@ import multiprocessing
 import sys
 from pathlib import Path
 
+_root = str(Path(__file__).resolve().parent.parent)
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 from _workflow_metadata import (
     format_topology,
     infer_named_topology,
@@ -177,7 +180,7 @@ def main(argv=None):
 
     # ── Discover paths ────────────────────────────────────────────────
     csv_path = result_dir / "data" / "stall_timeseries_benchmark.csv"
-    traces_dir = result_dir / "traces"
+    traces_dir = result_dir / "traces_dasm"
     plots_dir = result_dir / "plots"
 
     if not csv_path.is_file():

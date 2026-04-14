@@ -19,7 +19,7 @@ Examples:
         --csv ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/recheck.csv
 
 The wrapper derives:
-  - traces folder: <result_dir>/traces
+  - traces folder: <result_dir>/traces_dasm
   - default output: <result_dir>/data/stall_timeseries_benchmark.csv
 
 Topology is loaded automatically from saved result metadata when possible.
@@ -38,7 +38,7 @@ def parse_args(argv=None):
         description='Re-generate stall_timeseries_benchmark.csv for an existing benchmark result.')
     parser.add_argument(
         'result_dir',
-        help='Benchmark result directory containing traces/ and data/')
+        help='Benchmark result directory containing traces_dasm/ and data/')
     parser.add_argument(
         '--csv',
         help='Optional output CSV path (default: <result_dir>/data/stall_timeseries_benchmark.csv)')
@@ -69,7 +69,7 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
     result_dir = Path(args.result_dir).resolve()
-    traces_dir = result_dir / 'traces'
+    traces_dir = result_dir / 'traces_dasm'
     data_dir = result_dir / 'data'
     output_csv = Path(args.csv).resolve() if args.csv else data_dir / 'stall_timeseries_benchmark.csv'
 

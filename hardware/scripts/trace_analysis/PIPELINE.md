@@ -1,5 +1,11 @@
 # Benchmark Pipeline
 
+> **Note (2026-04-11):** Directory restructured from `stall_analysis/` (flat) to
+> `trace_analysis/` with `extract/` and `plot/` subdirectories. Makefile paths
+> updated. Trace folder names renamed: `traces/` → `traces_dasm/`,
+> `real_traces/` → `traces_raw/`. A final end-to-end validation (`make benchmark`
+> + `make plots` on a clean result dir) is still pending.
+
 ## Overview
 
 ```
@@ -29,10 +35,10 @@ From `hardware/`:
 
 ```bash
 make \
-  app=matmul_i32 config=mempool kernel=4x4 variant=baseline benchmark
+  app=matmul_i32 config=mempool kernel=4x4_asm variant=baseline benchmark
 
 make \
-  app=matmul_i32 config=mempool kernel=4x4 variant=baseline plots
+  app=matmul_i32 config=mempool kernel=4x4_asm variant=baseline plots
 ```
 
 By default, the Makefile uses `mempoolvenv/bin/python` for both the software
@@ -42,14 +48,14 @@ environment.
 
 What this gives you:
 
-- `make benchmark`: raw `.dasm` provenance in `build/`, canonical analysis traces archived under `real_traces/`, reconstructed traces, plus `data/results.csv`, `data/comm_events_benchmark.csv`, and `data/stall_timeseries_benchmark.csv`
+- `make benchmark`: raw `.dasm` provenance in `build/`, canonical analysis traces archived under `traces_raw/`, reconstructed traces, plus `data/results.csv`, `data/comm_events_benchmark.csv`, and `data/stall_timeseries_benchmark.csv`
 - `make plots`: tile/overview plots, `data/comm_events_benchmark.csv`, `data/comm_summary/`, `data/comm_timeseries/`, and `plots/communication/`
 
 Trace layers used in this document:
 
 - raw trace: `build/*.dasm` from simulation
-- canonical analysis trace: `build/traces/trace_hart_*` after `spike-dasm`, later archived to `result_dir/real_traces/`
-- reconstructed trace: `result_dir/traces/trace_hart_*.trace` produced later by `gen_trace.py`
+- canonical analysis trace: `build/traces/trace_hart_*` after `spike-dasm`, later archived to `result_dir/traces_raw/`
+- reconstructed trace: `result_dir/traces_dasm/trace_hart_*.trace` produced later by `gen_trace.py`
 
 ---
 
@@ -60,7 +66,6 @@ kernels in parallel, because each kernel writes to a separate result directory.
 
 Good:
 
-- `4x4` and `4x4_conflict_opt` in parallel
 - `4x4_asm` and `4x4_conflict_opt_asm` in parallel
 
 Avoid:
@@ -80,7 +85,7 @@ Default behavior:
 
 Examples for the baseline 4x4 family:
 
-Run only two kernels:
+Run only one kernel:
 
 ```bash
 cd /home/bsc26f10/thesis/mempool/hardware
@@ -89,11 +94,11 @@ make \
   app=matmul_i32 \
   config=mempool \
   variant=baseline \
-  parallel_kernels="4x4 4x4_asm" \
+  parallel_kernels="4x4_asm" \
   plots_parallel
 ```
 
-Run all four kernels:
+Run both target kernels:
 
 ```bash
 cd /home/bsc26f10/thesis/mempool/hardware
@@ -102,26 +107,12 @@ make \
   app=matmul_i32 \
   config=mempool \
   variant=baseline \
-  parallel_kernels="4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm" \
-  plots_parallel
-```
-
-If you want to limit concurrency, for example to two jobs:
-
-```bash
-make \
-  app=matmul_i32 \
-  config=mempool \
-  variant=baseline \
-  parallel_kernels="4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm" \
-  parallel_jobs=2 \
+  parallel_kernels="4x4_asm 4x4_conflict_opt_asm" \
   plots_parallel
 ```
 
 This is safe because each job writes only to its own directory:
 
-- `results/matmul_i32_mempool/4x4/baseline/`
-- `results/matmul_i32_mempool/4x4_conflict_opt/baseline/`
 - `results/matmul_i32_mempool/4x4_asm/baseline/`
 - `results/matmul_i32_mempool/4x4_conflict_opt_asm/baseline/`
 
@@ -137,7 +128,7 @@ YOU RUN                          CALLED INTERNALLY                 OUTPUT
 │ STAGE 1: Simulation + Trace Generation                                      │
 │                                                                             │
 │  make benchmark                                                             │
-│  ├── app=matmul_i32  config=mempool  kernel=2x2_xpulpv2                    │
+│  ├── app=matmul_i32  config=mempool  kernel=4x4_asm                    │
 │  │   variant=baseline  [force=1]                                            │
 │  │                                                                          │
 │  ├─► log                                                                    │
@@ -156,8 +147,8 @@ YOU RUN                          CALLED INTERNALLY                 OUTPUT
 │  │     │     └── outdated_gen_timeseries_windowed.py                       │
 │  │     │                            (optional, if timeline_window set)     │
 │  │     └─► post_trace                                                      │
-│  │           ├── cp trace_hart_*     → result_dir/real_traces/             │
-│  │           ├── cp *.trace          → result_dir/traces/                  │
+│  │           ├── cp trace_hart_*     → result_dir/traces_raw/             │
+│  │           ├── cp *.trace          → result_dir/traces_dasm/                  │
 │  │           ├── cp results.csv      → result_dir/data/                    │
 │  │           └── gen_avg.py          → result_dir/avg.txt                  │
 │  │                                                                          │
@@ -172,8 +163,8 @@ YOU RUN                          CALLED INTERNALLY                 OUTPUT
 │                                                                             │
 │  Output:                                                                    │
 │    result_dir/                                                              │
-│      real_traces/     trace_hart_*      (canonical analysis traces)         │
-│      traces/         trace_hart_*.trace (reconstructed traces)              │
+│      traces_raw/     trace_hart_*      (canonical analysis traces)         │
+│      traces_dasm/    trace_hart_*.trace (reconstructed traces)              │
 │      data/      results.csv, comm_events_benchmark.csv,                    │
 │                 stall_timeseries_benchmark.csv                             │
 │      avg.txt, transcript, config, env, topology.env, git-info.diff         │
@@ -199,7 +190,7 @@ YOU RUN                          CALLED INTERNALLY                 OUTPUT
 │  │                                                                          │
 │  └─► per tile:    _plot_specific_tile.py <csv> <tile_id>                   │
 │        └── _stall_plot_common.py  (shared helpers)                         │
-│              └── locate_trace_file()  (finds trace in traces/)             │
+│              └── locate_trace_file()  (finds trace in traces_dasm/)        │
 │        (detail page only; no overview unless --overview is passed)         │
 │        → result_dir/plots/group{N}/[subgroup{N}/]                          │
 │                                                                             │
@@ -232,9 +223,8 @@ YOU RUN                          CALLED INTERNALLY                 OUTPUT
 │  ├── [plot_section=1]                                                      │
 │  │                                                                          │
 │  └─► plot_comm_thesis.py <result_dir> --section N [--figures ...]          │
-│        reads: data/comm_summary/, data/comm_timeseries/,                   │
-│               data/comm_events_benchmark.csv,                               │
-│               data/stall_timeseries_benchmark.csv                          │
+│        reads: data/comm_events_benchmark.csv                               │
+│        computes summary & timeseries data inline from raw events           │
 │        → result_dir/plots/communication/      (PNG)                        │
 │        → result_dir/plots/communication/pdf/  (PDF)                        │
 │                                                                             │
@@ -242,14 +232,13 @@ YOU RUN                          CALLED INTERNALLY                 OUTPUT
 │    result_dir/plots/communication/                                          │
 │      traffic_matrix[_sectionN]_<kernel>_<variant>.png                       │
 │      traffic_matrix_groups[_sectionN]_<kernel>_<variant>.png                │
-│      locality_overview[_sectionN]_<kernel>_<variant>.png                    │
-│      comm_vs_stall[_sectionN]_<kernel>_<variant>.png                        │
 │      temporal_overview[_sectionN]_<kernel>_<variant>.png                    │
 │      latency_timeseries[_sectionN]_<kernel>_<variant>.png                   │
 │      latency_tile_g{0,1}[_sectionN]_<kernel>_<variant>.png                 │
 │      latency_matrix[_sectionN]_<kernel>_<variant>.png                       │
-│      latency_contention[_sectionN]_<kernel>_<variant>.png                   │
+│      latency_matrix_refined[_sectionN]_<kernel>_<variant>.png               │
 │      latency_excess_matrix[_sectionN]_<kernel>_<variant>.png                │
+│      latency_excess_matrix_refined[_sectionN]_<kernel>_<variant>.png        │
 │    result_dir/plots/communication/pdf/                                      │
 │      (same stems as above, .pdf)                                            │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -265,13 +254,13 @@ Run from `hardware/`.
 
 ```bash
 cd hardware
-app=matmul_i32 config=mempool kernel=2x2_xpulpv2 variant=baseline make benchmark
+app=matmul_i32 config=mempool kernel=4x4_asm variant=baseline make benchmark
 ```
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
 | `app` | **yes** | — | Application name (e.g. `matmul_i32`) |
-| `kernel` | **yes** | — | Kernel result label (e.g. `2x2_xpulpv2`, `4x4_asm`) |
+| `kernel` | **yes** | — | Kernel result label (e.g. `4x4_asm`, `4x4_asm`) |
 | `variant` | **yes** | — | System variant: `baseline`, `das`, or `redmule` |
 | `config` | no | `mempool` | Hardware topology: `mempool` (256 cores) or `terapool` (1024 cores) |
 | `result_dir` | no | `results/<app>_<config>/<kernel>/<variant>` | Override output path (bypasses kernel/variant checks) |
@@ -281,8 +270,8 @@ app=matmul_i32 config=mempool kernel=2x2_xpulpv2 variant=baseline make benchmark
 
 ```
 result_dir/
-  real_traces/  trace_hart_*        (canonical analysis traces, 1 per core: 256 for mempool, 1024 for terapool)
-  traces/       trace_hart_*.trace  (1 per core: 256 for mempool, 1024 for terapool)
+  traces_raw/   trace_hart_*        (canonical analysis traces, 1 per core: 256 for mempool, 1024 for terapool)
+  traces_dasm/  trace_hart_*.trace  (1 per core: 256 for mempool, 1024 for terapool)
   data/         results.csv, comm_events_benchmark.csv, stall_timeseries_benchmark.csv
   avg.txt       average performance stats per section
   transcript    simulation log
@@ -298,7 +287,7 @@ Run from `hardware/`.
 
 ```bash
 cd hardware
-app=matmul_i32 config=mempool kernel=2x2_xpulpv2 variant=baseline make plots
+app=matmul_i32 config=mempool kernel=4x4_asm variant=baseline make plots
 ```
 
 This wraps `plot_all_tiles.py` so users do not need to remember the script
@@ -315,20 +304,20 @@ path, result directory layout, or standard benchmark flags.
 | `force` | no | off | Overwrite existing PNGs |
 Important behavior:
 
-- `make benchmark` now archives the canonical analysis traces from `spike-dasm` into `real_traces/` and creates `data/comm_events_benchmark.csv` from them.
+- `make benchmark` now archives the canonical analysis traces from `spike-dasm` into `traces_raw/` and creates `data/comm_events_benchmark.csv` from them.
 - `make plots` keeps that CSV by default.
 - `force=1` does not rebuild the communication CSV by itself.
-- If `make plots` needs to build the CSV because it is missing, it uses those archived canonical analysis traces from `real_traces/`.
+- If `make plots` needs to build the CSV because it is missing, it uses those archived canonical analysis traces from `traces_raw/`.
 - If archived canonical analysis traces are missing too, `make plots` fails instead of rebuilding from reconstructed traces.
 - To rebuild communication data explicitly, run `extract_comm_events.py`.
 
 ### 3. `plot_all_tiles.py` — Batch Plot Generation
 
-Run from `hardware/scripts/stall_analysis/`.
+Run from `hardware/scripts/trace_analysis/plot/`.
 
 ```bash
-cd hardware/scripts/stall_analysis
-python plot_all_tiles.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --section 1 --overview
+cd hardware/scripts/trace_analysis/plot
+python plot_all_tiles.py ../../../../results/matmul_i32_mempool/4x4_asm/baseline --section 1 --overview
 ```
 
 | Flag | Required | Default | Purpose |
@@ -348,7 +337,7 @@ Run from `hardware/`.
 
 ```bash
 cd hardware
-result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
+result_dir=results/matmul_i32_mempool/4x4_asm/baseline make rerun_stall_timeseries force=1
 ```
 
 This is the public reprocessing command when you want to rebuild only the
@@ -356,24 +345,24 @@ stall CSV from an existing `result_dir` without re-running simulation.
 
 ### 5. `rerun_stall_timeseries.py` — Direct Wrapper
 
-Run from `hardware/scripts/stall_analysis/`.
+Run from `hardware/scripts/trace_analysis/extract/`.
 
 ```bash
-python rerun_stall_timeseries.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --force
+python rerun_stall_timeseries.py ../../../../results/matmul_i32_mempool/4x4_asm/baseline --force
 ```
 
-This wraps `_gen_stall_timeseries_batch.py` and derives `traces/` and the
+This wraps `_gen_stall_timeseries_batch.py` and derives `traces_dasm/` and the
 default output CSV from `result_dir` automatically.
 
 ### 6. `plot_specific_core.py` — Single-Core Drill-Down (Ad-Hoc)
 
-Run from `hardware/scripts/stall_analysis/`. For investigating a specific core spotted in a tile plot.
+Run from `hardware/scripts/trace_analysis/plot/`. For investigating a specific core spotted in a tile plot.
 
 ```bash
 python plot_specific_core.py \
-  ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/stall_timeseries_benchmark.csv \
+  ../../../../results/matmul_i32_mempool/4x4_asm/baseline/data/stall_timeseries_benchmark.csv \
     42 \
-  --traces-dir ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces \
+  --traces-dir ../../../../results/matmul_i32_mempool/4x4_asm/baseline/traces_dasm \
     --section 1
 ```
 
@@ -387,15 +376,15 @@ python plot_specific_core.py \
 
 ### 7. `extract_comm_events.py` — Communication Event Extraction
 
-Run from `hardware/scripts/stall_analysis/` when you want a source/destination
+Run from `hardware/scripts/trace_analysis/extract/` when you want a source/destination
 event CSV for later communication analysis.
 
 ```bash
-python extract_comm_events.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --force
+python extract_comm_events.py ../../../../results/matmul_i32_mempool/4x4_asm/baseline --force
 ```
 
 This derives:
-  - canonical analysis trace folder: `<result_dir>/real_traces`
+  - canonical analysis trace folder: `<result_dir>/traces_raw`
   - default output: `<result_dir>/data/comm_events_benchmark.csv`
 
 Useful flags:
@@ -403,13 +392,13 @@ Useful flags:
 
 ### 8. `extract_comm_events_batch.py` — Direct Batch Extraction
 
-Run from `hardware/scripts/stall_analysis/` when you want to point directly at
-real trace folders instead of a full `result_dir`.
+Run from `hardware/scripts/trace_analysis/extract/` when you want to point directly at
+trace folders instead of a full `result_dir`.
 
 ```bash
 python extract_comm_events_batch.py \
-  --folder ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/real_traces \
-  --csv ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/comm_events_benchmark.csv \
+  --folder ../../../../results/matmul_i32_mempool/4x4_asm/baseline/traces_raw \
+  --csv ../../../../results/matmul_i32_mempool/4x4_asm/baseline/data/comm_events_benchmark.csv \
     --benchmark-only --force
 ```
 
@@ -417,47 +406,26 @@ The normal `--folder` input is a canonical-analysis-trace folder containing
 `trace_hart_*` files from `spike-dasm`. Legacy reconstructed `trace_hart_*.trace` files may still parse for
 manual recovery, but they are decommissioned from the standard pipeline.
 
-### 9. `summarize_comm_events.py` — First Summary Layer
+### 9. `plot_comm_thesis.py` — Thesis-Quality Communication Figures
 
-Run from `hardware/scripts/stall_analysis/` after communication extraction when
-you want compact CSVs that are easier to inspect than the raw event log.
-
-```bash
-python summarize_comm_events.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --benchmark-only
-```
-
-This derives the default input/output paths automatically:
-  - input CSV: `<result_dir>/data/comm_events_benchmark.csv`
-  - output dir: `<result_dir>/data/comm_summary/`
-
-It writes:
-  - `source_dest_counts.csv`: source tile -> destination tile event counts
-  - `source_tile_locality.csv`: local vs remote communication per source tile
-  - `dest_tile_load_latency.csv`: load-return latency summary per destination tile
-
-### 10. `plot_comm_thesis.py` — Thesis-Quality Communication Figures
-
-Run from `hardware/scripts/stall_analysis/` after `summarize_comm_events.py`
-and `summarize_comm_timeseries.py`. Generates up to 8 publication-ready
-communication analysis figures.
+Run from `hardware/scripts/trace_analysis/plot/` after communication extraction.
+Generates up to 8 publication-ready communication analysis figures.
+All summary and timeseries data is computed inline from the raw events CSV.
 
 ```bash
-# All figures for 4×4 kernel:
-python plot_comm_thesis.py ../../../results/matmul_i32_mempool/4x4/baseline --section 1
+# All figures for 4x4_asm kernel:
+python plot_comm_thesis.py ../../../../results/matmul_i32_mempool/4x4_asm/baseline --section 1
 
-# All figures for 2×2 kernel:
-python plot_comm_thesis.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --section 1
+# All figures for 4x4_conflict_opt_asm kernel:
+python plot_comm_thesis.py ../../../../results/matmul_i32_mempool/4x4_conflict_opt_asm/baseline --section 1
 
 # Specific figures only:
-python plot_comm_thesis.py ../../../results/matmul_i32_mempool/4x4/baseline --section 1 \
-  --figures matrix zoom contention latency_over_minimum
+python plot_comm_thesis.py ../../../../results/matmul_i32_mempool/4x4_asm/baseline --section 1 \
+  --figures matrix latency_matrix latency_over_minimum
 ```
 
 This derives the default input/output paths automatically:
-  - input summary dir: `<result_dir>/data/comm_summary/`
-  - input timeseries dir: `<result_dir>/data/comm_timeseries/`
   - input events CSV: `<result_dir>/data/comm_events_benchmark.csv`
-  - input stalls CSV: `<result_dir>/data/stall_timeseries_benchmark.csv`
   - output PNG dir: `<result_dir>/plots/communication/`
   - output PDF dir: `<result_dir>/plots/communication/pdf/`
 
@@ -466,63 +434,33 @@ This derives the default input/output paths automatically:
 | `input_path` (positional) | **yes** | — | Result directory (contains `data/` and `plots/`) |
 | `--section N` | recommended | all | Filter by section |
 | `--n-groups N` | no | 4 | Number of tile groups |
-| `--figures F...` | no | all | Subset: `matrix zoom locality correlation temporal latency tile_latency contention latency_over_minimum` |
+| `--figures F...` | no | all | Subset: `matrix temporal latency tile_latency latency_matrix latency_over_minimum` |
 
 It writes PNG files to `plots/communication/` and matching PDF files to `plots/communication/pdf/`:
   - `traffic_matrix`: zoomed active-groups rectangular heatmap
   - `traffic_matrix_groups`: group-level aggregate heatmap
-  - `locality_overview`: remote fraction strip + per-group stacked bars + latency by distance
-  - `comm_vs_stall`: scatter (non-local traffic vs LSU stalls) + temporal overlay
   - `temporal_overview`: stacked area + incoming heatmap + overall/local/same-group/remote latency over time
   - `latency_timeseries`: system-wide + per-group average latency
   - `latency_tile_g{N}`: per-tile latency within a group (G0 and G1)
   - `latency_matrix`: full tile-pair latency heatmap (green→yellow→red)
-  - `latency_contention`: traffic volume vs latency scatter
+  - `latency_matrix_refined`: latency heatmap with outlier-robust colour scale
   - `latency_excess_matrix`: latency heatmap normalized by topology-aware ideal hierarchy minimum (MemPool: local=1, same-subgroup=3, same-group=3, remote=5; TeraPool: local=1, same-subgroup=3, same-group=5, remote=7)
+  - `latency_excess_matrix_refined`: excess-latency heatmap with outlier-robust colour scale
 
 File names include `_sectionN` when `--section` is used, and a `_<kernel>_<variant>` suffix derived from the result directory path.
-
-### 11. `summarize_comm_timeseries.py` — Windowed Communication Timeseries
-
-Run from `hardware/scripts/stall_analysis/` when you want communication data
-that still keeps the time axis, so it can later be aligned with tile/core stall
-plots.
-
-```bash
-python summarize_comm_timeseries.py ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --benchmark-only --window 64
-```
-
-This derives the default input/output paths automatically:
-  - input CSV: `<result_dir>/data/comm_events_benchmark.csv`
-  - output dir: `<result_dir>/data/comm_timeseries/`
-
-It writes:
-  - `comm_timeseries_tiles.csv`: one row per section/window/tile
-  - `comm_timeseries_edges.csv`: one row per section/window/source_tile/dest_tile
-  - `comm_timeseries_metadata.json`: time-window and schema metadata for later plot alignment/splicing
-
-The metadata file is the contract for later combined plots. It records:
-  - cycle range
-  - chosen window size
-  - number of windows
-  - tile list and section list
-  - row granularity and field groups for both CSVs
-  - the x-axis field to use when aligning with stall plots (`window_center_cycle`)
 
 ---
 
 ## Internal Scripts (Not User-Facing)
 
-All internal scripts live in `stall_analysis/` with an underscore prefix.
+All internal scripts live in `trace_analysis/extract/` and `trace_analysis/plot/` with an underscore prefix.
 
 | Script | Called by | What it does |
 |--------|-----------|-------------|
 | `rerun_stall_timeseries.py` | Makefile `rerun_stall_timeseries`, users | Public wrapper for safe stall CSV regeneration from `result_dir` |
 | `extract_comm_events.py` | users | Public wrapper for building `comm_events_benchmark.csv` from `result_dir` |
 | `extract_comm_events_batch.py` | users | Direct folder-based communication-event extraction |
-| `summarize_comm_events.py` | users | First summary layer on top of `comm_events_benchmark.csv` |
-| `plot_comm_thesis.py` | users, Makefile `plots_comm` | Thesis-quality communication figures (8 plot types, PNG+PDF) |
-| `summarize_comm_timeseries.py` | users | Generate windowed communication timeseries CSVs + metadata for later combined plots |
+| `plot_comm_thesis.py` | users, Makefile `plots_comm` | Thesis-quality communication figures (6 plot types, PNG+PDF). Computes summaries and timeseries inline from raw events. |
 | `_gen_stall_timeseries_batch.py` | Makefile `stall_timeseries`, `rerun_stall_timeseries.py` | Loops all traces, auto-loads topology metadata, calls `_gen_stall_timeseries.py` for each |
 | `_gen_stall_timeseries.py` | `_gen_stall_timeseries_batch.py` | Single-trace → cycle-by-cycle stall rows in CSV |
 | `_extract_comm_events.py` | `extract_comm_events_batch.py` | Single-trace → communication event rows in CSV |
@@ -551,7 +489,7 @@ Upstream scripts called by the Makefile (not in this folder):
 
 **Important:** New benchmark runs write `result_dir/topology.env`, and
 `_gen_stall_timeseries_batch.py` uses it automatically when you point the
-script at `result_dir/traces` and `result_dir/data/...csv`.
+script at `result_dir/traces_dasm` and `result_dir/data/...csv`.
 
 If you run `_gen_stall_timeseries_batch.py` outside a benchmark result
 directory, you must either pass `--topology <config>` or set the topology
@@ -580,11 +518,11 @@ For terapool:
 | Step | Protection | Override |
 |------|-----------|---------|
 | `make benchmark` | Refuses if `variant` not set | Set `variant=...` |
-| `make benchmark` | Refuses if `result_dir/traces/` has files | `force=1` |
+| `make benchmark` | Refuses if `result_dir/traces_dasm/` has files | `force=1` |
 | `_gen_stall_timeseries_batch.py` | Refuses if output CSV exists; rejects missing or conflicting topology metadata | `--force`, `--topology`, or explicit env |
 | `extract_comm_events.py` / `extract_comm_events_batch.py` | Refuse if output CSV exists; reject missing or conflicting topology metadata | `--force`, `--topology`, or explicit env |
 | `make plots` | Keeps existing `comm_events_benchmark.csv` by default, even with `force=1` | Run `extract_comm_events.py` explicitly if you want to rebuild |
-| `extract_comm_events.py` | Requires archived canonical analysis traces in `real_traces/`; reconstructed traces are decommissioned | Preserve `real_traces/` if you want later rebuilds |
+| `extract_comm_events.py` | Requires archived canonical analysis traces in `traces_raw/`; reconstructed traces are decommissioned | Preserve `traces_raw/` if you want later rebuilds |
 | `plot_all_tiles.py` | Skips tile if PNG already exists | `--force` |
 
 ---
@@ -594,51 +532,43 @@ For terapool:
 ```bash
 # ── SIMULATE ──────────────────────────────────────────────────
 cd hardware
-app=matmul_i32 config=mempool kernel=2x2_xpulpv2 variant=baseline make benchmark
+app=matmul_i32 config=mempool kernel=4x4_asm variant=baseline make benchmark
 
 # ── PLOT ALL TILES ────────────────────────────────────────────
 cd hardware
-app=matmul_i32 config=mempool kernel=2x2_xpulpv2 variant=baseline make plots
+app=matmul_i32 config=mempool kernel=4x4_asm variant=baseline make plots
 
 # ── REBUILD ONLY THE STALL CSV ────────────────────────────────
-result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
+result_dir=results/matmul_i32_mempool/4x4_asm/baseline make rerun_stall_timeseries force=1
 
 # ── DRILL INTO CORE ──────────────────────────────────────────
-cd scripts/stall_analysis
+cd scripts/trace_analysis/plot
 python plot_specific_core.py \
-    ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/data/stall_timeseries_benchmark.csv \
-    42 --traces-dir ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline/traces \
+    ../../../../results/matmul_i32_mempool/4x4_asm/baseline/data/stall_timeseries_benchmark.csv \
+    42 --traces-dir ../../../../results/matmul_i32_mempool/4x4_asm/baseline/traces_dasm \
     --section 1
 
 # ── EXTRACT COMMUNICATION EVENTS ────────────────────────────
 python extract_comm_events.py \
-  ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --force
+  ../../../../results/matmul_i32_mempool/4x4_asm/baseline --force
 
 # ── REBUILD COMMUNICATION DATA EXPLICITLY ───────────────────
 python extract_comm_events.py \
-  ../../../results/matmul_i32_mempool/4x4/baseline --force
-
-# ── SUMMARIZE COMMUNICATION EVENTS ──────────────────────────
-python summarize_comm_events.py \
-  ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --benchmark-only
+  ../../../../results/matmul_i32_mempool/4x4_conflict_opt_asm/baseline --force
 
 # ── PLOT THESIS COMMUNICATION FIGURES ────────────────────────
-# From hardware/scripts/stall_analysis/:
+# From hardware/scripts/trace_analysis/plot/:
 python plot_comm_thesis.py \
-  ../../../results/matmul_i32_mempool/4x4/baseline --section 1
+  ../../../../results/matmul_i32_mempool/4x4_asm/baseline --section 1
 python plot_comm_thesis.py \
-  ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --section 1
+  ../../../../results/matmul_i32_mempool/4x4_conflict_opt_asm/baseline --section 1
 # Or via Makefile (from hardware/):
-# `make plots` now runs the communication extraction/summaries and then
-# invokes `make plots_comm` unless you disable it with `plot_comm=0`.
-app=matmul_i32 kernel=4x4 variant=baseline make plots
-app=matmul_i32 kernel=4x4 variant=baseline make plots plot_comm=0
-app=matmul_i32 kernel=4x4 variant=baseline make plots_comm
-app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make plots_comm
-
-# ── BUILD COMMUNICATION TIMESERIES FOR COMBINED PLOTS ───────
-python summarize_comm_timeseries.py \
-  ../../../results/matmul_i32_mempool/2x2_xpulpv2/baseline --benchmark-only --window 64
+# `make plots` runs the communication extraction and then invokes
+# `make plots_comm` unless you disable it with `plot_comm=0`.
+app=matmul_i32 kernel=4x4_asm variant=baseline make plots
+app=matmul_i32 kernel=4x4_asm variant=baseline make plots plot_comm=0
+app=matmul_i32 kernel=4x4_asm variant=baseline make plots_comm
+app=matmul_i32 kernel=4x4_conflict_opt_asm variant=baseline make plots_comm
 ```
 
 ---
@@ -647,20 +577,22 @@ python summarize_comm_timeseries.py \
 
 ```
 hardware/scripts/
-  stall_analysis/                        ← this folder
+  trace_analysis/                        ← this folder
+    _workflow_metadata.py                shared: topology resolution & path helpers
     PIPELINE.md                          pipeline documentation (this file)
-    plot_all_tiles.py                    user-facing: batch tile plotter
-    plot_specific_core.py                user-facing: single-core drill-down
-    extract_comm_events.py               user-facing: result_dir → comm_events CSV
-    extract_comm_events_batch.py         user-facing: traces folder → comm_events CSV
-    summarize_comm_events.py             user-facing: comm_events CSV → compact summaries
-    plot_comm_thesis.py                  user-facing: thesis-quality communication figures (PNG+PDF)
-    summarize_comm_timeseries.py         user-facing: comm_events CSV → windowed timeseries + metadata
-    _plot_specific_tile.py               internal: per-tile 6-subplot detail
-    _stall_plot_common.py                internal: shared plotting library
-    _gen_stall_timeseries_batch.py       internal: batch trace→CSV wrapper
-    _gen_stall_timeseries.py             internal: single-trace→CSV parser
-    _extract_comm_events.py              internal: single-trace comm-event parser
+    extract/                             Stage 1: traces → CSV
+      extract_comm_events.py             user-facing: result_dir → comm_events CSV
+      extract_comm_events_batch.py       user-facing: traces folder → comm_events CSV
+      rerun_stall_timeseries.py          user-facing: rebuild stall CSV from result_dir
+      _extract_comm_events.py            internal: single-trace comm-event parser
+      _gen_stall_timeseries_batch.py     internal: batch trace→CSV wrapper
+      _gen_stall_timeseries.py           internal: single-trace→CSV parser
+    plot/                                Stage 2: CSV → PNG/PDF
+      plot_all_tiles.py                  user-facing: batch tile plotter
+      plot_specific_core.py              user-facing: single-core drill-down
+      plot_comm_thesis.py                user-facing: thesis-quality communication figures (PNG+PDF)
+      _plot_specific_tile.py             internal: per-tile 6-subplot detail
+      _stall_plot_common.py              internal: shared plotting library
   plotting/                              traffic-gen / port analysis (separate)
     _plotting_common.py                  internal: shared helpers
     plot_port_utilization.py             port utilization heatmaps

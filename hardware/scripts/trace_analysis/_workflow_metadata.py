@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
@@ -142,9 +143,9 @@ def find_result_dir(*paths) -> Path | None:
             if path in seen:
                 continue
             seen.add(path)
-            if path.name in ('traces', 'real_traces', 'data'):
+            if path.name in ('traces_dasm', 'traces_raw', 'data'):
                 candidates.append(path.parent)
-            elif path.parent.name in ('traces', 'real_traces', 'data'):
+            elif path.parent.name in ('traces_dasm', 'traces_raw', 'data'):
                 candidates.append(path.parent.parent)
     for candidate in candidates:
         if (candidate / 'env').is_file() or (candidate / 'topology.env').is_file():
@@ -211,3 +212,47 @@ def validate_topology_consistency(expected: dict, actual: dict):
             mismatches.append(f'{key}: expected {expected[key]}, got {actual[key]}')
     if mismatches:
         raise ValueError('; '.join(mismatches))
+
+
+def resolve_topology(topology_name: str | None, folder: Path,
+                     output_path: Path) -> dict:
+    """Resolve topology from result metadata, explicit name, or environment.
+
+    Raises ValueError if topology cannot be determined or is inconsistent.
+    """
+    result_dir = find_result_dir(folder, output_path)
+
+    env_topology = load_env_topology(os.environ)
+
+    requested_topology = None
+    if topology_name:
+        requested_topology = load_config_topology(topology_name)
+        if requested_topology is None:
+            raise ValueError(f'Unknown topology/config: {topology_name}')
+
+    detected_topology = load_result_dir_topology(result_dir)
+    topology = requested_topology or detected_topology or env_topology
+    if topology is None:
+        raise ValueError(
+            'Cannot determine topology. Run inside a benchmark result directory, '
+            'pass --topology <config>, or set all of: ' + ', '.join(TOPOLOGY_KEYS))
+
+    if detected_topology and requested_topology:
+        try:
+            validate_topology_consistency(detected_topology, requested_topology)
+        except ValueError as exc:
+            raise ValueError(f'--topology disagrees with result metadata: {exc}') from exc
+
+    if detected_topology and env_topology:
+        try:
+            validate_topology_consistency(detected_topology, env_topology)
+        except ValueError as exc:
+            raise ValueError(f'Environment disagrees with result metadata: {exc}') from exc
+
+    if requested_topology and env_topology:
+        try:
+            validate_topology_consistency(requested_topology, env_topology)
+        except ValueError as exc:
+            raise ValueError(f'Environment disagrees with --topology: {exc}') from exc
+
+    return topology

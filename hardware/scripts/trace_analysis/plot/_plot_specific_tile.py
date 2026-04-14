@@ -286,8 +286,6 @@ def write_tile_detail(png_path, ts):
       5. Cumulative stall causes
     6. Outstanding loads
     """
-    from matplotlib.patches import Patch
-
     tid = ts["tile_id"]
     cycles = ts["cycles"]
     cats = ts["present_categories"]
@@ -464,7 +462,7 @@ def main(argv=None):
 
     if args.overview:
         agg = aggregate_rows(rows, args.window, context_field="tile")
-        ov_path = out / "cluster_overview.png"
+        ov_path = out / "overview_workload.png"
         fig_ov, pdf_ov = write_overview_page(ov_path, agg, _filter_desc(args), args.window)
         figs.append(fig_ov)
         print(f"Wrote {ov_path}")
