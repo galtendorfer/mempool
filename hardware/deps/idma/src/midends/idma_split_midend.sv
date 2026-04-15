@@ -79,12 +79,12 @@ module idma_split_midend #(
   // Only the address in L1 SPM will be scrambled
   logic [AddrWidth-1:0] post_scramble_src;
   logic [AddrWidth-1:0] post_scramble_dst;
-  logic [$clog2(NumTiles):0] group_factor_src,   group_factor_dst,   group_factor_sel;
-  logic [$clog2(NumTiles):0] allocated_size_src, allocated_size_dst, allocated_size_sel;
+  logic [$clog2(NumTiles):0] tiles_das_src,   tiles_das_dst,   tiles_das_sel;
+  logic [$clog2(NumTiles):0] rows_das_src, rows_das_dst, rows_das_sel;
 
-  assign group_factor_sel   = group_factor_src   | group_factor_dst;
-  assign allocated_size_sel = allocated_size_src | allocated_size_dst;
-  assign PartitionDmaRegionWidth = TileDmaRegionWidth * group_factor_sel;
+  assign tiles_das_sel   = tiles_das_src   | tiles_das_dst;
+  assign rows_das_sel = rows_das_src | rows_das_dst;
+  assign PartitionDmaRegionWidth = TileDmaRegionWidth * tiles_das_sel;
 
   idma_address_scrambler #(
     .AddrWidth        (AddrWidth       ),
@@ -96,11 +96,11 @@ module idma_split_midend #(
   ) i_idma_address_scrambler_src (
     .address_i          (burst_req_i.src),
     .num_bytes_i        (burst_req_i.num_bytes),
-    .group_factor_i     (tiles_das_i),
-    .allocated_size_i   (rows_das_i),
-    .start_addr_scheme_i(start_das_i),
-    .group_factor_o     (group_factor_src),
-    .allocated_size_o   (allocated_size_src),
+    .tiles_das_i        (tiles_das_i),
+    .rows_das_i         (rows_das_i),
+    .start_das_i        (start_das_i),
+    .tiles_das_o        (tiles_das_src),
+    .rows_das_o         (rows_das_src),
     .address_o          (post_scramble_src)
   );
 
@@ -114,11 +114,11 @@ module idma_split_midend #(
   ) i_idma_address_scrambler_dst (
     .address_i          (burst_req_i.dst),
     .num_bytes_i        (burst_req_i.num_bytes),
-    .group_factor_i     (tiles_das_i),
-    .allocated_size_i   (rows_das_i),
-    .start_addr_scheme_i(start_das_i),
-    .group_factor_o     (group_factor_dst),
-    .allocated_size_o   (allocated_size_dst),
+    .tiles_das_i        (tiles_das_i),
+    .rows_das_i         (rows_das_i),
+    .start_das_i        (start_das_i),
+    .tiles_das_o        (tiles_das_dst),
+    .rows_das_o         (rows_das_dst),
     .address_o          (post_scramble_dst)
   );
 
@@ -142,7 +142,7 @@ module idma_split_midend #(
   addr_t                     masked_start_addr;
 
   always_comb begin
-      case(group_factor_sel)
+      case(tiles_das_sel)
           128: shift_index = 7;
           64:  shift_index = 6;
           32:  shift_index = 5;
@@ -166,7 +166,7 @@ module idma_split_midend #(
   logic [$clog2(NumTiles):0] mask_shift_row;
 
   always_comb begin
-    case(allocated_size_sel)
+    case(rows_das_sel)
         128: shift_index_sc = 7;
         64:  shift_index_sc = 6;
         32:  shift_index_sc = 5;
@@ -209,7 +209,7 @@ module idma_split_midend #(
     req_valid = 1'b0;
 
 `ifdef DAS
-    rows_das_o = allocated_size_sel;
+    rows_das_o = rows_das_sel;
     beat_cnt_d = beat_cnt_q;
     if (num_trans_q == 1 && num_trans_d == 0) begin
       beat_cnt_d = 0;
@@ -239,7 +239,7 @@ module idma_split_midend #(
             // Calculate the size for the 1st burst
             burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
             // TODO (bowwang): parameterize
-            req_d.num_bytes = (group_factor_sel <= NumTilesPerDma) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
+            req_d.num_bytes = (tiles_das_sel <= NumTilesPerDma) ? (rows_das_sel*DmaBackendWidth) : (rows_das_sel*PartitionDmaRegionWidth);
             if (spm2dram) begin
               burst_req_o.src = post_scramble_src;
               req_d.src       = post_scramble_src;
@@ -311,7 +311,7 @@ module idma_split_midend #(
             req_d.num_bytes = req_q.num_bytes - PartitionDmaRegionWidth;
             beat_cnt_d = beat_cnt_q + 1;
             if (spm2dram) begin
-              if (shift_row == allocated_size_sel-1) begin
+              if (shift_row == rows_das_sel-1) begin
                 req_d.src = req_q.src + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
               end else begin
                 req_d.src = req_q.src + DmaRegionWidth;
@@ -319,7 +319,7 @@ module idma_split_midend #(
               req_d.dst = req_q.dst + PartitionDmaRegionWidth;
             end else begin
               req_d.src = req_q.src + PartitionDmaRegionWidth;
-              if (shift_row == allocated_size_sel-1) begin
+              if (shift_row == rows_das_sel-1) begin
                 req_d.dst   = req_q.dst + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
               end else begin
                 req_d.dst = req_q.dst + DmaRegionWidth;
