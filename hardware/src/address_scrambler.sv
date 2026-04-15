@@ -80,11 +80,17 @@ module address_scrambler #(
     end
 
     logic [NumDASPartitions-1:0][AddrWidth-1:0] lsb_addr;
-    logic [NumDASPartitions-1:0][AddrWidth-1:0] start_row_addr;
     logic [NumDASPartitions-1:0][AddrWidth-1:0] row_addr;
     logic [NumDASPartitions-1:0][AddrWidth-1:0] prt_addr;
     logic [NumDASPartitions-1:0][AddrWidth-1:0] msb_addr;
     logic [NumDASPartitions-1:0][AddrWidth-1:0] aligned_addr;
+
+    // Narrow row-index field signals (MaxPartitionRowWidth-bit) to replace the
+    // 32-bit adders that were on the critical path. Only the row-index bits at
+    // [TileIdBits+ConstantBitsLSB +: MaxPartitionRowWidth] are affected by the
+    // subtract/add — all other bits pass through unchanged.
+    localparam int unsigned RowFieldLSB = TileIdBits + ConstantBitsLSB;
+    logic [NumDASPartitions-1:0][MaxPartitionRowWidth-1:0] start_row_field;
 
     always_comb begin
 
@@ -105,13 +111,26 @@ module address_scrambler #(
 
             lsb_addr[p]       = address_i & ((1 << (tile_bits[p]+ConstantBitsLSB)) - 1);
             msb_addr[p]       = address_i & ~((1 << (row_bits[p]+TileIdBits+ConstantBitsLSB)) - 1);
-            start_row_addr[p] = start_das_i[p] & (((1 << row_bits[p]) - 1) << (TileIdBits + ConstantBitsLSB));
-            aligned_addr[p]   = address_i - start_row_addr[p];
+
+            // Narrow subtract: extract the row-index field from the partition
+            // start address (masked to row_bits width via rows_das-1), then
+            // subtract from the address row field to get the partition-relative
+            // row index. Only MaxPartitionRowWidth bits (~8 bits) instead of 32.
+            start_row_field[p] = start_das_i[p][RowFieldLSB +: MaxPartitionRowWidth]
+                                 & (rows_das_i[p] - 1);
+            aligned_addr[p]    = address_i;
+            aligned_addr[p][RowFieldLSB +: MaxPartitionRowWidth] =
+                address_i[RowFieldLSB +: MaxPartitionRowWidth] - start_row_field[p];
 
             prt_addr[p]     = (aligned_addr[p] >> row_bits[p]                )  & (((1 << (TileIdBits - tile_bits[p])) - 1) << (ConstantBitsLSB + tile_bits[p]));
             row_addr[p]     = (aligned_addr[p] << (TileIdBits - tile_bits[p]))  & (((1 << (row_bits[p])              ) - 1) << (TileIdBits + ConstantBitsLSB  ));
             address_o       = msb_addr[p] | row_addr[p] | prt_addr[p] | lsb_addr[p];
-            address_o       = address_o + start_row_addr[p];
+
+            // Narrow add: restore the absolute row-index offset.
+            // Only the row-index field is modified — MSB and LSB bits are
+            // already correct from msb_addr and lsb_addr.
+            address_o[RowFieldLSB +: MaxPartitionRowWidth] =
+                address_o[RowFieldLSB +: MaxPartitionRowWidth] + start_row_field[p];
 
           end
         end
