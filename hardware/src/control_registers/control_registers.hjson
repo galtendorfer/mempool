@@ -22,7 +22,7 @@
       type: "int",
       default: "8"
     }
-    { name: "NumDASPartitions",
+    { name: "NumDasPartitions",
       desc: "Supported number of DAS partitions",
       type: "int",
       default: "4"
@@ -86,7 +86,7 @@
         hwqe: "true"
         // External because we want to define the reset from a parameter
         hwext: "true"
-        count: "NumDASPartitions"
+        count: "NumDasPartitions"
         cname: "tiles_das"
         fields: [{ bits: "31:0" }]
       },
@@ -100,7 +100,7 @@
         hwqe: "true"
         // External because we want to define the reset from a parameter
         hwext: "true"
-        count: "NumDASPartitions"
+        count: "NumDasPartitions"
         cname: "start_das"
         fields: [{ bits: "31:0" }]
       },
@@ -112,7 +112,7 @@
         swaccess: "wo"
         hwaccess: "hro"
         hwqe: "false"
-        count: "NumDASPartitions"
+        count: "NumDasPartitions"
         cname: "rows_das"
         fields: [{ bits: "31:0" }]
       },

@@ -9,7 +9,7 @@ package control_registers_reg_pkg;
   // Param list
   parameter int ROCacheNumAddrRules = 4;
   parameter int MAX_NumGroups = 8;
-  parameter int NumDASPartitions = 4;
+  parameter int NumDasPartitions = 4;
 
   // Address widths within the block
   parameter int BlockAw = 8;
