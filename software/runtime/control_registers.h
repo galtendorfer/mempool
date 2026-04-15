@@ -69,71 +69,20 @@ extern "C" {
 // Wake Up Offst Register
 #define CONTROL_REGISTERS_WAKE_UP_OFFST_REG_OFFSET 0x30
 
-// Tile grouping for DAS partition (common parameters)
-#define CONTROL_REGISTERS_TILES_DAS_TILES_DAS_FIELD_WIDTH 32
-#define CONTROL_REGISTERS_TILES_DAS_TILES_DAS_FIELDS_PER_REG 1
-#define CONTROL_REGISTERS_TILES_DAS_MULTIREG_COUNT 4
-
-// Tile grouping for DAS partition
-#define CONTROL_REGISTERS_TILES_DAS_0_REG_OFFSET 0x34
-
-// Tile grouping for DAS partition
-#define CONTROL_REGISTERS_TILES_DAS_1_REG_OFFSET 0x38
-
-// Tile grouping for DAS partition
-#define CONTROL_REGISTERS_TILES_DAS_2_REG_OFFSET 0x3c
-
-// Tile grouping for DAS partition
-#define CONTROL_REGISTERS_TILES_DAS_3_REG_OFFSET 0x40
-
-// Start address of DAS partition (common parameters)
-#define CONTROL_REGISTERS_START_DAS_START_DAS_FIELD_WIDTH 32
-#define CONTROL_REGISTERS_START_DAS_START_DAS_FIELDS_PER_REG 1
-#define CONTROL_REGISTERS_START_DAS_MULTIREG_COUNT 4
-
-// Start address of DAS partition
-#define CONTROL_REGISTERS_START_DAS_0_REG_OFFSET 0x44
-
-// Start address of DAS partition
-#define CONTROL_REGISTERS_START_DAS_1_REG_OFFSET 0x48
-
-// Start address of DAS partition
-#define CONTROL_REGISTERS_START_DAS_2_REG_OFFSET 0x4c
-
-// Start address of DAS partition
-#define CONTROL_REGISTERS_START_DAS_3_REG_OFFSET 0x50
-
-// End address of DAS partition (common parameters)
-#define CONTROL_REGISTERS_ROWS_DAS_ROWS_DAS_FIELD_WIDTH 32
-#define CONTROL_REGISTERS_ROWS_DAS_ROWS_DAS_FIELDS_PER_REG 1
-#define CONTROL_REGISTERS_ROWS_DAS_MULTIREG_COUNT 4
-
-// End address of DAS partition
-#define CONTROL_REGISTERS_ROWS_DAS_0_REG_OFFSET 0x54
-
-// End address of DAS partition
-#define CONTROL_REGISTERS_ROWS_DAS_1_REG_OFFSET 0x58
-
-// End address of DAS partition
-#define CONTROL_REGISTERS_ROWS_DAS_2_REG_OFFSET 0x5c
-
-// End address of DAS partition
-#define CONTROL_REGISTERS_ROWS_DAS_3_REG_OFFSET 0x60
-
 // TCDM Start Address Register
-#define CONTROL_REGISTERS_TCDM_START_ADDRESS_REG_OFFSET 0x64
+#define CONTROL_REGISTERS_TCDM_START_ADDRESS_REG_OFFSET 0x34
 
 // TCDM End Address Register
-#define CONTROL_REGISTERS_TCDM_END_ADDRESS_REG_OFFSET 0x68
+#define CONTROL_REGISTERS_TCDM_END_ADDRESS_REG_OFFSET 0x38
 
 // Number of Cores Register
-#define CONTROL_REGISTERS_NR_CORES_REG_REG_OFFSET 0x6c
+#define CONTROL_REGISTERS_NR_CORES_REG_REG_OFFSET 0x3c
 
 // Read-only cache Enable
-#define CONTROL_REGISTERS_RO_CACHE_ENABLE_REG_OFFSET 0x70
+#define CONTROL_REGISTERS_RO_CACHE_ENABLE_REG_OFFSET 0x40
 
 // Read-only cache Flush
-#define CONTROL_REGISTERS_RO_CACHE_FLUSH_REG_OFFSET 0x74
+#define CONTROL_REGISTERS_RO_CACHE_FLUSH_REG_OFFSET 0x44
 
 // Read-only cache Region Start (common parameters)
 #define CONTROL_REGISTERS_RO_CACHE_START_RO_CACHE_START_FIELD_WIDTH 32
@@ -141,16 +90,16 @@ extern "C" {
 #define CONTROL_REGISTERS_RO_CACHE_START_MULTIREG_COUNT 4
 
 // Read-only cache Region Start
-#define CONTROL_REGISTERS_RO_CACHE_START_0_REG_OFFSET 0x78
+#define CONTROL_REGISTERS_RO_CACHE_START_0_REG_OFFSET 0x48
 
 // Read-only cache Region Start
-#define CONTROL_REGISTERS_RO_CACHE_START_1_REG_OFFSET 0x7c
+#define CONTROL_REGISTERS_RO_CACHE_START_1_REG_OFFSET 0x4c
 
 // Read-only cache Region Start
-#define CONTROL_REGISTERS_RO_CACHE_START_2_REG_OFFSET 0x80
+#define CONTROL_REGISTERS_RO_CACHE_START_2_REG_OFFSET 0x50
 
 // Read-only cache Region Start
-#define CONTROL_REGISTERS_RO_CACHE_START_3_REG_OFFSET 0x84
+#define CONTROL_REGISTERS_RO_CACHE_START_3_REG_OFFSET 0x54
 
 // Read-only cache Region End (common parameters)
 #define CONTROL_REGISTERS_RO_CACHE_END_RO_CACHE_END_FIELD_WIDTH 32
@@ -158,16 +107,68 @@ extern "C" {
 #define CONTROL_REGISTERS_RO_CACHE_END_MULTIREG_COUNT 4
 
 // Read-only cache Region End
-#define CONTROL_REGISTERS_RO_CACHE_END_0_REG_OFFSET 0x88
+#define CONTROL_REGISTERS_RO_CACHE_END_0_REG_OFFSET 0x58
 
 // Read-only cache Region End
-#define CONTROL_REGISTERS_RO_CACHE_END_1_REG_OFFSET 0x8c
+#define CONTROL_REGISTERS_RO_CACHE_END_1_REG_OFFSET 0x5c
 
 // Read-only cache Region End
-#define CONTROL_REGISTERS_RO_CACHE_END_2_REG_OFFSET 0x90
+#define CONTROL_REGISTERS_RO_CACHE_END_2_REG_OFFSET 0x60
 
 // Read-only cache Region End
-#define CONTROL_REGISTERS_RO_CACHE_END_3_REG_OFFSET 0x94
+#define CONTROL_REGISTERS_RO_CACHE_END_3_REG_OFFSET 0x64
+
+// DAS per region folding granularity. Number of Tiles per DAS partition.
+// (common parameters)
+#define CONTROL_REGISTERS_TILES_DAS_TILES_DAS_FIELD_WIDTH 32
+#define CONTROL_REGISTERS_TILES_DAS_TILES_DAS_FIELDS_PER_REG 1
+#define CONTROL_REGISTERS_TILES_DAS_MULTIREG_COUNT 4
+
+// DAS per region folding granularity. Number of Tiles per DAS partition.
+#define CONTROL_REGISTERS_TILES_DAS_0_REG_OFFSET 0x68
+
+// DAS per region folding granularity. Number of Tiles per DAS partition.
+#define CONTROL_REGISTERS_TILES_DAS_1_REG_OFFSET 0x6c
+
+// DAS per region folding granularity. Number of Tiles per DAS partition.
+#define CONTROL_REGISTERS_TILES_DAS_2_REG_OFFSET 0x70
+
+// DAS per region folding granularity. Number of Tiles per DAS partition.
+#define CONTROL_REGISTERS_TILES_DAS_3_REG_OFFSET 0x74
+
+// DAS per region allocated start address. (common parameters)
+#define CONTROL_REGISTERS_START_DAS_START_DAS_FIELD_WIDTH 32
+#define CONTROL_REGISTERS_START_DAS_START_DAS_FIELDS_PER_REG 1
+#define CONTROL_REGISTERS_START_DAS_MULTIREG_COUNT 4
+
+// DAS per region allocated start address.
+#define CONTROL_REGISTERS_START_DAS_0_REG_OFFSET 0x78
+
+// DAS per region allocated start address.
+#define CONTROL_REGISTERS_START_DAS_1_REG_OFFSET 0x7c
+
+// DAS per region allocated start address.
+#define CONTROL_REGISTERS_START_DAS_2_REG_OFFSET 0x80
+
+// DAS per region allocated start address.
+#define CONTROL_REGISTERS_START_DAS_3_REG_OFFSET 0x84
+
+// DAS per region allocated size. (common parameters)
+#define CONTROL_REGISTERS_ROWS_DAS_ROWS_DAS_FIELD_WIDTH 32
+#define CONTROL_REGISTERS_ROWS_DAS_ROWS_DAS_FIELDS_PER_REG 1
+#define CONTROL_REGISTERS_ROWS_DAS_MULTIREG_COUNT 4
+
+// DAS per region allocated size.
+#define CONTROL_REGISTERS_ROWS_DAS_0_REG_OFFSET 0x88
+
+// DAS per region allocated size.
+#define CONTROL_REGISTERS_ROWS_DAS_1_REG_OFFSET 0x8c
+
+// DAS per region allocated size.
+#define CONTROL_REGISTERS_ROWS_DAS_2_REG_OFFSET 0x90
+
+// DAS per region allocated size.
+#define CONTROL_REGISTERS_ROWS_DAS_3_REG_OFFSET 0x94
 
 #ifdef __cplusplus
 }  // extern "C"

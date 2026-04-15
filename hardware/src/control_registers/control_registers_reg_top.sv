@@ -95,30 +95,6 @@ module control_registers_reg_top #(
   logic wake_up_strd_we;
   logic [31:0] wake_up_offst_wd;
   logic wake_up_offst_we;
-  logic [31:0] tiles_das_0_wd;
-  logic tiles_das_0_we;
-  logic [31:0] tiles_das_1_wd;
-  logic tiles_das_1_we;
-  logic [31:0] tiles_das_2_wd;
-  logic tiles_das_2_we;
-  logic [31:0] tiles_das_3_wd;
-  logic tiles_das_3_we;
-  logic [31:0] start_das_0_wd;
-  logic start_das_0_we;
-  logic [31:0] start_das_1_wd;
-  logic start_das_1_we;
-  logic [31:0] start_das_2_wd;
-  logic start_das_2_we;
-  logic [31:0] start_das_3_wd;
-  logic start_das_3_we;
-  logic [31:0] rows_das_0_wd;
-  logic rows_das_0_we;
-  logic [31:0] rows_das_1_wd;
-  logic rows_das_1_we;
-  logic [31:0] rows_das_2_wd;
-  logic rows_das_2_we;
-  logic [31:0] rows_das_3_wd;
-  logic rows_das_3_we;
   logic [31:0] tcdm_start_address_qs;
   logic tcdm_start_address_re;
   logic [31:0] tcdm_end_address_qs;
@@ -163,6 +139,30 @@ module control_registers_reg_top #(
   logic [31:0] ro_cache_end_3_wd;
   logic ro_cache_end_3_we;
   logic ro_cache_end_3_re;
+  logic [31:0] tiles_das_0_wd;
+  logic tiles_das_0_we;
+  logic [31:0] tiles_das_1_wd;
+  logic tiles_das_1_we;
+  logic [31:0] tiles_das_2_wd;
+  logic tiles_das_2_we;
+  logic [31:0] tiles_das_3_wd;
+  logic tiles_das_3_we;
+  logic [31:0] start_das_0_wd;
+  logic start_das_0_we;
+  logic [31:0] start_das_1_wd;
+  logic start_das_1_we;
+  logic [31:0] start_das_2_wd;
+  logic start_das_2_we;
+  logic [31:0] start_das_3_wd;
+  logic start_das_3_we;
+  logic [31:0] rows_das_0_wd;
+  logic rows_das_0_we;
+  logic [31:0] rows_das_1_wd;
+  logic rows_das_1_we;
+  logic [31:0] rows_das_2_wd;
+  logic rows_das_2_we;
+  logic [31:0] rows_das_3_wd;
+  logic rows_das_3_we;
 
   // Register instances
   // R[eoc]: V(False)
@@ -506,6 +506,240 @@ module control_registers_reg_top #(
   );
 
 
+  // R[tcdm_start_address]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_tcdm_start_address (
+    .re     (tcdm_start_address_re),
+    .we     (1'b0),
+    .wd     ('0),
+    .d      (hw2reg.tcdm_start_address.d),
+    .qre    (),
+    .qe     (),
+    .q      (),
+    .qs     (tcdm_start_address_qs)
+  );
+
+
+  // R[tcdm_end_address]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_tcdm_end_address (
+    .re     (tcdm_end_address_re),
+    .we     (1'b0),
+    .wd     ('0),
+    .d      (hw2reg.tcdm_end_address.d),
+    .qre    (),
+    .qe     (),
+    .q      (),
+    .qs     (tcdm_end_address_qs)
+  );
+
+
+  // R[nr_cores_reg]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_nr_cores_reg (
+    .re     (nr_cores_reg_re),
+    .we     (1'b0),
+    .wd     ('0),
+    .d      (hw2reg.nr_cores_reg.d),
+    .qre    (),
+    .qe     (),
+    .q      (),
+    .qs     (nr_cores_reg_qs)
+  );
+
+
+  // R[ro_cache_enable]: V(False)
+
+  prim_subreg #(
+    .DW      (32),
+    .SWACCESS("RW"),
+    .RESVAL  (32'h1)
+  ) u_ro_cache_enable (
+    .clk_i   (clk_i    ),
+    .rst_ni  (rst_ni  ),
+
+    // from register interface
+    .we     (ro_cache_enable_we),
+    .wd     (ro_cache_enable_wd),
+
+    // from internal hardware
+    .de     (1'b0),
+    .d      ('0  ),
+
+    // to internal hardware
+    .qe     (),
+    .q      (reg2hw.ro_cache_enable.q ),
+
+    // to register interface (read)
+    .qs     (ro_cache_enable_qs)
+  );
+
+
+  // R[ro_cache_flush]: V(False)
+
+  prim_subreg #(
+    .DW      (32),
+    .SWACCESS("RW"),
+    .RESVAL  (32'h0)
+  ) u_ro_cache_flush (
+    .clk_i   (clk_i    ),
+    .rst_ni  (rst_ni  ),
+
+    // from register interface
+    .we     (ro_cache_flush_we),
+    .wd     (ro_cache_flush_wd),
+
+    // from internal hardware
+    .de     (1'b0),
+    .d      ('0  ),
+
+    // to internal hardware
+    .qe     (),
+    .q      (reg2hw.ro_cache_flush.q ),
+
+    // to register interface (read)
+    .qs     (ro_cache_flush_qs)
+  );
+
+
+
+  // Subregister 0 of Multireg ro_cache_start
+  // R[ro_cache_start_0]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_ro_cache_start_0 (
+    .re     (ro_cache_start_0_re),
+    .we     (ro_cache_start_0_we),
+    .wd     (ro_cache_start_0_wd),
+    .d      (hw2reg.ro_cache_start[0].d),
+    .qre    (),
+    .qe     (reg2hw.ro_cache_start[0].qe),
+    .q      (reg2hw.ro_cache_start[0].q ),
+    .qs     (ro_cache_start_0_qs)
+  );
+
+  // Subregister 1 of Multireg ro_cache_start
+  // R[ro_cache_start_1]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_ro_cache_start_1 (
+    .re     (ro_cache_start_1_re),
+    .we     (ro_cache_start_1_we),
+    .wd     (ro_cache_start_1_wd),
+    .d      (hw2reg.ro_cache_start[1].d),
+    .qre    (),
+    .qe     (reg2hw.ro_cache_start[1].qe),
+    .q      (reg2hw.ro_cache_start[1].q ),
+    .qs     (ro_cache_start_1_qs)
+  );
+
+  // Subregister 2 of Multireg ro_cache_start
+  // R[ro_cache_start_2]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_ro_cache_start_2 (
+    .re     (ro_cache_start_2_re),
+    .we     (ro_cache_start_2_we),
+    .wd     (ro_cache_start_2_wd),
+    .d      (hw2reg.ro_cache_start[2].d),
+    .qre    (),
+    .qe     (reg2hw.ro_cache_start[2].qe),
+    .q      (reg2hw.ro_cache_start[2].q ),
+    .qs     (ro_cache_start_2_qs)
+  );
+
+  // Subregister 3 of Multireg ro_cache_start
+  // R[ro_cache_start_3]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_ro_cache_start_3 (
+    .re     (ro_cache_start_3_re),
+    .we     (ro_cache_start_3_we),
+    .wd     (ro_cache_start_3_wd),
+    .d      (hw2reg.ro_cache_start[3].d),
+    .qre    (),
+    .qe     (reg2hw.ro_cache_start[3].qe),
+    .q      (reg2hw.ro_cache_start[3].q ),
+    .qs     (ro_cache_start_3_qs)
+  );
+
+
+
+  // Subregister 0 of Multireg ro_cache_end
+  // R[ro_cache_end_0]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_ro_cache_end_0 (
+    .re     (ro_cache_end_0_re),
+    .we     (ro_cache_end_0_we),
+    .wd     (ro_cache_end_0_wd),
+    .d      (hw2reg.ro_cache_end[0].d),
+    .qre    (),
+    .qe     (reg2hw.ro_cache_end[0].qe),
+    .q      (reg2hw.ro_cache_end[0].q ),
+    .qs     (ro_cache_end_0_qs)
+  );
+
+  // Subregister 1 of Multireg ro_cache_end
+  // R[ro_cache_end_1]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_ro_cache_end_1 (
+    .re     (ro_cache_end_1_re),
+    .we     (ro_cache_end_1_we),
+    .wd     (ro_cache_end_1_wd),
+    .d      (hw2reg.ro_cache_end[1].d),
+    .qre    (),
+    .qe     (reg2hw.ro_cache_end[1].qe),
+    .q      (reg2hw.ro_cache_end[1].q ),
+    .qs     (ro_cache_end_1_qs)
+  );
+
+  // Subregister 2 of Multireg ro_cache_end
+  // R[ro_cache_end_2]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_ro_cache_end_2 (
+    .re     (ro_cache_end_2_re),
+    .we     (ro_cache_end_2_we),
+    .wd     (ro_cache_end_2_wd),
+    .d      (hw2reg.ro_cache_end[2].d),
+    .qre    (),
+    .qe     (reg2hw.ro_cache_end[2].qe),
+    .q      (reg2hw.ro_cache_end[2].q ),
+    .qs     (ro_cache_end_2_qs)
+  );
+
+  // Subregister 3 of Multireg ro_cache_end
+  // R[ro_cache_end_3]: V(True)
+
+  prim_subreg_ext #(
+    .DW    (32)
+  ) u_ro_cache_end_3 (
+    .re     (ro_cache_end_3_re),
+    .we     (ro_cache_end_3_we),
+    .wd     (ro_cache_end_3_wd),
+    .d      (hw2reg.ro_cache_end[3].d),
+    .qre    (),
+    .qe     (reg2hw.ro_cache_end[3].qe),
+    .q      (reg2hw.ro_cache_end[3].q ),
+    .qs     (ro_cache_end_3_qs)
+  );
+
+
 
   // Subregister 0 of Multireg tiles_das
   // R[tiles_das_0]: V(True)
@@ -744,240 +978,6 @@ module control_registers_reg_top #(
   );
 
 
-  // R[tcdm_start_address]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_tcdm_start_address (
-    .re     (tcdm_start_address_re),
-    .we     (1'b0),
-    .wd     ('0),
-    .d      (hw2reg.tcdm_start_address.d),
-    .qre    (),
-    .qe     (),
-    .q      (),
-    .qs     (tcdm_start_address_qs)
-  );
-
-
-  // R[tcdm_end_address]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_tcdm_end_address (
-    .re     (tcdm_end_address_re),
-    .we     (1'b0),
-    .wd     ('0),
-    .d      (hw2reg.tcdm_end_address.d),
-    .qre    (),
-    .qe     (),
-    .q      (),
-    .qs     (tcdm_end_address_qs)
-  );
-
-
-  // R[nr_cores_reg]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_nr_cores_reg (
-    .re     (nr_cores_reg_re),
-    .we     (1'b0),
-    .wd     ('0),
-    .d      (hw2reg.nr_cores_reg.d),
-    .qre    (),
-    .qe     (),
-    .q      (),
-    .qs     (nr_cores_reg_qs)
-  );
-
-
-  // R[ro_cache_enable]: V(False)
-
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("RW"),
-    .RESVAL  (32'h1)
-  ) u_ro_cache_enable (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
-    .we     (ro_cache_enable_we),
-    .wd     (ro_cache_enable_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.ro_cache_enable.q ),
-
-    // to register interface (read)
-    .qs     (ro_cache_enable_qs)
-  );
-
-
-  // R[ro_cache_flush]: V(False)
-
-  prim_subreg #(
-    .DW      (32),
-    .SWACCESS("RW"),
-    .RESVAL  (32'h0)
-  ) u_ro_cache_flush (
-    .clk_i   (clk_i    ),
-    .rst_ni  (rst_ni  ),
-
-    // from register interface
-    .we     (ro_cache_flush_we),
-    .wd     (ro_cache_flush_wd),
-
-    // from internal hardware
-    .de     (1'b0),
-    .d      ('0  ),
-
-    // to internal hardware
-    .qe     (),
-    .q      (reg2hw.ro_cache_flush.q ),
-
-    // to register interface (read)
-    .qs     (ro_cache_flush_qs)
-  );
-
-
-
-  // Subregister 0 of Multireg ro_cache_start
-  // R[ro_cache_start_0]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_ro_cache_start_0 (
-    .re     (ro_cache_start_0_re),
-    .we     (ro_cache_start_0_we),
-    .wd     (ro_cache_start_0_wd),
-    .d      (hw2reg.ro_cache_start[0].d),
-    .qre    (),
-    .qe     (reg2hw.ro_cache_start[0].qe),
-    .q      (reg2hw.ro_cache_start[0].q ),
-    .qs     (ro_cache_start_0_qs)
-  );
-
-  // Subregister 1 of Multireg ro_cache_start
-  // R[ro_cache_start_1]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_ro_cache_start_1 (
-    .re     (ro_cache_start_1_re),
-    .we     (ro_cache_start_1_we),
-    .wd     (ro_cache_start_1_wd),
-    .d      (hw2reg.ro_cache_start[1].d),
-    .qre    (),
-    .qe     (reg2hw.ro_cache_start[1].qe),
-    .q      (reg2hw.ro_cache_start[1].q ),
-    .qs     (ro_cache_start_1_qs)
-  );
-
-  // Subregister 2 of Multireg ro_cache_start
-  // R[ro_cache_start_2]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_ro_cache_start_2 (
-    .re     (ro_cache_start_2_re),
-    .we     (ro_cache_start_2_we),
-    .wd     (ro_cache_start_2_wd),
-    .d      (hw2reg.ro_cache_start[2].d),
-    .qre    (),
-    .qe     (reg2hw.ro_cache_start[2].qe),
-    .q      (reg2hw.ro_cache_start[2].q ),
-    .qs     (ro_cache_start_2_qs)
-  );
-
-  // Subregister 3 of Multireg ro_cache_start
-  // R[ro_cache_start_3]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_ro_cache_start_3 (
-    .re     (ro_cache_start_3_re),
-    .we     (ro_cache_start_3_we),
-    .wd     (ro_cache_start_3_wd),
-    .d      (hw2reg.ro_cache_start[3].d),
-    .qre    (),
-    .qe     (reg2hw.ro_cache_start[3].qe),
-    .q      (reg2hw.ro_cache_start[3].q ),
-    .qs     (ro_cache_start_3_qs)
-  );
-
-
-
-  // Subregister 0 of Multireg ro_cache_end
-  // R[ro_cache_end_0]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_ro_cache_end_0 (
-    .re     (ro_cache_end_0_re),
-    .we     (ro_cache_end_0_we),
-    .wd     (ro_cache_end_0_wd),
-    .d      (hw2reg.ro_cache_end[0].d),
-    .qre    (),
-    .qe     (reg2hw.ro_cache_end[0].qe),
-    .q      (reg2hw.ro_cache_end[0].q ),
-    .qs     (ro_cache_end_0_qs)
-  );
-
-  // Subregister 1 of Multireg ro_cache_end
-  // R[ro_cache_end_1]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_ro_cache_end_1 (
-    .re     (ro_cache_end_1_re),
-    .we     (ro_cache_end_1_we),
-    .wd     (ro_cache_end_1_wd),
-    .d      (hw2reg.ro_cache_end[1].d),
-    .qre    (),
-    .qe     (reg2hw.ro_cache_end[1].qe),
-    .q      (reg2hw.ro_cache_end[1].q ),
-    .qs     (ro_cache_end_1_qs)
-  );
-
-  // Subregister 2 of Multireg ro_cache_end
-  // R[ro_cache_end_2]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_ro_cache_end_2 (
-    .re     (ro_cache_end_2_re),
-    .we     (ro_cache_end_2_we),
-    .wd     (ro_cache_end_2_wd),
-    .d      (hw2reg.ro_cache_end[2].d),
-    .qre    (),
-    .qe     (reg2hw.ro_cache_end[2].qe),
-    .q      (reg2hw.ro_cache_end[2].q ),
-    .qs     (ro_cache_end_2_qs)
-  );
-
-  // Subregister 3 of Multireg ro_cache_end
-  // R[ro_cache_end_3]: V(True)
-
-  prim_subreg_ext #(
-    .DW    (32)
-  ) u_ro_cache_end_3 (
-    .re     (ro_cache_end_3_re),
-    .we     (ro_cache_end_3_we),
-    .wd     (ro_cache_end_3_wd),
-    .d      (hw2reg.ro_cache_end[3].d),
-    .qre    (),
-    .qe     (reg2hw.ro_cache_end[3].qe),
-    .q      (reg2hw.ro_cache_end[3].q ),
-    .qs     (ro_cache_end_3_qs)
-  );
-
-
 
 
   logic [37:0] addr_hit;
@@ -996,31 +996,31 @@ module control_registers_reg_top #(
     addr_hit[10] = (reg_addr == CONTROL_REGISTERS_WAKE_UP_GROUP_OFFSET);
     addr_hit[11] = (reg_addr == CONTROL_REGISTERS_WAKE_UP_STRD_OFFSET);
     addr_hit[12] = (reg_addr == CONTROL_REGISTERS_WAKE_UP_OFFST_OFFSET);
-    addr_hit[13] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_0_OFFSET);
-    addr_hit[14] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_1_OFFSET);
-    addr_hit[15] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_2_OFFSET);
-    addr_hit[16] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_3_OFFSET);
-    addr_hit[17] = (reg_addr == CONTROL_REGISTERS_START_DAS_0_OFFSET);
-    addr_hit[18] = (reg_addr == CONTROL_REGISTERS_START_DAS_1_OFFSET);
-    addr_hit[19] = (reg_addr == CONTROL_REGISTERS_START_DAS_2_OFFSET);
-    addr_hit[20] = (reg_addr == CONTROL_REGISTERS_START_DAS_3_OFFSET);
-    addr_hit[21] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_0_OFFSET);
-    addr_hit[22] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_1_OFFSET);
-    addr_hit[23] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_2_OFFSET);
-    addr_hit[24] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_3_OFFSET);
-    addr_hit[25] = (reg_addr == CONTROL_REGISTERS_TCDM_START_ADDRESS_OFFSET);
-    addr_hit[26] = (reg_addr == CONTROL_REGISTERS_TCDM_END_ADDRESS_OFFSET);
-    addr_hit[27] = (reg_addr == CONTROL_REGISTERS_NR_CORES_REG_OFFSET);
-    addr_hit[28] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_ENABLE_OFFSET);
-    addr_hit[29] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_FLUSH_OFFSET);
-    addr_hit[30] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_START_0_OFFSET);
-    addr_hit[31] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_START_1_OFFSET);
-    addr_hit[32] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_START_2_OFFSET);
-    addr_hit[33] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_START_3_OFFSET);
-    addr_hit[34] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_END_0_OFFSET);
-    addr_hit[35] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_END_1_OFFSET);
-    addr_hit[36] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_END_2_OFFSET);
-    addr_hit[37] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_END_3_OFFSET);
+    addr_hit[13] = (reg_addr == CONTROL_REGISTERS_TCDM_START_ADDRESS_OFFSET);
+    addr_hit[14] = (reg_addr == CONTROL_REGISTERS_TCDM_END_ADDRESS_OFFSET);
+    addr_hit[15] = (reg_addr == CONTROL_REGISTERS_NR_CORES_REG_OFFSET);
+    addr_hit[16] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_ENABLE_OFFSET);
+    addr_hit[17] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_FLUSH_OFFSET);
+    addr_hit[18] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_START_0_OFFSET);
+    addr_hit[19] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_START_1_OFFSET);
+    addr_hit[20] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_START_2_OFFSET);
+    addr_hit[21] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_START_3_OFFSET);
+    addr_hit[22] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_END_0_OFFSET);
+    addr_hit[23] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_END_1_OFFSET);
+    addr_hit[24] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_END_2_OFFSET);
+    addr_hit[25] = (reg_addr == CONTROL_REGISTERS_RO_CACHE_END_3_OFFSET);
+    addr_hit[26] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_0_OFFSET);
+    addr_hit[27] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_1_OFFSET);
+    addr_hit[28] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_2_OFFSET);
+    addr_hit[29] = (reg_addr == CONTROL_REGISTERS_TILES_DAS_3_OFFSET);
+    addr_hit[30] = (reg_addr == CONTROL_REGISTERS_START_DAS_0_OFFSET);
+    addr_hit[31] = (reg_addr == CONTROL_REGISTERS_START_DAS_1_OFFSET);
+    addr_hit[32] = (reg_addr == CONTROL_REGISTERS_START_DAS_2_OFFSET);
+    addr_hit[33] = (reg_addr == CONTROL_REGISTERS_START_DAS_3_OFFSET);
+    addr_hit[34] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_0_OFFSET);
+    addr_hit[35] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_1_OFFSET);
+    addr_hit[36] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_2_OFFSET);
+    addr_hit[37] = (reg_addr == CONTROL_REGISTERS_ROWS_DAS_3_OFFSET);
   end
 
   assign addrmiss = (reg_re || reg_we) ? ~|addr_hit : 1'b0 ;
@@ -1107,85 +1107,85 @@ module control_registers_reg_top #(
   assign wake_up_offst_we = addr_hit[12] & reg_we & !reg_error;
   assign wake_up_offst_wd = reg_wdata[31:0];
 
-  assign tiles_das_0_we = addr_hit[13] & reg_we & !reg_error;
-  assign tiles_das_0_wd = reg_wdata[31:0];
+  assign tcdm_start_address_re = addr_hit[13] & reg_re & !reg_error;
 
-  assign tiles_das_1_we = addr_hit[14] & reg_we & !reg_error;
-  assign tiles_das_1_wd = reg_wdata[31:0];
+  assign tcdm_end_address_re = addr_hit[14] & reg_re & !reg_error;
 
-  assign tiles_das_2_we = addr_hit[15] & reg_we & !reg_error;
-  assign tiles_das_2_wd = reg_wdata[31:0];
+  assign nr_cores_reg_re = addr_hit[15] & reg_re & !reg_error;
 
-  assign tiles_das_3_we = addr_hit[16] & reg_we & !reg_error;
-  assign tiles_das_3_wd = reg_wdata[31:0];
-
-  assign start_das_0_we = addr_hit[17] & reg_we & !reg_error;
-  assign start_das_0_wd = reg_wdata[31:0];
-
-  assign start_das_1_we = addr_hit[18] & reg_we & !reg_error;
-  assign start_das_1_wd = reg_wdata[31:0];
-
-  assign start_das_2_we = addr_hit[19] & reg_we & !reg_error;
-  assign start_das_2_wd = reg_wdata[31:0];
-
-  assign start_das_3_we = addr_hit[20] & reg_we & !reg_error;
-  assign start_das_3_wd = reg_wdata[31:0];
-
-  assign rows_das_0_we = addr_hit[21] & reg_we & !reg_error;
-  assign rows_das_0_wd = reg_wdata[31:0];
-
-  assign rows_das_1_we = addr_hit[22] & reg_we & !reg_error;
-  assign rows_das_1_wd = reg_wdata[31:0];
-
-  assign rows_das_2_we = addr_hit[23] & reg_we & !reg_error;
-  assign rows_das_2_wd = reg_wdata[31:0];
-
-  assign rows_das_3_we = addr_hit[24] & reg_we & !reg_error;
-  assign rows_das_3_wd = reg_wdata[31:0];
-
-  assign tcdm_start_address_re = addr_hit[25] & reg_re & !reg_error;
-
-  assign tcdm_end_address_re = addr_hit[26] & reg_re & !reg_error;
-
-  assign nr_cores_reg_re = addr_hit[27] & reg_re & !reg_error;
-
-  assign ro_cache_enable_we = addr_hit[28] & reg_we & !reg_error;
+  assign ro_cache_enable_we = addr_hit[16] & reg_we & !reg_error;
   assign ro_cache_enable_wd = reg_wdata[31:0];
 
-  assign ro_cache_flush_we = addr_hit[29] & reg_we & !reg_error;
+  assign ro_cache_flush_we = addr_hit[17] & reg_we & !reg_error;
   assign ro_cache_flush_wd = reg_wdata[31:0];
 
-  assign ro_cache_start_0_we = addr_hit[30] & reg_we & !reg_error;
+  assign ro_cache_start_0_we = addr_hit[18] & reg_we & !reg_error;
   assign ro_cache_start_0_wd = reg_wdata[31:0];
-  assign ro_cache_start_0_re = addr_hit[30] & reg_re & !reg_error;
+  assign ro_cache_start_0_re = addr_hit[18] & reg_re & !reg_error;
 
-  assign ro_cache_start_1_we = addr_hit[31] & reg_we & !reg_error;
+  assign ro_cache_start_1_we = addr_hit[19] & reg_we & !reg_error;
   assign ro_cache_start_1_wd = reg_wdata[31:0];
-  assign ro_cache_start_1_re = addr_hit[31] & reg_re & !reg_error;
+  assign ro_cache_start_1_re = addr_hit[19] & reg_re & !reg_error;
 
-  assign ro_cache_start_2_we = addr_hit[32] & reg_we & !reg_error;
+  assign ro_cache_start_2_we = addr_hit[20] & reg_we & !reg_error;
   assign ro_cache_start_2_wd = reg_wdata[31:0];
-  assign ro_cache_start_2_re = addr_hit[32] & reg_re & !reg_error;
+  assign ro_cache_start_2_re = addr_hit[20] & reg_re & !reg_error;
 
-  assign ro_cache_start_3_we = addr_hit[33] & reg_we & !reg_error;
+  assign ro_cache_start_3_we = addr_hit[21] & reg_we & !reg_error;
   assign ro_cache_start_3_wd = reg_wdata[31:0];
-  assign ro_cache_start_3_re = addr_hit[33] & reg_re & !reg_error;
+  assign ro_cache_start_3_re = addr_hit[21] & reg_re & !reg_error;
 
-  assign ro_cache_end_0_we = addr_hit[34] & reg_we & !reg_error;
+  assign ro_cache_end_0_we = addr_hit[22] & reg_we & !reg_error;
   assign ro_cache_end_0_wd = reg_wdata[31:0];
-  assign ro_cache_end_0_re = addr_hit[34] & reg_re & !reg_error;
+  assign ro_cache_end_0_re = addr_hit[22] & reg_re & !reg_error;
 
-  assign ro_cache_end_1_we = addr_hit[35] & reg_we & !reg_error;
+  assign ro_cache_end_1_we = addr_hit[23] & reg_we & !reg_error;
   assign ro_cache_end_1_wd = reg_wdata[31:0];
-  assign ro_cache_end_1_re = addr_hit[35] & reg_re & !reg_error;
+  assign ro_cache_end_1_re = addr_hit[23] & reg_re & !reg_error;
 
-  assign ro_cache_end_2_we = addr_hit[36] & reg_we & !reg_error;
+  assign ro_cache_end_2_we = addr_hit[24] & reg_we & !reg_error;
   assign ro_cache_end_2_wd = reg_wdata[31:0];
-  assign ro_cache_end_2_re = addr_hit[36] & reg_re & !reg_error;
+  assign ro_cache_end_2_re = addr_hit[24] & reg_re & !reg_error;
 
-  assign ro_cache_end_3_we = addr_hit[37] & reg_we & !reg_error;
+  assign ro_cache_end_3_we = addr_hit[25] & reg_we & !reg_error;
   assign ro_cache_end_3_wd = reg_wdata[31:0];
-  assign ro_cache_end_3_re = addr_hit[37] & reg_re & !reg_error;
+  assign ro_cache_end_3_re = addr_hit[25] & reg_re & !reg_error;
+
+  assign tiles_das_0_we = addr_hit[26] & reg_we & !reg_error;
+  assign tiles_das_0_wd = reg_wdata[31:0];
+
+  assign tiles_das_1_we = addr_hit[27] & reg_we & !reg_error;
+  assign tiles_das_1_wd = reg_wdata[31:0];
+
+  assign tiles_das_2_we = addr_hit[28] & reg_we & !reg_error;
+  assign tiles_das_2_wd = reg_wdata[31:0];
+
+  assign tiles_das_3_we = addr_hit[29] & reg_we & !reg_error;
+  assign tiles_das_3_wd = reg_wdata[31:0];
+
+  assign start_das_0_we = addr_hit[30] & reg_we & !reg_error;
+  assign start_das_0_wd = reg_wdata[31:0];
+
+  assign start_das_1_we = addr_hit[31] & reg_we & !reg_error;
+  assign start_das_1_wd = reg_wdata[31:0];
+
+  assign start_das_2_we = addr_hit[32] & reg_we & !reg_error;
+  assign start_das_2_wd = reg_wdata[31:0];
+
+  assign start_das_3_we = addr_hit[33] & reg_we & !reg_error;
+  assign start_das_3_wd = reg_wdata[31:0];
+
+  assign rows_das_0_we = addr_hit[34] & reg_we & !reg_error;
+  assign rows_das_0_wd = reg_wdata[31:0];
+
+  assign rows_das_1_we = addr_hit[35] & reg_we & !reg_error;
+  assign rows_das_1_wd = reg_wdata[31:0];
+
+  assign rows_das_2_we = addr_hit[36] & reg_we & !reg_error;
+  assign rows_das_2_wd = reg_wdata[31:0];
+
+  assign rows_das_3_we = addr_hit[37] & reg_we & !reg_error;
+  assign rows_das_3_wd = reg_wdata[31:0];
 
   // Read data return
   always_comb begin
@@ -1244,103 +1244,103 @@ module control_registers_reg_top #(
       end
 
       addr_hit[13]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[14]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[15]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[16]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[17]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[18]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[19]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[20]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[21]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[22]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[23]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[24]: begin
-        reg_rdata_next[31:0] = '0;
-      end
-
-      addr_hit[25]: begin
         reg_rdata_next[31:0] = tcdm_start_address_qs;
       end
 
-      addr_hit[26]: begin
+      addr_hit[14]: begin
         reg_rdata_next[31:0] = tcdm_end_address_qs;
       end
 
-      addr_hit[27]: begin
+      addr_hit[15]: begin
         reg_rdata_next[31:0] = nr_cores_reg_qs;
       end
 
-      addr_hit[28]: begin
+      addr_hit[16]: begin
         reg_rdata_next[31:0] = ro_cache_enable_qs;
       end
 
-      addr_hit[29]: begin
+      addr_hit[17]: begin
         reg_rdata_next[31:0] = ro_cache_flush_qs;
       end
 
-      addr_hit[30]: begin
+      addr_hit[18]: begin
         reg_rdata_next[31:0] = ro_cache_start_0_qs;
       end
 
-      addr_hit[31]: begin
+      addr_hit[19]: begin
         reg_rdata_next[31:0] = ro_cache_start_1_qs;
       end
 
-      addr_hit[32]: begin
+      addr_hit[20]: begin
         reg_rdata_next[31:0] = ro_cache_start_2_qs;
       end
 
-      addr_hit[33]: begin
+      addr_hit[21]: begin
         reg_rdata_next[31:0] = ro_cache_start_3_qs;
       end
 
-      addr_hit[34]: begin
+      addr_hit[22]: begin
         reg_rdata_next[31:0] = ro_cache_end_0_qs;
       end
 
-      addr_hit[35]: begin
+      addr_hit[23]: begin
         reg_rdata_next[31:0] = ro_cache_end_1_qs;
       end
 
-      addr_hit[36]: begin
+      addr_hit[24]: begin
         reg_rdata_next[31:0] = ro_cache_end_2_qs;
       end
 
-      addr_hit[37]: begin
+      addr_hit[25]: begin
         reg_rdata_next[31:0] = ro_cache_end_3_qs;
+      end
+
+      addr_hit[26]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[27]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[28]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[29]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[30]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[31]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[32]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[33]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[34]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[35]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[36]: begin
+        reg_rdata_next[31:0] = '0;
+      end
+
+      addr_hit[37]: begin
+        reg_rdata_next[31:0] = '0;
       end
 
       default: begin
