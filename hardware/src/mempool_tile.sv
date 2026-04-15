@@ -906,16 +906,16 @@ module mempool_tile
       .NumDASPartitions  (NumDASPartitions )
     ) i_address_scrambler (
 `ifdef DAS
-      .tiles_das_i    (tiles_das_i     ),
+      .tiles_das_i        (tiles_das_i         ),
       .start_das_i        (start_das_i         ),
       .rows_das_i         (rows_das_i          ),
 `else
-      .tiles_das_i    (NumTiles            ),
+      .tiles_das_i        (NumTiles            ),
       .start_das_i        ('0                  ),
       .rows_das_i         ('0                  ),
 `endif
       .address_i          (snitch_data_qaddr[c]),
-      .address_o   (snitch_data_qaddr_scrambled)
+      .address_o          (snitch_data_qaddr_scrambled)
     );
 
     if (!TrafficGeneration) begin: gen_tcdm_shim

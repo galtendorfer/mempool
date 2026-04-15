@@ -339,7 +339,7 @@ module mempool_group
           // RO-Cache configuration
           .ro_cache_ctrl_i         (ro_cache_ctrl_q                                                       ),
 `ifdef DAS
-          .tiles_das_i         (tiles_das_i                                                       ),
+          .tiles_das_i             (tiles_das_i                                                           ),
           .start_das_i             (start_das_i                                                           ),
           .rows_das_i              (rows_das_i                                                            ),
 `endif
@@ -396,7 +396,7 @@ module mempool_group
           // RO-Cache configuration
           .ro_cache_ctrl_i         (ro_cache_ctrl_q                                                       ),
 `ifdef DAS
-          .tiles_das_i         (tiles_das_i                                                       ),
+          .tiles_das_i             (tiles_das_i                                                           ),
           .start_das_i             (start_das_i                                                           ),
           .rows_das_i              (rows_das_i                                                            ),
 `endif
@@ -705,7 +705,7 @@ module mempool_group
         .axi_mst_req_o           (axi_tile_req[t]                                ),
         .axi_mst_resp_i          (axi_tile_resp[t]                               ),
 `ifdef DAS
-        .tiles_das_i         (tiles_das_i                                ),
+        .tiles_das_i             (tiles_das_i                                    ),
         .start_das_i             (start_das_i                                    ),
         .rows_das_i              (rows_das_i                                     ),
 `endif

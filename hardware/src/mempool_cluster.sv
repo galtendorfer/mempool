@@ -320,7 +320,7 @@ module mempool_cluster
           .tcdm_slave_resp_valid_o (tcdm_slave_resp_valid[g]                                        ),
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
-          .tiles_das_i         (tiles_das_i                                                 ),
+          .tiles_das_i             (tiles_das_i                                                     ),
           .start_das_i             (start_das_i                                                     ),
           .rows_das_i              (rows_das_i                                                      ),
           .dma_rows_das_i          (dma_rows_das                                                    ),
@@ -367,7 +367,7 @@ module mempool_cluster
           .tcdm_slave_resp_valid_o (tcdm_slave_resp_valid[g]                                        ),
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
-          .tiles_das_i         (tiles_das_i                                                 ),
+          .tiles_das_i             (tiles_das_i                                                     ),
           .start_das_i             (start_das_i                                                     ),
           .rows_das_i              (rows_das_i                                                      ),
           .dma_rows_das_i          (dma_rows_das                                                    ),
@@ -411,7 +411,7 @@ module mempool_cluster
           .tcdm_slave_resp_valid_o (tcdm_slave_resp_valid[g]                                        ),
           .tcdm_slave_resp_ready_i (tcdm_slave_resp_ready[g]                                        ),
 `ifdef DAS
-          .tiles_das_i         (tiles_das_i                                                 ),
+          .tiles_das_i             (tiles_das_i                                                     ),
           .start_das_i             (start_das_i                                                     ),
           .rows_das_i              (rows_das_i                                                      ),
           .dma_rows_das_i          (dma_rows_das                                                    ),
