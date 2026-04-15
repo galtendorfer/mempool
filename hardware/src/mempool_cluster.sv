@@ -24,12 +24,6 @@ module mempool_cluster
   input  logic                               scan_enable_i,
   input  logic                               scan_data_i,
   output logic                               scan_data_o,
-`ifdef DAS
-  // Partition Selection
-  input  logic           [NumDASPartitions-1:0][TileInterleavingWidth-1:0] tiles_das_i,
-  input  logic           [NumDASPartitions-1:0][AddrWidth-1:0]             start_das_i,
-  input  logic           [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das_i,
-`endif
   // Wake up signal
   input  logic           [NumCores-1:0]      wake_up_i,
   // RO-Cache configuration
@@ -43,6 +37,13 @@ module mempool_cluster
   // AXI Interface
   output axi_tile_req_t  [NumAXIMasters-1:0] axi_mst_req_o,
   input  axi_tile_resp_t [NumAXIMasters-1:0] axi_mst_resp_i
+`ifdef DAS
+  ,
+  // DAS partition configuration
+  input  logic           [NumDASPartitions-1:0][TileInterleavingWidth-1:0] tiles_das_i,
+  input  logic           [NumDASPartitions-1:0][AddrWidth-1:0]             start_das_i,
+  input  logic           [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das_i
+`endif
 );
 
   /*********************
