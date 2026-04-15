@@ -8,11 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## Unreleased
 
 ### Added
-- Add Dynamic Address Scrambling (DAS) support with configurable partitioning, hardware address scrambler, and software runtime for dynamic heap allocation
 - Add `apb` dependency of version 0.2.4
 - Add support for the `FENCE` instruction
 - Add support for DRAMsys5.0 co-simulation
 - Add support for atomics in L2
+- Add Dynamic Address Scrambling (DAS) support with configurable partitioning, hardware address scrambler, and software runtime for dynamic heap allocation
 
 ### Changes
 - Add physical feasible TeraPool configuration with SubGroup hierarchy.
