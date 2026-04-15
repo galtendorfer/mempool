@@ -95,29 +95,25 @@ TOOLCHAIN_DIR := $(abspath $(ROOT_DIR)/../toolchain)
 config_mk = $(abspath $(ROOT_DIR)/../config/config.mk)
 include $(config_mk)
 
-# build path
-buildpath       ?= build
-resultpath      ?= results
-# questa library
-library         ?= work
-# dpi library
-dpi_library     ?= work-dpi
 # Top level module to compile
 top_level       ?= mempool_tb
-# QuestaSim Version
+
+# QuestaSim
 questa_version  ?= 2022.3-bt
-# QuestaSim command
 questa_cmd      ?= questa-$(questa_version)
-# QuestaSim arguments
 questa_args     ?=
+QUESTASIM_HOME  ?= /usr/pack/questa-$(questa_version)/questasim
+# Check if the specified QuestaSim version exists
+ifeq (, $(shell which $(questa_cmd)))
+  # Spaces are needed for indentation here!
+  $(warning "Specified QuestaSim version ($(questa_cmd)) not found in PATH $(PATH)")
+  questa_cmd =
+endif
+
 # VCS Version
 vcs_version     ?= 2020.12-bt
-# VCS command
 vcs_cmd         ?= vcs-$(vcs_version)
-# Path to the binaries
-app_path        ?= $(abspath $(ROOT_DIR)/../software/bin)
-# Bender
-bender          ?= $(INSTALL_DIR)/bender/bender
+VCS_HOME        ?= /usr/pack/vcs-$(vcs_version)/vcs
 # Verilator
 verilator       ?= $(INSTALL_DIR)/verilator/bin/verilator
 verilator_build ?= $(ROOT_DIR)/verilator_build
@@ -128,6 +124,11 @@ python_venv     ?= $(MEMPOOL_DIR)/mempoolvenv/bin/python
 python          ?= $(python_venv)
 # Enable tracing
 snitch_trace    ?= 1
+trace           := $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
+tracepath       ?= $(buildpath)/traces
+traceresult     ?= $(tracepath)/results.csv
+
+
 
 # Path to DRAMsys
 dramsys_resouces_path ?= $(MEMPOOL_DIR)/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSys/configs
@@ -135,16 +136,8 @@ dramsys_lib_path ?= $(MEMPOOL_DIR)/hardware/deps/dram_rtl_sim/dramsys_lib/DRAMSy
 questa_args += +DRAMSYS_RES=$(dramsys_resouces_path)
 questa_args += -sv_lib $(dramsys_lib_path)/libsystemc -sv_lib $(dramsys_lib_path)/libDRAMSys_Simulator
 
-# Check if the specified QuestaSim version exists
-ifeq (, $(shell which $(questa_cmd)))
-  # Spaces are needed for indentation here!
-  $(warning "Specified QuestaSim version ($(questa_cmd)) not found in PATH $(PATH)")
-  questa_cmd =
-endif
-
-QUESTASIM_HOME ?= /usr/pack/questa-$(questa_version)/questasim
-VCS_HOME       ?= /usr/pack/vcs-$(vcs_version)/vcs
-
+# Path to the binaries
+app_path ?= $(abspath $(ROOT_DIR)/../software/bin)
 ifdef app
   preload := "$(app_path)/$(app)"
   ifeq ("$(shell test -f $(preload))","")
@@ -162,12 +155,31 @@ ifdef app
     endif
   endif
 endif
-ifdef preload
-	questa_args += +PRELOAD=$(preload)
-endif
-questa_args += -sv_lib $(dpi_library)/mempool_dpi -work $(library)
+
+# QuestaSim args
+library     ?= work
+dpi_library ?= work-dpi
+questa_args += $(if $(preload),+PRELOAD=$(preload),)
+questa_args += -sv_lib $(dpi_library)/mempool_dpi
+questa_args += -work $(library)
 questa_args += -suppress vsim-12070
 
+# VCS args
+vcs_args    += $(if $(preload),+PRELOAD=$(preload),)
+
+# Questasim vlog args
+vlog_args   += -suppress vlog-2583
+vlog_args   += -suppress vlog-13314
+vlog_args   +=-suppress vlog-13233
+vlog_args   += -work $(library)
+
+# VCS vlogan args
+vlogan_args += -assert svaext
+vlogan_args += +v2k
+vlogan_args += -override_timescale=1ns/1ps -kdb
+
+# Configuration name
+vlog_defs   += -D$(config)
 # VCS options
 vlogan_args += -assert svaext +v2k -override_timescale=1ns/1ps -kdb
 ifdef preload
@@ -209,39 +221,49 @@ vlog_args += -work $(library)
 # Defines
 vlog_defs += -D$(config)
 # Cluster configurations
-vlog_defs += -DNUM_CORES=$(num_cores)
-vlog_defs += -DNUM_CORES_PER_TILE=$(num_cores_per_tile)
-vlog_defs += -DNUM_DIVSQRT_PER_TILE=$(num_divsqrt_per_tile)
-vlog_defs += -DNUM_GROUPS=$(num_groups)
-vlog_defs += -DBANKING_FACTOR=$(banking_factor)
-vlog_defs += -DL2_BASE=32\'d$(l2_base)
-vlog_defs += -DL2_SIZE=32\'d$(l2_size)
-vlog_defs += -DL2_BANKS=$(l2_banks)
-vlog_defs += -DL1_BANK_SIZE=$(l1_bank_size)
-vlog_defs += -DBOOT_ADDR=32\'d$(boot_addr)
+vlog_defs   += -DNUM_CORES=$(num_cores)
+vlog_defs   += -DNUM_CORES_PER_TILE=$(num_cores_per_tile)
+vlog_defs   += -DNUM_DIVSQRT_PER_TILE=$(num_divsqrt_per_tile)
+vlog_defs   += -DNUM_GROUPS=$(num_groups)
+vlog_defs   += -DBANKING_FACTOR=$(banking_factor)
+vlog_defs   += -DL2_BASE=32\'d$(l2_base)
+vlog_defs   += -DL2_SIZE=32\'d$(l2_size)
+vlog_defs   += -DL2_BANKS=$(l2_banks)
+vlog_defs   += -DL1_BANK_SIZE=$(l1_bank_size)
+vlog_defs   += -DBOOT_ADDR=32\'d$(boot_addr)
+vlog_defs   += -DDAS=$(das)
+vlog_defs   += -DNUM_DAS_PARTITIONS=$(num_das_partitions)
 # Snitch ISA
-vlog_defs += -DXPULPIMG=$(xpulpimg)
-vlog_defs += -DZFINX=$(zfinx)
-vlog_defs += -DZQUARTERINX=$(zquarterinx)
-vlog_defs += -DXDIVSQRT=$(xDivSqrt)
-vlog_defs += -DSNITCH_TRACE=$(snitch_trace)
+vlog_defs   += -DXPULPIMG=$(xpulpimg)
+vlog_defs   += -DZFINX=$(zfinx)
+vlog_defs   += -DZQUARTERINX=$(zquarterinx)
+vlog_defs   += -DXDIVSQRT=$(xDivSqrt)
+vlog_defs   += -DSNITCH_TRACE=$(snitch_trace)
 # AXI & DMA
-vlog_defs += -DAXI_DATA_WIDTH=$(axi_data_width)
-vlog_defs += -DRO_LINE_WIDTH=$(ro_line_width)
-vlog_defs += -DDMAS_PER_GROUP=$(dmas_per_group)
-vlog_defs += -DAXI_HIER_RADIX=$(axi_hier_radix)
-vlog_defs += -DAXI_MASTERS_PER_GROUP=$(axi_masters_per_group)
+vlog_defs   += -DAXI_DATA_WIDTH=$(axi_data_width)
+vlog_defs   += -DRO_LINE_WIDTH=$(ro_line_width)
+vlog_defs   += -DDMAS_PER_GROUP=$(dmas_per_group)
+vlog_defs   += -DAXI_HIER_RADIX=$(axi_hier_radix)
+vlog_defs   += -DAXI_MASTERS_PER_GROUP=$(axi_masters_per_group)
 # Systolic configurations
-vlog_defs += -DSEQ_MEM_SIZE=$(seq_mem_size)
-vlog_defs += -DXQUEUE_SIZE=$(xqueue_size)
+vlog_defs   += -DSEQ_MEM_SIZE=$(seq_mem_size)
+vlog_defs   += -DXQUEUE_SIZE=$(xqueue_size)
 # TeraPool configurations
-vlog_defs += -DNUM_SUB_GROUPS_PER_GROUP=$(num_sub_groups_per_group)
-vlog_defs += -DREMOTE_GROUP_LATENCY_CYCLES=$(remote_group_latency_cycles)
+vlog_defs   += -DNUM_SUB_GROUPS_PER_GROUP=$(num_sub_groups_per_group)
+vlog_defs   += -DREMOTE_GROUP_LATENCY_CYCLES=$(remote_group_latency_cycles)
 # DRAMsys co-simulation
-vlog_defs += -D${l2_sim_type}
-vlog_defs += -DDRAM_AXI_WIDTH_INTERLEAVED=${dram_axi_width_interleaved}
+vlog_defs   += -D${l2_sim_type}
+vlog_defs   += -DDRAM_AXI_WIDTH_INTERLEAVED=${dram_axi_width_interleaved}
 
-# Traffic generation enabled
+# Verilator CPP defines
+cpp_defs    += -DL2_BASE=$(l2_base)
+cpp_defs    += -DL2_SIZE=$(l2_size)
+cpp_defs    += -DL2_BANKS=$(l2_banks)
+cpp_defs    += -DAXI_DATA_WIDTH=$(axi_data_width)
+
+# Enable Traffic Generator
+# The Traffic Generator replaces the cores and generates random traffic to the memory system.
+# It is useful for testing the memory latency under random traffic patterns.
 ifdef tg
 	tg_ncycles  ?= 10000
 	tg_reqprob  ?= 0.2
@@ -261,14 +283,13 @@ ifdef tg
 	# Pass cycle count to QuestaSim TB via plusarg
 	questa_args += +tg_ncycles=$(tg_ncycles)
 else
-	tg          := 0
-	veril_flags := --meminit=ram,$(preload)
+	tg := 0
+	verilator_args := --meminit=ram,$(preload)
 endif
 
-cpp_defs += -DL2_BASE=$(l2_base)
-cpp_defs += -DL2_SIZE=$(l2_size)
-cpp_defs += -DL2_BANKS=$(l2_banks)
-cpp_defs += -DAXI_DATA_WIDTH=$(axi_data_width)
+# DPI source files
+dpi     := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cpp))
+dpi_vcs := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%_vcs.o,$(wildcard tb/dpi/*.cpp))
 
 .DEFAULT_GOAL := compile
 
@@ -356,7 +377,6 @@ $(buildpath)/compilevcs.sh: $(bender) $(config_mk) Makefile $(MEMPOOL_DIR)/Bende
 
 # Compilation
 .PHONY: compile_vcs_simv compile_vcs_simvopt
-
 compile_vcs_simv: elabvcs $(buildpath)/mempool_simv
 $(buildpath)/mempool_simv: $(buildpath)/compilevcs.sh $(buildpath)/$(dpi_library)/mempool_vcs_dpi.so
 	cd $(buildpath) && \
@@ -410,6 +430,11 @@ VERILATOR_FLAGS += --Mdir $(verilator_build)
 VERILATOR_FLAGS += -f $(verilator_files)
 VERILATOR_FLAGS += -f $(VERILATOR_CONF)
 VERILATOR_FLAGS += $(VERILATOR_WAIVE)
+# Disable noisy Verilator lints
+VERILATOR_FLAGS += -Wno-DECLFILENAME
+VERILATOR_FLAGS += -Wno-PINCONNECTEMPTY
+VERILATOR_FLAGS += -Wno-IMPORTSTAR
+VERILATOR_FLAGS += -Wno-EOFNEWLINE
 # VERILATOR_FLAGS += --trace --trace-fst --trace-structs --trace-params --trace-max-array 1024
 # VERILATOR_FLAGS += --debug
 
@@ -420,6 +445,14 @@ VERILATOR_FLAGS += $(VERILATOR_WAIVE)
 ifneq (${CLANG_PATH},)
   VERILATOR_FLAGS += -CFLAGS "-nostdinc++ -isystem $(CLANG_PATH)/include/c++/v1"
   VERILATOR_FLAGS += -LDFLAGS "-L $(CLANG_PATH)/lib -Wl,-rpath,$(CLANG_PATH)/lib -lc++ -nostdlib++"
+  VERILATOR_FLAGS += -CFLAGS "-Wno-unknown-warning-option"
+  # The injected `-nostdlib++` flag is clang-specific; ensure we build/link the
+  # generated model with clang++ when CLANG_PATH is used.
+  CLANG_CC  := $(CLANG_PATH)/bin/clang
+  CLANG_CXX := $(CLANG_PATH)/bin/clang++
+else
+  CLANG_CC  ?= clang
+  CLANG_CXX ?= clang++
 endif
 
 $(VERILATOR_MK): $(VERILATOR_CONF) $(VERILATOR_WAIVE) $(MEMPOOL_DIR)/Bender.yml $(shell find {src,tb,deps} -type f) $(bender) $(config_mk) Makefile
@@ -441,10 +474,10 @@ $(VERILATOR_MK): $(VERILATOR_CONF) $(VERILATOR_WAIVE) $(MEMPOOL_DIR)/Bender.yml 
 	$(verilator) $(VERILATOR_FLAGS) --top-module $(verilator_top)
 
 $(VERILATOR_EXE): $(VERILATOR_MK) $(shell find $(VERILATOR_SRC) -type f) Makefile
-	make -j10 -C $(verilator_build) -f $<
+	$(MAKE) -j10 -C $(verilator_build) -f $< CC="$(CLANG_CC)" CXX="$(CLANG_CXX)" LINK="$(CLANG_CXX)"
 
 verilate: $(VERILATOR_EXE) $(buildpath) Makefile
-	cd $(buildpath) && $(VERILATOR_EXE) $(veril_flags) | tee transcript
+	cd $(buildpath) && $(VERILATOR_EXE) $(verilator_args) | tee transcript
 	# Avoid capturing the return status when running the load-throughput analysis
 	if [ $(tg) -ne 1 ]; then ./scripts/return_status.sh $(buildpath)/transcript; fi
 

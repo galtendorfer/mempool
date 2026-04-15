@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## Unreleased
 
 ### Added
+- Add Dynamic Address Scrambling (DAS) support with configurable partitioning, hardware address scrambler, and software runtime for dynamic heap allocation
 - Add `apb` dependency of version 0.2.4
 - Add support for the `FENCE` instruction
 - Add support for DRAMsys5.0 co-simulation
@@ -44,6 +45,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Optimize fp16 matmul kernel
 - Add fall through register after LSU input
 - Benderize MemPool dependencies
+- Update Verilator to 4.228
 
 ### Fixed
 - Fix type issue in `snitch_addr_demux`

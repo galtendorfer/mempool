@@ -15,7 +15,12 @@ RUNTIME_DIR := $(abspath $(SOFTWARE_DIR)/runtime)
 # This will overwrite the ROOT_DIR variable from the included makefile
 include $(RUNTIME_DIR)/runtime.mk
 
-TESTS := $(patsubst $(TESTS_DIR)/%/main.c,%,$(shell find $(TESTS_DIR) -name "main.c"))
+ALL_TESTS := $(patsubst $(TESTS_DIR)/%/main.c,%,$(shell find $(TESTS_DIR) -name "main.c"))
+ifdef das
+  TESTS := $(ALL_TESTS)
+else
+  TESTS := $(filter-out das_%,$(ALL_TESTS))
+endif
 BINARIES := $(addprefix $(BIN_DIR)/,$(TESTS))
 
 # Make all applications
