@@ -95,6 +95,14 @@ TOOLCHAIN_DIR := $(abspath $(ROOT_DIR)/../toolchain)
 config_mk = $(abspath $(ROOT_DIR)/../config/config.mk)
 include $(config_mk)
 
+# Build paths
+buildpath       ?= build
+resultpath      ?= results
+# Bender
+bender          ?= $(INSTALL_DIR)/bender/bender
+# Path to the binaries
+app_path        ?= $(abspath $(ROOT_DIR)/../software/bin)
+
 # Top level module to compile
 top_level       ?= mempool_tb
 
