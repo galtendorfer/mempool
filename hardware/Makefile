@@ -194,6 +194,13 @@ variant         ?=
 # Kernel label for result directory grouping — must be set explicitly
 kernel          ?=
 
+# Auto-map variant to das flag: variant=das → das=1, variant=baseline → das=0
+ifeq ($(variant),das)
+  das := 1
+else ifeq ($(variant),baseline)
+  das := 0
+endif
+
 # Traces
 trace = $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
 tracepath ?= $(buildpath)/traces
@@ -231,8 +238,12 @@ vlog_defs   += -DL2_SIZE=32\'d$(l2_size)
 vlog_defs   += -DL2_BANKS=$(l2_banks)
 vlog_defs   += -DL1_BANK_SIZE=$(l1_bank_size)
 vlog_defs   += -DBOOT_ADDR=32\'d$(boot_addr)
-vlog_defs   += -DDAS=$(das)
+# DAS: only define the macro when das=1 (ifdef DAS checks existence, not value)
+ifeq ($(das),1)
+vlog_defs   += -DDAS
 vlog_defs   += -DNUM_DAS_PARTITIONS=$(num_das_partitions)
+vlog_defs   += -DDAS_MEM_SIZE=$(das_mem_size)
+endif
 # Snitch ISA
 vlog_defs   += -DXPULPIMG=$(xpulpimg)
 vlog_defs   += -DZFINX=$(zfinx)
@@ -354,7 +365,7 @@ $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 # current invocation, we delete the stale VCS artefacts so Make sees them as
 # out-of-date and re-elaborates / recompiles.
 vcs_config_stamp      := $(buildpath)/.vcs_config_stamp
-vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group)
+vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das)
 
 $(vcs_config_stamp): FORCE | $(buildpath)
 	@if [ ! -f "$@" ] || [ "$$(cat $@)" != "$(vcs_config_fingerprint)" ]; then \
@@ -565,8 +576,8 @@ log:
 			"$(app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)"; \
 		env; \
 	} > "$(result_dir)/env"
-	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\n' \
-		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" > "$(result_dir)/topology.env"
+	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\n' \
+		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(num_das_partitions)" "$(das_mem_size)" > "$(result_dir)/topology.env"
 	cp $(MEMPOOL_DIR)/config/config.mk $(result_dir)/config
 	git rev-parse HEAD > "$(result_dir)/git-info.diff"
 	git show --oneline -s >> "$(result_dir)/git-info.diff"
