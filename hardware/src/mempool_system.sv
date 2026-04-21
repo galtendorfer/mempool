@@ -813,7 +813,7 @@ module mempool_system
     .eoc_o                (/* Unused */                    ),
     .eoc_valid_o          (eoc_valid_o                     ),
 `ifdef DAS
-    .tiles_das_o      (tiles_das                   ),
+    .tiles_das_o          (tiles_das                       ),
     .start_das_o          (start_das                       ),
     .rows_das_o           (rows_das                        ),
 `endif

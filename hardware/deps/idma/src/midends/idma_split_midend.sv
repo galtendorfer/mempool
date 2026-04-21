@@ -79,12 +79,12 @@ module idma_split_midend #(
   // Only the address in L1 SPM will be scrambled
   logic [AddrWidth-1:0] post_scramble_src;
   logic [AddrWidth-1:0] post_scramble_dst;
-  logic [$clog2(NumTiles):0] group_factor_src,   group_factor_dst,   group_factor_sel;
-  logic [$clog2(NumTiles):0] allocated_size_src, allocated_size_dst, allocated_size_sel;
+  logic [$clog2(NumTiles):0] tiles_das_src,   tiles_das_dst,   tiles_das_sel;
+  logic [$clog2(NumTiles):0] rows_das_src, rows_das_dst, rows_das_sel;
 
-  assign group_factor_sel   = group_factor_src   | group_factor_dst;
-  assign allocated_size_sel = allocated_size_src | allocated_size_dst;
-  assign PartitionDmaRegionWidth = TileDmaRegionWidth * group_factor_sel;
+  assign tiles_das_sel   = tiles_das_src   | tiles_das_dst;
+  assign rows_das_sel = rows_das_src | rows_das_dst;
+  assign PartitionDmaRegionWidth = TileDmaRegionWidth * tiles_das_sel;
 
   idma_address_scrambler #(
     .AddrWidth        (AddrWidth       ),
@@ -96,11 +96,11 @@ module idma_split_midend #(
   ) i_idma_address_scrambler_src (
     .address_i          (burst_req_i.src),
     .num_bytes_i        (burst_req_i.num_bytes),
-    .group_factor_i     (tiles_das_i),
-    .allocated_size_i   (rows_das_i),
-    .start_addr_scheme_i(start_das_i),
-    .group_factor_o     (group_factor_src),
-    .allocated_size_o   (allocated_size_src),
+    .tiles_das_i        (tiles_das_i),
+    .rows_das_i         (rows_das_i),
+    .start_das_i        (start_das_i),
+    .tiles_das_o        (tiles_das_src),
+    .rows_das_o         (rows_das_src),
     .address_o          (post_scramble_src)
   );
 
@@ -114,11 +114,11 @@ module idma_split_midend #(
   ) i_idma_address_scrambler_dst (
     .address_i          (burst_req_i.dst),
     .num_bytes_i        (burst_req_i.num_bytes),
-    .group_factor_i     (tiles_das_i),
-    .allocated_size_i   (rows_das_i),
-    .start_addr_scheme_i(start_das_i),
-    .group_factor_o     (group_factor_dst),
-    .allocated_size_o   (allocated_size_dst),
+    .tiles_das_i        (tiles_das_i),
+    .rows_das_i         (rows_das_i),
+    .start_das_i        (start_das_i),
+    .tiles_das_o        (tiles_das_dst),
+    .rows_das_o         (rows_das_dst),
     .address_o          (post_scramble_dst)
   );
 
@@ -136,51 +136,63 @@ module idma_split_midend #(
     end
   end
 
-  // ------ Considering Partition Scheme ------ //
-  logic [$clog2(NumTiles):0] shift_index;
-  logic [AddrWidth-1:0]      partition_mask;
-  addr_t                     masked_start_addr;
+  // ------ Partition Row Offset Computation ------ //
+  // A DAS partition maps data onto a 2D grid: `tiles_das` tiles wide, `rows_das`
+  // rows tall. Each row holds `PartitionDmaRegionWidth` bytes. Transfers must be
+  // split at row boundaries because consecutive rows are `DmaRegionWidth` apart
+  // in physical SPM (not contiguous), even though the DRAM side is contiguous.
 
-  always_comb begin
-      case(group_factor_sel)
-          128: shift_index = 7;
-          64:  shift_index = 6;
-          32:  shift_index = 5;
-          16:  shift_index = 4;
-          8:   shift_index = 3;
-          4:   shift_index = 2;
-          2:   shift_index = 1;
-          default: shift_index = 0;
-      endcase
-  end
+  // log2(tiles_das_sel): number of tile-index bits in the active partition
+  logic [$clog2(NumTiles):0] log2_tiles;
+  // Bitmask to extract the byte offset within one partition row from the
+  // scrambled address. Width = DmaRegionAddressBits - (TileIdBits - log2_tiles).
+  logic [AddrWidth-1:0]      row_offset_mask;
+  // Byte offset of the scrambled start address within its partition row.
+  // Used to compute how much data fits in the first (possibly partial) row.
+  addr_t                     start_row_offset;
 
-  assign partition_mask = {DmaRegionAddressBits{1'b1}} >> ($clog2(NumTiles) - shift_index);
-  assign masked_start_addr = start_addr & partition_mask;
+  lzc #(
+    .WIDTH ($clog2(NumTiles)+1),
+    .MODE  (1'b0              )
+  ) i_log2_tiles (
+    .in_i    (tiles_das_sel),
+    .cnt_o   (log2_tiles   ),
+    .empty_o (/* Unused */  )
+  );
 
-  // ------ Beat Counter and Shifter Handler ------ //
+  assign row_offset_mask  = {DmaRegionAddressBits{1'b1}} >> ($clog2(NumTiles) - log2_tiles);
+  assign start_row_offset = start_addr & row_offset_mask;
+
+  // ------ Beat Counter and Row/Column Index ------ //
+  // The beat counter tracks sub-transfer progress through the partition's 2D
+  // layout. It encodes a (row_idx, col_idx) pair:
+  //   - Lower log2(rows_das) bits = row_idx (cycles through rows first)
+  //   - Upper bits               = col_idx (advances after all rows complete)
+  // Transfer order: row0-col0, row1-col0, ..., rowN-col0, row0-col1, ...
   logic [$clog2(NumTiles):0] beat_cnt_d, beat_cnt_q;
   `FFARN(beat_cnt_q, beat_cnt_d, '0, clk_i, rst_ni)
 
-  logic [$clog2(NumTiles):0] shift_row, shift_partition;
-  logic [$clog2(NumTiles):0] shift_index_sc;
-  logic [$clog2(NumTiles):0] mask_shift_row;
+  // log2(rows_das_sel): number of row-index bits in the active partition
+  logic [$clog2(NumTiles):0] log2_rows;
+  // Bitmask to extract row index from the beat counter (lower log2_rows bits)
+  logic [$clog2(NumTiles):0] row_idx_mask;
+  // Current row index within the partition (0 .. rows_das-1)
+  logic [$clog2(NumTiles):0] row_idx;
+  // Current column index: how many full row sweeps have completed
+  logic [$clog2(NumTiles):0] col_idx;
 
-  always_comb begin
-    case(allocated_size_sel)
-        128: shift_index_sc = 7;
-        64:  shift_index_sc = 6;
-        32:  shift_index_sc = 5;
-        16:  shift_index_sc = 4;
-        8:   shift_index_sc = 3;
-        4:   shift_index_sc = 2;
-        2:   shift_index_sc = 1;
-        default: shift_index_sc = 0;
-    endcase
-  end
+  lzc #(
+    .WIDTH ($clog2(NumTiles)+1),
+    .MODE  (1'b0              )
+  ) i_log2_rows (
+    .in_i    (rows_das_sel),
+    .cnt_o   (log2_rows   ),
+    .empty_o (/* Unused */ )
+  );
 
-  assign shift_partition = beat_cnt_q >> shift_index_sc;
-  assign mask_shift_row  = ~( {($clog2(NumTiles) + 1){1'b1}} << shift_index_sc );
-  assign shift_row       = beat_cnt_q & mask_shift_row;
+  assign col_idx      = beat_cnt_q >> log2_rows;
+  assign row_idx_mask = ~( {($clog2(NumTiles) + 1){1'b1}} << log2_rows );
+  assign row_idx      = beat_cnt_q & row_idx_mask;
 `else
   // ------ Filter out address in L1 SPM ------ //
   addr_t start_addr;
@@ -209,7 +221,7 @@ module idma_split_midend #(
     req_valid = 1'b0;
 
 `ifdef DAS
-    rows_das_o = allocated_size_sel;
+    rows_das_o = rows_das_sel;
     beat_cnt_d = beat_cnt_q;
     if (num_trans_q == 1 && num_trans_d == 0) begin
       beat_cnt_d = 0;
@@ -220,7 +232,7 @@ module idma_split_midend #(
       Idle: begin
         if (valid_i) begin // Splitting required
 `ifdef DAS
-          if ((PartitionDmaRegionWidth-masked_start_addr) >= burst_req_i.num_bytes) begin
+          if ((PartitionDmaRegionWidth-start_row_offset) >= burst_req_i.num_bytes) begin
             burst_req_o = burst_req_i;
             // Address in SPM need to be translated back to physical address
             if (spm2dram) begin
@@ -237,9 +249,9 @@ module idma_split_midend #(
             ready_o = 1'b1;
             burst_req_o = burst_req_i;
             // Calculate the size for the 1st burst
-            burst_req_o.num_bytes = PartitionDmaRegionWidth-masked_start_addr;
+            burst_req_o.num_bytes = PartitionDmaRegionWidth-start_row_offset;
             // TODO (bowwang): parameterize
-            req_d.num_bytes = (group_factor_sel <= NumTilesPerDma) ? (allocated_size_sel*DmaBackendWidth) : (allocated_size_sel*PartitionDmaRegionWidth);
+            req_d.num_bytes = (tiles_das_sel <= NumTilesPerDma) ? (rows_das_sel*DmaBackendWidth) : (rows_das_sel*PartitionDmaRegionWidth);
             if (spm2dram) begin
               burst_req_o.src = post_scramble_src;
               req_d.src       = post_scramble_src;
@@ -251,13 +263,13 @@ module idma_split_midend #(
             // Modify the stored info after first beat sent
             if (ready_i) begin
               // TODO (bowwang): May not be mecessary to consider alignment
-              req_d.num_bytes -= PartitionDmaRegionWidth-masked_start_addr;
+              req_d.num_bytes -= PartitionDmaRegionWidth-start_row_offset;
               if (spm2dram) begin
-                req_d.src += DmaRegionWidth-masked_start_addr;
-                req_d.dst += PartitionDmaRegionWidth-masked_start_addr;
+                req_d.src += DmaRegionWidth-start_row_offset;
+                req_d.dst += PartitionDmaRegionWidth-start_row_offset;
               end else begin
-                req_d.src += PartitionDmaRegionWidth-masked_start_addr;
-                req_d.dst += DmaRegionWidth-masked_start_addr;
+                req_d.src += PartitionDmaRegionWidth-start_row_offset;
+                req_d.dst += DmaRegionWidth-start_row_offset;
               end
               req_valid  = 1'b1;
               beat_cnt_d = 1;
@@ -310,17 +322,21 @@ module idma_split_midend #(
           if (ready_i) begin
             req_d.num_bytes = req_q.num_bytes - PartitionDmaRegionWidth;
             beat_cnt_d = beat_cnt_q + 1;
+            // SPM address stride: consecutive partition rows are DmaRegionWidth
+            // apart in physical memory. At the last row (row_idx == rows_das-1),
+            // wrap back to row 0 and advance to the next column within the row.
+            // DRAM address always advances contiguously by PartitionDmaRegionWidth.
             if (spm2dram) begin
-              if (shift_row == allocated_size_sel-1) begin
-                req_d.src = req_q.src + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
+              if (row_idx == rows_das_sel-1) begin
+                req_d.src = req_q.src + PartitionDmaRegionWidth - row_idx*DmaRegionWidth;
               end else begin
                 req_d.src = req_q.src + DmaRegionWidth;
               end
               req_d.dst = req_q.dst + PartitionDmaRegionWidth;
             end else begin
               req_d.src = req_q.src + PartitionDmaRegionWidth;
-              if (shift_row == allocated_size_sel-1) begin
-                req_d.dst   = req_q.dst + PartitionDmaRegionWidth - shift_row*DmaRegionWidth;
+              if (row_idx == rows_das_sel-1) begin
+                req_d.dst   = req_q.dst + PartitionDmaRegionWidth - row_idx*DmaRegionWidth;
               end else begin
                 req_d.dst = req_q.dst + DmaRegionWidth;
               end

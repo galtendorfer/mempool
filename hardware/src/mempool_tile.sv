@@ -51,13 +51,15 @@ module mempool_tile
   // AXI Interface
   output `STRUCT_PORT(axi_tile_req_t)                                             axi_mst_req_o,
   input  `STRUCT_PORT(axi_tile_resp_t)                                            axi_mst_resp_i,
-`ifdef DAS
-  input  logic              [NumDASPartitions-1:0][TileInterleavingWidth-1:0]     tiles_das_i,
-  input  logic              [NumDASPartitions-1:0][AddrWidth-1:0]                 start_das_i,
-  input  logic              [NumDASPartitions-1:0][RowsInterleavingWidth-1:0]     rows_das_i,
-`endif
   // Wake up interface
   input  logic              [NumCoresPerTile-1:0]                                 wake_up_i
+`ifdef DAS
+  ,
+  // DAS partition configuration
+  input  logic              [NumDASPartitions-1:0][TileInterleavingWidth-1:0]     tiles_das_i,
+  input  logic              [NumDASPartitions-1:0][AddrWidth-1:0]                 start_das_i,
+  input  logic              [NumDASPartitions-1:0][RowsInterleavingWidth-1:0]     rows_das_i
+`endif
 );
 
   /****************
@@ -945,16 +947,16 @@ module mempool_tile
       .NumDASPartitions  (NumDASPartitions )
     ) i_address_scrambler (
 `ifdef DAS
-      .tiles_das_i    (tiles_das_i     ),
+      .tiles_das_i        (tiles_das_i         ),
       .start_das_i        (start_das_i         ),
       .rows_das_i         (rows_das_i          ),
 `else
-      .tiles_das_i    (NumTiles            ),
+      .tiles_das_i        (NumTiles            ),
       .start_das_i        ('0                  ),
       .rows_das_i         ('0                  ),
 `endif
       .address_i          (snitch_data_qaddr[c]),
-      .address_o   (snitch_data_qaddr_scrambled)
+      .address_o          (snitch_data_qaddr_scrambled)
     );
 
     if (!TrafficGeneration) begin: gen_tcdm_shim

@@ -39,9 +39,6 @@ void *domain_malloc(alloc_t *alloc, const uint32_t size);
 // Free in L1 memory
 void simple_free(void *const ptr);
 
-// Free dynamic heap allocation with Canary chain
-void partition_free(alloc_t *alloc, void *const ptr);
-
 // Free with specified allocator
 void domain_free(alloc_t *alloc, void *const ptr);
 

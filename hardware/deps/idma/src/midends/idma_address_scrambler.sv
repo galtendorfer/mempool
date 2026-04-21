@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: SHL-0.51
 
 // Description: Address scrambler for iDMA Midend, scramble scheme is determined
-// by group_factor
+// by tiles_das
 // Current constraints:
 
 // Author: Bowen Wang <bowwang@student.ethz.ch>
@@ -24,11 +24,11 @@ module idma_address_scrambler #(
 ) (
   input  logic [AddrWidth-1:0]                            address_i,
   input  logic [31:0]                                     num_bytes_i,
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] group_factor_i,
-  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] allocated_size_i,
-  input  logic [NumDASPartitions-1:0][DataWidth-1:0]      start_addr_scheme_i,
-  output logic [$clog2(NumTiles):0]                       group_factor_o,
-  output logic [$clog2(NumTiles):0]                       allocated_size_o,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] tiles_das_i,
+  input  logic [NumDASPartitions-1:0][$clog2(NumTiles):0] rows_das_i,
+  input  logic [NumDASPartitions-1:0][DataWidth-1:0]      start_das_i,
+  output logic [$clog2(NumTiles):0]                       tiles_das_o,
+  output logic [$clog2(NumTiles):0]                       rows_das_o,
   output logic [AddrWidth-1:0]                            address_o
 );
   // Basic Settings
@@ -52,7 +52,7 @@ module idma_address_scrambler #(
         .WIDTH ($clog2(NumTiles)+1),
         .MODE  (1'b0              )
       ) i_log_tile_index (
-        .in_i    (group_factor_i[i]),
+        .in_i    (tiles_das_i[i]),
         .cnt_o   (tile_index[i]    ),
         .empty_o (/* Unused */     )
       );
@@ -60,7 +60,7 @@ module idma_address_scrambler #(
         .WIDTH ($clog2(NumTiles)+1),
         .MODE  (1'b0            )
       ) i_log_row_index (
-        .in_i    (allocated_size_i[i][$clog2(NumTiles):0]),
+        .in_i    (rows_das_i[i][$clog2(NumTiles):0]),
         .cnt_o   (row_index[i]                           ),
         .empty_o (/* Unused */                           )
       );
@@ -70,26 +70,26 @@ module idma_address_scrambler #(
 
       // Default: Unscrambled
       address_o = address_i;
-      group_factor_o   = '0;
-      allocated_size_o = '0;
+      tiles_das_o   = '0;
+      rows_das_o = '0;
 
       // TODO (bowwang): add a new register to indicate the start addr of sequential heap region, currently hard coded
       if (address_i < DASStartAddr) begin
-        group_factor_o   = NumTiles; // fully interleaved
-        allocated_size_o = num_bytes_i / MemSizePerRow;
+        tiles_das_o   = NumTiles; // fully interleaved
+        rows_das_o = num_bytes_i / MemSizePerRow;
 
       // DAS address scrambling
       end else begin
 
         for (int p = 0; p < NumDASPartitions; p++) begin
-          if ( (address_i >= start_addr_scheme_i[p]) && (address_i < start_addr_scheme_i[p]+MemSizePerRow*allocated_size_i[p]) ) begin
+          if ( (address_i >= start_das_i[p]) && (address_i < start_das_i[p]+MemSizePerRow*rows_das_i[p]) ) begin
             address_o = '0;
             address_o |= address_i & ((1 << (tile_index[p]+ConstantBitsLSB)) - 1);
             address_o |= ((address_i >> (row_index[p]+tile_index[p]+ConstantBitsLSB)) << (tile_index[p]+ConstantBitsLSB)) & ((1 << (TileIdBits+ConstantBitsLSB)) - 1);
             address_o |= ((address_i >> (tile_index[p]+ConstantBitsLSB)) << (TileIdBits + ConstantBitsLSB)) & ((1 << (row_index[p]+TileIdBits+ConstantBitsLSB)) - 1);
             address_o |= address_i & ~((1 << (row_index[p]+TileIdBits+ConstantBitsLSB)) - 1);
-            group_factor_o   = group_factor_i[p];
-            allocated_size_o = allocated_size_i[p];
+            tiles_das_o   = tiles_das_i[p];
+            rows_das_o = rows_das_i[p];
           end
         end
 
