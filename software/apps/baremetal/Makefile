@@ -26,7 +26,19 @@ RUNTIME_DIR := $(abspath $(SOFTWARE_DIR)/runtime)
 # This will overwrite the ROOT_DIR variable from the included makefile
 include $(RUNTIME_DIR)/runtime.mk
 
-MATMUL_I32_APPS := matmul_i32 matmul_i32_das
+MATMUL_I32_APPS := matmul_i32
+
+# Public DAS sweep knob: prefer `tiles_per_partition=<N>`. Keep the older
+# `matmul_tiles_per_partition=<N>` alias for compatibility.
+effective_tiles_per_partition := $(strip $(tiles_per_partition))
+ifneq ($(strip $(matmul_tiles_per_partition)),)
+ifneq ($(strip $(tiles_per_partition)),)
+ifneq ($(strip $(tiles_per_partition)),$(strip $(matmul_tiles_per_partition)))
+$(error tiles_per_partition=$(tiles_per_partition) and matmul_tiles_per_partition=$(matmul_tiles_per_partition) disagree)
+endif
+endif
+effective_tiles_per_partition := $(strip $(matmul_tiles_per_partition))
+endif
 
 ifneq ($(filter $(MATMUL_I32_APPS),$(MAKECMDGOALS)),)
         # Matrix dimensions: override with matmul_M=, matmul_N=, matmul_P= on the command line.
@@ -73,13 +85,15 @@ ifneq ($(filter $(MATMUL_I32_APPS),$(MAKECMDGOALS)),)
 	endif
 endif
 
-ifneq ($(filter matmul_i32_das,$(MAKECMDGOALS)),)
-	ifeq ($(config),terapool)
-		matmul_tiles_per_partition ?= 32
-	else
-		matmul_tiles_per_partition ?= 16
-	endif
-	DEFINES += -DTILES_PER_PARTITION=$(matmul_tiles_per_partition)
+ifneq ($(filter matmul_i32,$(MAKECMDGOALS)),)
+ifeq ($(das),1)
+ifneq ($(filter 4x4_asm 4x4_conflict_opt_asm,$(kernel)),$(kernel))
+$(error DAS-enabled matmul_i32 only supports kernel=4x4_asm or kernel=4x4_conflict_opt_asm)
+endif
+ifneq ($(effective_tiles_per_partition),)
+DEFINES += -DTILES_PER_PARTITION=$(effective_tiles_per_partition)
+endif
+endif
 endif
 
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c"))

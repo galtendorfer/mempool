@@ -65,8 +65,7 @@
 #                     Default: $(scratch_storage_root)/results_data
 #   result_app=<name> Optional logical result-family name used for the
 #                     auto-generated result directory.
-#                     Default: $(app), except `app=matmul_i32_das` stores under
-#                     `matmul_i32` so baseline and DAS runs share one result tree.
+#                     Default: $(app)
 #   result_dir=<path> Override the auto-generated result directory.
 #                     Default: $(resultpath)/<result_app>_<config>/<kernel>/<variant>
 #                     Setting this bypasses the kernel/variant requirements.
@@ -95,6 +94,11 @@
 #   plot_topology=<name>
 #                     For `make plots`: override topology auto-detection.
 #                     Normally not needed because result metadata is used.
+#   tiles_per_partition=<N>
+#                     For DAS-enabled software builds: override the app-side
+#                     `TILES_PER_PARTITION` value passed to `das_config()`.
+#                     Useful as the public sweep knob for DAS placement
+#                     granularity. Defaults remain app-specific.
 #   archive_dir=<path>
 #                     For `make archive_result` / `make freeze`: destination directory for a
 #                     frozen copy of a finished benchmark result.
@@ -126,10 +130,10 @@
 # Examples:
 #   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make benchmark
 #   app=matmul_i32 config=terapool kernel=4x4_asm variant=das make benchmark
-#   app=matmul_i32_das config=terapool kernel=4x4_asm variant=das make benchmark
 #   app=matmul_i32 config=terapool kernel=4x4_asm variant=das trace_jobs=8 make benchmark
 #   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline force=1 make benchmark  # re-run
 #   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make plots
+#   app=matmul_i32 config=terapool kernel=4x4_asm variant=das tiles_per_partition=32 make benchmark
 #   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/2x2_xpulpv2_baseline make archive_result
 #   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/2x2_xpulpv2_baseline make freeze
 #   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
@@ -239,11 +243,7 @@ endif
 endif
 endif
 app_path ?= $(default_app_path)
-default_result_app := $(app)
-ifeq ($(app),matmul_i32_das)
-default_result_app := matmul_i32
-endif
-result_app ?= $(default_result_app)
+result_app ?= $(app)
 preload_skip_validation_goals := $(filter build_app benchmark plots plots_comm archive_result freeze rerun_stall_timeseries,$(MAKECMDGOALS))
 ifdef app
 preload := "$(app_path)/$(app)"

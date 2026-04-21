@@ -7,6 +7,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#ifdef NUM_DAS_PARTITIONS
+#include "alloc.h"
+#endif
 #include "dma.h"
 #include "encoding.h"
 #include "printf.h"
@@ -27,9 +30,40 @@
 #error "Select exactly one MATMUL_I32 kernel."
 #endif
 
+#ifdef NUM_DAS_PARTITIONS
+#if !defined(MATMUL_I32_KERNEL_4X4_ASM) && !defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
+#error "DAS-enabled matmul_i32 only supports 4x4_asm and 4x4_conflict_opt_asm."
+#endif
+
+#define NUM_TILES (NUM_CORES / NUM_CORES_PER_TILE)
+
+#ifndef TILES_PER_PARTITION
+#define TILES_PER_PARTITION NUM_TILES
+#endif
+
+#if (TILES_PER_PARTITION < 1) || (TILES_PER_PARTITION > NUM_TILES)
+#error "TILES_PER_PARTITION must be within [1, NUM_TILES]."
+#endif
+
+#if (NUM_TILES % TILES_PER_PARTITION) != 0
+#error "TILES_PER_PARTITION must divide NUM_TILES exactly."
+#endif
+
+#if (TILES_PER_PARTITION & (TILES_PER_PARTITION - 1)) != 0
+#error "TILES_PER_PARTITION must be a power of two."
+#endif
+#endif
+
+#ifdef NUM_DAS_PARTITIONS
+int32_t *volatile l1_A __attribute__((section(".l1")));
+int32_t *volatile l1_B __attribute__((section(".l1")));
+int32_t *volatile l1_C __attribute__((section(".l1")));
+uint32_t volatile init_status __attribute__((section(".l1")));
+#else
 int32_t l1_A[matrix_M * matrix_N] __attribute__((section(".l1_prio")));
 int32_t l1_B[matrix_N * matrix_P] __attribute__((section(".l1_prio")));
 int32_t l1_C[matrix_M * matrix_P] __attribute__((section(".l1_prio")));
+#endif
 
 static uint32_t active_matmul_cores(uint32_t available_cores) {
   uint32_t active_cores = available_cores;
@@ -54,14 +88,53 @@ int main() {
   uint32_t core_id = mempool_get_core_id();
   uint32_t num_cores = mempool_get_core_count();
   uint32_t kernel_cores = active_matmul_cores(num_cores);
+
+#ifdef NUM_DAS_PARTITIONS
+  uint32_t a_size = matrix_M * matrix_N * sizeof(int32_t);
+  uint32_t b_size = matrix_N * matrix_P * sizeof(int32_t);
+  uint32_t c_size = matrix_M * matrix_P * sizeof(int32_t);
+
+  mempool_init(core_id);
+#endif
   mempool_barrier_init(core_id);
 
+#ifdef NUM_DAS_PARTITIONS
+  if (core_id == 0) {
+    alloc_t *das_alloc;
+
+    init_status = 0;
+    mempool_dynamic_heap_alloc_init(core_id);
+    das_alloc = get_dynamic_heap_alloc();
+
+    l1_A = (int32_t *)partition_malloc(das_alloc, a_size);
+    l1_B = (int32_t *)partition_malloc(das_alloc, b_size);
+    l1_C = (int32_t *)partition_malloc(das_alloc, c_size);
+
+    if (!l1_A || !l1_B || !l1_C) {
+      printf("ERROR: matmul_i32 allocation failed\n");
+      init_status = 1;
+    } else {
+      das_config(0, TILES_PER_PARTITION, (uint32_t)l1_A, a_size);
+      das_config(1, TILES_PER_PARTITION, (uint32_t)l1_B, b_size);
+      das_config(2, TILES_PER_PARTITION, (uint32_t)l1_C, c_size);
+
+      dma_memcpy_blocking(l1_A, l2_A, a_size);
+      dma_memcpy_blocking(l1_B, l2_B, b_size);
+    }
+  }
+  mempool_barrier(num_cores);
+
+  if (init_status != 0) {
+    return 1;
+  }
+#else
   // Initialize data
   if (core_id == 0) {
     dma_memcpy_blocking(l1_A, l2_A, matrix_M * matrix_N * sizeof(int32_t));
     dma_memcpy_blocking(l1_B, l2_B, matrix_N * matrix_P * sizeof(int32_t));
   }
   mempool_barrier(num_cores);
+#endif
 
   // Benchmark
   mempool_start_benchmark();
@@ -128,5 +201,15 @@ int main() {
   mempool_check_i32(l1_C, l2_C, matrix_M * matrix_P, 0, 0);
   mempool_barrier(num_cores);
 #endif
+
+#ifdef NUM_DAS_PARTITIONS
+  if (core_id == 0) {
+    alloc_t *das_alloc = get_dynamic_heap_alloc();
+    partition_free(das_alloc, l1_C);
+    partition_free(das_alloc, l1_B);
+    partition_free(das_alloc, l1_A);
+  }
+#endif
+
   return 0;
 }
