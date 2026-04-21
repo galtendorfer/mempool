@@ -19,10 +19,8 @@ module idma_distributed_midend #(
   parameter int unsigned DmaRegionEnd   = 32'h1000_0000,
   /// Number of generic 1D requests that can be buffered
   parameter int unsigned TransFifoDepth = 1,
-`ifdef DAS
   parameter int unsigned NumTiles          = 64,
   parameter int unsigned NumDASPartitions  = 4,
-`endif
   /// Arbitrary 1D burst request definition
   parameter type         burst_req_t    = logic,
   /// Meta data response definition

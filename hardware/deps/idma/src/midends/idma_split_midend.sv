@@ -13,14 +13,12 @@ module idma_split_midend #(
   parameter int unsigned DmaRegionStart = 32'h0000_0000,
   parameter int unsigned DmaRegionEnd   = 32'h1000_0000,
   parameter int unsigned AddrWidth      = 32,
-`ifdef DAS
   parameter int unsigned NumTiles          = 64,
   parameter int unsigned NumBanksPerTile   = 32,
   parameter int unsigned TCDMSizePerBank   = 1024,
   parameter int unsigned NumDASPartitions  = 4,
   parameter int unsigned DASStartAddr      = 1024,
   parameter int unsigned NumTilesPerDma    = 16,
-`endif
   parameter type         burst_req_t    = logic,
   parameter type         meta_t         = logic
 ) (
@@ -92,6 +90,7 @@ module idma_split_midend #(
     .NumBanksPerTile  (NumBanksPerTile ),
     .Bypass           (0               ),
     .NumDASPartitions (NumDASPartitions),
+    .DASStartAddr     (DASStartAddr    ),
     .TCDMSizePerBank  (TCDMSizePerBank )
   ) i_idma_address_scrambler_src (
     .address_i          (burst_req_i.src),
@@ -110,6 +109,7 @@ module idma_split_midend #(
     .NumBanksPerTile  (NumBanksPerTile ),
     .Bypass           (0               ),
     .NumDASPartitions (NumDASPartitions),
+    .DASStartAddr     (DASStartAddr    ),
     .TCDMSizePerBank  (TCDMSizePerBank )
   ) i_idma_address_scrambler_dst (
     .address_i          (burst_req_i.dst),
