@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Per-tile stall detail report with optional overview page.
 
+Trace-backed subplots are deprecated in the official CSV-only workflow.
+The old trace-derived code is intentionally kept in commented form below for
+reference, but the active plotting path uses only stall_timeseries CSV data.
+
 When requested, produces an overview PNG + PDF. When tile IDs are given,
 also produces one detail PNG + PDF per tile.
 
@@ -19,9 +23,8 @@ Options:
                                      <prefix>_tile<id>.png/.pdf
     --window N         Cycle window for windowed aggregation [default: 64]
     --overview         Also generate the cluster overview PNG + PDF
-    --traces-dir DIR   Directory containing .trace files for the
-                       outstanding-loads subplot.  If omitted, the script
-                       looks next to the CSV.
+    --traces-dir DIR   Deprecated compatibility flag. Ignored in the
+                       official CSV-only workflow.
     --section N        Keep only rows from section N (repeatable: --section 0 --section 1)
     --group N          Keep only rows from group N   (repeatable)
     --show             Display figures interactively instead of just saving
@@ -46,10 +49,8 @@ import numpy as np
 
 from _stall_plot_common import (
     STALL_CATEGORIES, STALL_COLORS, stall_label,
-    ITYPE_COLORS, ITYPE_LABELS, ITYPE_ORDER,
     load_rows, filter_rows, split_stall_kind,
-    locate_trace_file, build_memory_request_series,
-    set_cycle_ticks, plot_outstanding_loads,
+    set_cycle_ticks,
     plot_categories_current, plot_categories_cumulative,
 )
 
@@ -136,47 +137,41 @@ def build_tile_series(rows, csv_path, tile_id, traces_dir=None):
             else:
                 per_core_state[core2i[r["core"]], ci] = 2.0  # fallback
 
-    out_cur = np.zeros(n); store_cur = np.zeros(n); cum_li = np.zeros(n); cum_amo_li = np.zeros(n); cum_lr = np.zeros(n); cum_si = np.zeros(n)
-    # per-core instruction type: 0=stalled, 1=load, 2=store, 3=mac, 4=other
-    per_core_itype = np.zeros((len(cores), n))
-    for cid in cores:
-        tp = locate_trace_file(csv_path, cid, traces_dir=traces_dir)
-        if tp is None:
-            continue
-        cc = np.array(sorted({r["cycle"] for r in tile_rows if r["core"] == cid}), dtype=int)
-        if len(cc) == 0:
-            continue
-        ms = build_memory_request_series(tp, cc)
-        cc2i = {int(c): i for i, c in enumerate(cc)}
-        ci_core = core2i[cid]
-        for c in cc:
-            ti = c2i[int(c)]; ci = cc2i[int(c)]
-            out_cur[ti] += ms["outstanding_loads"][ci]
-            store_cur[ti] += ms["store_issue_current"][ci]
-            cum_li[ti] += ms["load_issue_cumulative"][ci]
-            cum_amo_li[ti] += ms["amo_load_issue_cumulative"][ci]
-            cum_lr[ti] += ms["load_return_cumulative"][ci]
-            cum_si[ti] += ms["store_issue_cumulative"][ci]
-            # Instruction type for this core at this cycle
-            if per_core_state[ci_core, ti] == 1.0:  # issuing
-                per_core_itype[ci_core, ti] = ms["itype_current"][ci]
+    # DEPRECATED: trace-backed per-core instruction typing and outstanding-load
+    # overlays are disabled for the official CSV-only workflow. Keep the old
+    # implementation below for reference only.
+    # out_cur = np.zeros(n); store_cur = np.zeros(n); cum_li = np.zeros(n); cum_amo_li = np.zeros(n); cum_lr = np.zeros(n); cum_si = np.zeros(n)
+    # per_core_itype = np.zeros((len(cores), n))
+    # for cid in cores:
+    #     tp = locate_trace_file(csv_path, cid, traces_dir=traces_dir)
+    #     if tp is None:
+    #         continue
+    #     cc = np.array(sorted({r["cycle"] for r in tile_rows if r["core"] == cid}), dtype=int)
+    #     if len(cc) == 0:
+    #         continue
+    #     ms = build_memory_request_series(tp, cc)
+    #     cc2i = {int(c): i for i, c in enumerate(cc)}
+    #     ci_core = core2i[cid]
+    #     for c in cc:
+    #         ti = c2i[int(c)]; ci = cc2i[int(c)]
+    #         out_cur[ti] += ms["outstanding_loads"][ci]
+    #         store_cur[ti] += ms["store_issue_current"][ci]
+    #         cum_li[ti] += ms["load_issue_cumulative"][ci]
+    #         cum_amo_li[ti] += ms["amo_load_issue_cumulative"][ci]
+    #         cum_lr[ti] += ms["load_return_cumulative"][ci]
+    #         cum_si[ti] += ms["store_issue_cumulative"][ci]
+    #         if per_core_state[ci_core, ti] == 1.0:
+    #             per_core_itype[ci_core, ti] = ms["itype_current"][ci]
 
     present = [c for c in STALL_CATEGORIES if np.any(cat_cur[c] > 0)]
     return {
         "tile_id": tile_id, "cores": cores, "per_core_state": per_core_state,
-        "per_core_itype": per_core_itype,
         "cycles": cycles,
         "issue_current": issue_cur, "stall_current": stall_cur,
         "issue_cumulative": np.cumsum(issue_cur), "stall_cumulative": np.cumsum(stall_cur),
         "category_current": cat_cur,
         "category_cumulative": {c: np.cumsum(v) for c, v in cat_cur.items()},
         "present_categories": present,
-        "outstanding_current": out_cur,
-        "store_issue_current": store_cur,
-        "load_issue_cumulative": cum_li,
-        "amo_load_issue_cumulative": cum_amo_li,
-        "load_return_cumulative": cum_lr,
-        "store_issue_cumulative": cum_si,
     }
 
 
@@ -280,18 +275,16 @@ def write_tile_detail(png_path, ts):
 
     Subplot order (top to bottom):
       1. Per-core state heatmap (stall subtypes)
-      2. Per-core instruction-type heatmap (load/store/other/stalled)
-      3. Cycle breakdown bar
-      4. Current stall causes
-      5. Cumulative stall causes
-    6. Outstanding loads
+      2. Cycle breakdown bar
+      3. Current stall causes
+      4. Cumulative stall causes
     """
     tid = ts["tile_id"]
     cycles = ts["cycles"]
     cats = ts["present_categories"]
 
-    nrows = 6
-    ratios = [1.2, 1.2, 0.8, 1.5, 1.5, 1.5]
+    nrows = 4
+    ratios = [1.2, 0.8, 1.5, 1.5]
     fig, axes = plt.subplots(nrows, 1, figsize=(20, 29),
                              gridspec_kw={"height_ratios": ratios},
                              constrained_layout=True)
@@ -324,32 +317,33 @@ def write_tile_detail(png_path, ts):
     axes[row].set_xlabel("Cycle")
     row += 1
 
-    # ── 2. per-core instruction-type heatmap ─────────────────────────────
-    # 0=stalled, 1=load, 2=store, 3=mac, 4=other
-    itype_colors = [ITYPE_COLORS[k] for k in ITYPE_ORDER]
-    itype_cmap = plt.matplotlib.colors.ListedColormap(itype_colors)
-    axes[row].imshow(ts["per_core_itype"], aspect="auto", interpolation="nearest",
-                     cmap=itype_cmap, vmin=0, vmax=len(ITYPE_ORDER) - 1, origin="lower")
-    axes[row].set_title("Per-Core Instruction Type")
-    axes[row].set_ylabel("Core in tile")
-    axes[row].set_yticks(np.arange(len(ts["cores"])))
-    axes[row].set_yticklabels([str(c) for c in ts["cores"]])
-    axes[row].set_yticks(np.arange(-0.5, len(ts["cores"]), 1.0), minor=True)
-    axes[row].grid(which="minor", axis="y", color="#F2F2F2", linewidth=2.0)
-    axes[row].tick_params(which="minor", left=False)
-    set_cycle_ticks(axes[row], np.arange(len(cycles)), cycles)
-    it_handles = [_Patch(facecolor=ITYPE_COLORS[k], edgecolor="black",
-                         linewidth=0.5, label=ITYPE_LABELS[k])
-                  for k in ITYPE_ORDER]
-    axes[row].legend(handles=it_handles, loc="lower left",
-                     bbox_to_anchor=(0, 1.02), frameon=True, fancybox=True,
-                     edgecolor="#CCCCCC", facecolor="white", framealpha=0.9,
-                     ncol=len(ITYPE_ORDER),
-                     handleheight=1.15, handlelength=2.5)
-    axes[row].set_xlabel("Cycle")
-    row += 1
+    # DEPRECATED: trace-backed per-core instruction-type heatmap is disabled
+    # in the official CSV-only workflow. Keep the old implementation below for
+    # reference only.
+    # itype_colors = [ITYPE_COLORS[k] for k in ITYPE_ORDER]
+    # itype_cmap = plt.matplotlib.colors.ListedColormap(itype_colors)
+    # axes[row].imshow(ts["per_core_itype"], aspect="auto", interpolation="nearest",
+    #                  cmap=itype_cmap, vmin=0, vmax=len(ITYPE_ORDER) - 1, origin="lower")
+    # axes[row].set_title("Per-Core Instruction Type")
+    # axes[row].set_ylabel("Core in tile")
+    # axes[row].set_yticks(np.arange(len(ts["cores"])))
+    # axes[row].set_yticklabels([str(c) for c in ts["cores"]])
+    # axes[row].set_yticks(np.arange(-0.5, len(ts["cores"]), 1.0), minor=True)
+    # axes[row].grid(which="minor", axis="y", color="#F2F2F2", linewidth=2.0)
+    # axes[row].tick_params(which="minor", left=False)
+    # set_cycle_ticks(axes[row], np.arange(len(cycles)), cycles)
+    # it_handles = [_Patch(facecolor=ITYPE_COLORS[k], edgecolor="black",
+    #                      linewidth=0.5, label=ITYPE_LABELS[k])
+    #               for k in ITYPE_ORDER]
+    # axes[row].legend(handles=it_handles, loc="lower left",
+    #                  bbox_to_anchor=(0, 1.02), frameon=True, fancybox=True,
+    #                  edgecolor="#CCCCCC", facecolor="white", framealpha=0.9,
+    #                  ncol=len(ITYPE_ORDER),
+    #                  handleheight=1.15, handlelength=2.5)
+    # axes[row].set_xlabel("Cycle")
+    # row += 1
 
-    # ── 3. stacked horizontal bar: summed core-cycle breakdown ───────────
+    # ── 2. stacked horizontal bar: summed core-cycle breakdown ───────────
     total = float(ts["issue_cumulative"][-1] + ts["stall_cumulative"][-1])
     bar_labels = ["Issuing"] + [stall_label(c) for c in cats]
     bar_values = [float(ts["issue_cumulative"][-1])] + [float(ts["category_cumulative"][c][-1]) for c in cats]
@@ -382,7 +376,7 @@ def write_tile_detail(png_path, ts):
                   handleheight=1.15, handlelength=2.5)
     row += 1
 
-    # ── 4. current stall causes ──────────────────────────────────────────
+    # ── 3. current stall causes ──────────────────────────────────────────
     plot_categories_current(axes[row], cycles, ts["category_current"], cats,
                             "Current Stall Causes",
                             ylabel="Total stalled cores")
@@ -390,21 +384,23 @@ def write_tile_detail(png_path, ts):
     set_cycle_ticks(axes[row], cycles)
     row += 1
 
-    # ── 5. cumulative stall causes ───────────────────────────────────────
+    # ── 4. cumulative stall causes ───────────────────────────────────────
     plot_categories_cumulative(axes[row], cycles, ts["category_cumulative"], cats,
                                "Cumulative Stall Causes")
     axes[row].set_xlabel("Cycle")
     set_cycle_ticks(axes[row], cycles)
     row += 1
 
-    # ── 6. outstanding loads ─────────────────────────────────────────────
-    plot_outstanding_loads(
-        axes[row], cycles, ts["outstanding_current"],
-        "Outstanding Loads"
-    )
-    axes[row].set_xlabel("Cycle")
-    set_cycle_ticks(axes[row], cycles)
-    row += 1
+    # DEPRECATED: trace-backed outstanding-loads subplot is disabled in the
+    # official CSV-only workflow. Keep the old implementation below for
+    # reference only.
+    # plot_outstanding_loads(
+    #     axes[row], cycles, ts["outstanding_current"],
+    #     "Outstanding Loads"
+    # )
+    # axes[row].set_xlabel("Cycle")
+    # set_cycle_ticks(axes[row], cycles)
+    # row += 1
 
     fig.suptitle(f"Tile {tid} Detail Report", fontsize=17, fontweight="bold")
 
@@ -421,7 +417,7 @@ def parse_args(argv=None):
     p.add_argument("csv", help="CSV from _gen_stall_timeseries_batch.py")
     p.add_argument("tile", type=int, nargs="*", help="Tile ID(s) for detail pages (optional)")
     p.add_argument("--output-dir", default=None, help="Defaults to <csv-dir>/plots")
-    p.add_argument("--traces-dir", default=None, help="Directory containing trace files")
+    p.add_argument("--traces-dir", default=None, help="Deprecated compatibility flag; ignored")
     p.add_argument("--prefix", default="tile_detail")
     p.add_argument("--window", type=int, default=64, help="Cycle window for aggregation")
     p.add_argument("--overview", action="store_true", help="Also generate the cluster overview page")
@@ -437,8 +433,11 @@ def _filter_desc(args):
         vals = getattr(args, name, None)
         if vals:
             parts.append(f"{name}={','.join(str(v) for v in sorted(set(vals)))}")
-    if args.tile:
-        parts.append(f"tile={','.join(str(v) for v in sorted(args.tile))}")
+    tile_values = getattr(args, "tile", None)
+    if tile_values is None:
+        tile_values = getattr(args, "tiles", None)
+    if tile_values:
+        parts.append(f"tile={','.join(str(v) for v in sorted(tile_values))}")
     return " | ".join(parts) if parts else "all rows"
 
 

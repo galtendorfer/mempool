@@ -27,6 +27,8 @@ os.chdir(args.folder)
 path = os.getcwd()
 print(path)
 for files in os.listdir(path):
+    if files != 'results.csv':
+        continue
     if files.endswith(ext):
         csvread = pd.read_csv(files)
 
@@ -59,3 +61,4 @@ for files in os.listdir(path):
                     # Key could not be averaged
                     continue
                 print("%-30s %4.4f" % (key, avg))
+        break

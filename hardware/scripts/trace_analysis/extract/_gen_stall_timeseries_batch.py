@@ -24,9 +24,10 @@ Optional flags:
   -p, --permissive  Ignore malformed lines in trace files when possible.
     --topology NAME   Explicit configuration/topology name when the input paths
                                         are outside a benchmark result directory.
-  --force           Allow overwriting an existing output CSV.
-                    Without this, the script refuses to run if the output
-                    file already exists, to prevent accidental data loss.
+    --force           Allow overwriting an existing output CSV.
+                                        Without this, the script refuses to run if the output
+                                        file already exists, to prevent accidental data loss.
+        -j, --jobs N      Number of parallel extraction workers (default: 16).
 
 Topology handling:
     If --folder/--csv point into a benchmark result directory, the script loads
@@ -58,6 +59,8 @@ import argparse
 import os
 import subprocess
 import sys
+import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 _root = str(Path(__file__).resolve().parent.parent)
@@ -101,6 +104,12 @@ def main():
     parser.add_argument(
         '--topology',
         help='Configuration/topology name (for example: mempool or terapool) when metadata is unavailable')
+    parser.add_argument(
+        '-j',
+        '--jobs',
+        type=int,
+        default=16,
+        help='Number of parallel extraction workers (default: 16)')
     args = parser.parse_args()
 
     folder = Path(args.folder)
@@ -152,10 +161,60 @@ def main():
     for section in args.section or []:
         common_args.extend(['--section', str(section)])
 
-    for index, trace_file in enumerate(trace_files, start=1):
-        subprocess.run(common_args + [str(trace_file)], check=True, env=child_env)
-        if index % 32 == 0 or index == len(trace_files):
-            print(f'Processed {index}/{len(trace_files)} traces', file=sys.stderr)
+    n_jobs = min(args.jobs, len(trace_files))
+
+    if n_jobs <= 1:
+        for index, trace_file in enumerate(trace_files, start=1):
+            subprocess.run(
+                common_args + [str(trace_file)],
+                check=True,
+                env=child_env,
+                stdout=subprocess.DEVNULL,
+            )
+            if index % 32 == 0 or index == len(trace_files):
+                print(f'Processed {index}/{len(trace_files)} traces', file=sys.stderr)
+    else:
+        print(f'Extracting {len(trace_files)} traces with {n_jobs} workers ...', file=sys.stderr)
+        tmp_dir = tempfile.mkdtemp(prefix='stall_par_')
+
+        def _run_one(item):
+            idx, trace_file = item
+            tmp_csv = os.path.join(tmp_dir, f'part_{idx:04d}.csv')
+            subprocess.run(
+                [sys.executable, str(script_path), '--csv', tmp_csv]
+                + (['--permissive'] if args.permissive else [])
+                + (['--benchmark-only'] if args.benchmark_only else [])
+                + [arg for section in (args.section or []) for arg in ('--section', str(section))]
+                + [str(trace_file)],
+                check=True,
+                env=child_env,
+                stdout=subprocess.DEVNULL,
+            )
+            return tmp_csv
+
+        done = 0
+        with ThreadPoolExecutor(max_workers=n_jobs) as pool:
+            futures = {pool.submit(_run_one, (i, trace_file)): i for i, trace_file in enumerate(trace_files)}
+            for future in as_completed(futures):
+                future.result()
+                done += 1
+                if done % 64 == 0 or done == len(trace_files):
+                    print(f'Processed {done}/{len(trace_files)} traces', file=sys.stderr)
+
+        tmp_csvs = sorted(Path(tmp_dir).glob('part_*.csv'))
+        header_written = False
+        with open(output_path, 'w', newline='') as out:
+            for tmp_csv in tmp_csvs:
+                with open(tmp_csv, 'r') as inp:
+                    for line_no, line in enumerate(inp):
+                        if line_no == 0:
+                            if not header_written:
+                                out.write(line)
+                                header_written = True
+                        else:
+                            out.write(line)
+                tmp_csv.unlink()
+        Path(tmp_dir).rmdir()
 
     print(f'Wrote combined stall time-series to {output_path}')
     return 0

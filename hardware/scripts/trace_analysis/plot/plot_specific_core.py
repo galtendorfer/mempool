@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Per-core stall detail report.  Generates one PNG + PDF per requested core.
 
+Trace-backed subplots are deprecated in the official CSV-only workflow.
+The old trace-derived code is intentionally kept in commented form below for
+reference, but the active plotting path uses only stall_timeseries CSV data.
+
 Usage:
     python plot_specific_core.py <csv> <core_id ...> [options]
 
@@ -13,9 +17,8 @@ Options:
     --output-dir DIR   Output directory for PNGs [default: <csv-dir>/plots]
     --prefix STR       Filename prefix [default: core_detail]
                        Output files: <prefix>_core<id>.png, .pdf
-    --traces-dir DIR   Directory containing .trace files for the
-                       outstanding-loads subplot.  If omitted, the script
-                       looks next to the CSV.
+    --traces-dir DIR   Deprecated compatibility flag. Ignored in the
+                       official CSV-only workflow.
     --section N        Keep only rows from section N (repeatable: --section 0 --section 1)
     --group N          Keep only rows from group N   (repeatable)
     --tile N           Keep only rows from tile N    (repeatable)
@@ -41,10 +44,8 @@ import numpy as np
 
 from _stall_plot_common import (
     STALL_CATEGORIES, STALL_COLORS, stall_label,
-    ITYPE_COLORS, ITYPE_LABELS, ITYPE_ORDER,
     load_rows, filter_rows, split_stall_kind,
-    locate_trace_file, build_memory_request_series,
-    set_cycle_ticks, plot_outstanding_loads,
+    set_cycle_ticks,
     plot_categories_cumulative,
 )
 
@@ -96,14 +97,16 @@ def _build_strip(series):
     return strip
 
 
-def _find_trace(csv_path, cid, fallback_dir, traces_dir=None):
-    trace_path = locate_trace_file(csv_path, cid, traces_dir=traces_dir)
-    if trace_path is None:
-        for cand in fallback_dir.glob("trace_hart_*.trace"):
-            if cand.name == f"trace_hart_0x{cid:08x}.trace":
-                trace_path = cand
-                break
-    return trace_path
+# DEPRECATED: trace-backed subplot helpers are disabled in the official
+# CSV-only workflow. Keep the old implementation below for reference only.
+# def _find_trace(csv_path, cid, fallback_dir, traces_dir=None):
+#     trace_path = locate_trace_file(csv_path, cid, traces_dir=traces_dir)
+#     if trace_path is None:
+#         for cand in fallback_dir.glob("trace_hart_*.trace"):
+#             if cand.name == f"trace_hart_0x{cid:08x}.trace":
+#                 trace_path = cand
+#                 break
+#     return trace_path
 
 
 # ── Single-figure renderer ────────────────────────────────────────────────────
@@ -111,12 +114,10 @@ def _find_trace(csv_path, cid, fallback_dir, traces_dir=None):
 def write_core_detail(png_path, csv_path, series, traces_dir=None):
     """All-in-one core detail figure.
 
-    Subplot order (top to bottom):
-      1. Colour strip — execution state over time (stall subtypes)
-      2. Colour strip — instruction type over time (load/store/other/stalled)
-      3. Breakdown bar — total cycle summary
-      4. Cumulative stall causes
-            5. Outstanding loads  (if trace available)
+        Subplot order (top to bottom):
+            1. Colour strip — execution state over time (stall subtypes)
+            2. Breakdown bar — total cycle summary
+            3. Cumulative stall causes
     """
     from matplotlib.colors import ListedColormap
     from matplotlib.patches import Patch
@@ -125,17 +126,15 @@ def write_core_detail(png_path, csv_path, series, traces_dir=None):
     cycles = series["cycles"]
     cats = series["present_categories"]
 
-    trace_path = _find_trace(csv_path, cid, png_path.parent.parent, traces_dir=traces_dir)
-    mem = build_memory_request_series(trace_path, cycles) if trace_path else None
+    # DEPRECATED: trace-backed instruction-type and outstanding-load panels are
+    # disabled in the official CSV-only workflow. Keep the old implementation
+    # below for reference only.
+    # trace_path = _find_trace(csv_path, cid, png_path.parent.parent, traces_dir=traces_dir)
+    # mem = build_memory_request_series(trace_path, cycles) if trace_path else None
 
-    if mem:
-        nrows = 5
-        ratios = [1, 1, 1.2, 2.5, 2.5]
-        fig_h = 22
-    else:
-        nrows = 3
-        ratios = [1, 1.2, 2.5]
-        fig_h = 14
+    nrows = 3
+    ratios = [1, 1.2, 2.5]
+    fig_h = 14
 
     fig, axes = plt.subplots(nrows, 1, figsize=(20, fig_h),
                              gridspec_kw={"height_ratios": ratios},
@@ -164,32 +163,30 @@ def write_core_detail(png_path, csv_path, series, traces_dir=None):
     axes[row].set_xlabel("Cycle")
     row += 1
 
-    # ── 2. instruction-type colour strip ─────────────────────────────────
-    if mem:
-        # 0=stalled, 1=load, 2=store, 3=mac, 4=other
-        itype_strip = np.zeros(len(cycles))
-        for ci in range(len(cycles)):
-            if series["issue_current"][ci] > 0:
-                itype_strip[ci] = mem["itype_current"][ci]
-            # else stays 0 = stalled
-
-        itype_colors = [ITYPE_COLORS[k] for k in ITYPE_ORDER]
-        itype_cmap = ListedColormap(itype_colors)
-        axes[row].imshow(itype_strip[np.newaxis, :], aspect="auto", interpolation="nearest",
-                         cmap=itype_cmap, vmin=0, vmax=len(ITYPE_ORDER) - 1, origin="lower")
-        axes[row].set_yticks([])
-        axes[row].set_title("Instruction Type")
-        set_cycle_ticks(axes[row], np.arange(len(cycles)), cycles)
-        itype_handles = [Patch(facecolor=ITYPE_COLORS[k], edgecolor="black",
-                               linewidth=0.5, label=ITYPE_LABELS[k])
-                         for k in ITYPE_ORDER]
-        axes[row].legend(handles=itype_handles, loc="lower left",
-                         bbox_to_anchor=(0, 1.02), frameon=True, fancybox=True,
-                         edgecolor="#CCCCCC", facecolor="white", framealpha=0.9,
-                         ncol=len(ITYPE_ORDER),
-                         handleheight=1.15, handlelength=2.5)
-        axes[row].set_xlabel("Cycle")
-        row += 1
+    # DEPRECATED: trace-backed instruction-type strip is disabled in the
+    # official CSV-only workflow. Keep the old implementation below for
+    # reference only.
+    # itype_strip = np.zeros(len(cycles))
+    # for ci in range(len(cycles)):
+    #     if series["issue_current"][ci] > 0:
+    #         itype_strip[ci] = mem["itype_current"][ci]
+    # itype_colors = [ITYPE_COLORS[k] for k in ITYPE_ORDER]
+    # itype_cmap = ListedColormap(itype_colors)
+    # axes[row].imshow(itype_strip[np.newaxis, :], aspect="auto", interpolation="nearest",
+    #                  cmap=itype_cmap, vmin=0, vmax=len(ITYPE_ORDER) - 1, origin="lower")
+    # axes[row].set_yticks([])
+    # axes[row].set_title("Instruction Type")
+    # set_cycle_ticks(axes[row], np.arange(len(cycles)), cycles)
+    # itype_handles = [Patch(facecolor=ITYPE_COLORS[k], edgecolor="black",
+    #                        linewidth=0.5, label=ITYPE_LABELS[k])
+    #                  for k in ITYPE_ORDER]
+    # axes[row].legend(handles=itype_handles, loc="lower left",
+    #                  bbox_to_anchor=(0, 1.02), frameon=True, fancybox=True,
+    #                  edgecolor="#CCCCCC", facecolor="white", framealpha=0.9,
+    #                  ncol=len(ITYPE_ORDER),
+    #                  handleheight=1.15, handlelength=2.5)
+    # axes[row].set_xlabel("Cycle")
+    # row += 1
 
     # ── 3. stacked horizontal bar — total cycle breakdown ────────────────
     total = float(len(cycles))
@@ -231,15 +228,16 @@ def write_core_detail(png_path, csv_path, series, traces_dir=None):
     set_cycle_ticks(axes[row], cycles)
     row += 1
 
-    # ── 5. memory subsystem (if trace available) ─────────────────────────
-    if mem:
-        plot_outstanding_loads(
-            axes[row], cycles, mem["outstanding_loads"],
-            "Outstanding Loads"
-        )
-        axes[row].set_xlabel("Cycle")
-        set_cycle_ticks(axes[row], cycles)
-        row += 1
+    # DEPRECATED: trace-backed outstanding-loads subplot is disabled in the
+    # official CSV-only workflow. Keep the old implementation below for
+    # reference only.
+    # plot_outstanding_loads(
+    #     axes[row], cycles, mem["outstanding_loads"],
+    #     "Outstanding Loads"
+    # )
+    # axes[row].set_xlabel("Cycle")
+    # set_cycle_ticks(axes[row], cycles)
+    # row += 1
 
     fig.suptitle(f"Core {cid} Detail Report", fontsize=17, fontweight="bold")
 
@@ -256,7 +254,7 @@ def parse_args(argv=None):
     p.add_argument("csv", help="CSV from _gen_stall_timeseries_batch.py")
     p.add_argument("core", type=int, nargs="+", help="Core ID(s) to plot")
     p.add_argument("--output-dir", default=None, help="Defaults to <csv-dir>/plots")
-    p.add_argument("--traces-dir", default=None, help="Directory containing trace files")
+    p.add_argument("--traces-dir", default=None, help="Deprecated compatibility flag; ignored")
     p.add_argument("--prefix", default="core_detail")
     p.add_argument("--section", type=int, action="append", help="Filter by section")
     p.add_argument("--group", type=int, action="append", help="Filter by group")

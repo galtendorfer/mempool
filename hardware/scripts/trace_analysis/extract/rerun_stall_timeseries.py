@@ -63,6 +63,12 @@ def parse_args(argv=None):
     parser.add_argument(
         '--topology',
         help='Optional fallback topology/config name for standalone or incomplete result directories')
+    parser.add_argument(
+        '-j',
+        '--jobs',
+        type=int,
+        default=16,
+        help='Number of parallel extraction workers (default: 16)')
     return parser.parse_args(argv)
 
 
@@ -97,6 +103,7 @@ def main(argv=None):
         cmd.append('--force')
     if args.topology:
         cmd.extend(['--topology', args.topology])
+    cmd.extend(['--jobs', str(args.jobs)])
 
     print(f'Result dir: {result_dir}')
     print(f'Traces:     {traces_dir}')

@@ -53,7 +53,7 @@ def _parse_args(argv=None):
     parser.add_argument("-p", "--permissive", action="store_true", help="Ignore malformed non-trace lines when possible")
     parser.add_argument("--force", action="store_true", help="Overwrite existing CSV output (default: refuse)")
     parser.add_argument("--topology", help="Configuration/topology name (for example: mempool or terapool) when metadata is unavailable")
-    parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of parallel extraction workers (default: 1)")
+    parser.add_argument("-j", "--jobs", type=int, default=16, help="Number of parallel extraction workers (default: 16)")
     return parser.parse_args(argv)
 
 

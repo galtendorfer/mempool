@@ -12,6 +12,8 @@
 #   make plots                   Stage 2: tile plots plus communication analysis from an existing result_dir
 #   make plots_parallel          Stage 2: run `make plots` across selected kernels in parallel
 #   make plots_comm              Stage 2b: thesis communication figures from result_dir
+#   make archive_result          Save a selected finished result_dir for thesis/reference
+#   make freeze                  Alias for `make archive_result`
 #   make rerun_stall_timeseries  Rebuild only stall_timeseries_benchmark.csv
 #
 # Start here as a new user:
@@ -40,12 +42,44 @@
 #   config=<name>     Hardware topology (default: mempool).
 #                     Set config=terapool for the 1024-core system.
 #                     Selects config/<name>.mk for core/group/tile counts.
+#   scratch_storage=<mode>
+#                     Storage location policy for generated build data.
+#                     `auto` (default) uses /scratch/$$USER/mempool/hardware when
+#                     /scratch/$$USER exists and is writable, otherwise falls back
+#                     to local `build/`. Set `scratch_storage=0` to force local
+#                     workspace paths, or `scratch_storage=1` to force
+#                     /scratch-backed build paths.
+#   scratch_storage_root=<path>
+#                     Override the /scratch root used when scratch storage is
+#                     enabled. Default: /scratch/$$USER/mempool/hardware
+#   result_data_storage=<mode>
+#                     Storage location policy for the heavy benchmark CSVs.
+#                     `auto` (default) keeps result directories local under
+#                     `results/`, but places `comm_events_benchmark.csv` and
+#                     `stall_timeseries_benchmark.csv` on scratch when available,
+#                     exposing them in the local result directory via symlinks.
+#                     Set `result_data_storage=0` to keep those CSVs local too,
+#                     or `result_data_storage=1` to force scratch-backed CSVs.
+#   result_data_root=<path>
+#                     Override the scratch root used for heavy result CSVs.
+#                     Default: $(scratch_storage_root)/results_data
+#   result_app=<name> Optional logical result-family name used for the
+#                     auto-generated result directory.
+#                     Default: $(app), except `app=matmul_i32_das` stores under
+#                     `matmul_i32` so baseline and DAS runs share one result tree.
 #   result_dir=<path> Override the auto-generated result directory.
-#                     Default: results/<app>_<config>/<kernel>/<variant>
+#                     Default: $(resultpath)/<result_app>_<config>/<kernel>/<variant>
 #                     Setting this bypasses the kernel/variant requirements.
 #   force=1           Allow overwriting an existing result directory.
 #                     Without this, `make benchmark` refuses to run if
-#                     result_dir/traces_dasm/ already contains files.
+#                     result_dir/data/stall_timeseries_benchmark.csv already exists.
+#   extract_jobs=<N>  For benchmark-time and rerun CSV extraction: number of
+#                     workers for communication/stall extraction. Defaults to 16.
+#   trace_jobs=<N>    For `make benchmark`: number of parallel per-hart trace
+#                     decode/extract workers used in the Stage-1 `trace`
+#                     submake. Defaults to extract_jobs.
+#   benchmark_comm=0  For `make benchmark`: skip communication extraction.
+#   benchmark_stall=0 For `make benchmark`: skip stall-timeseries extraction.
 #   plot_overview=1   For `make plots`: also generate the cluster overview.
 #                     Default: enabled. Set plot_overview=0 to skip it.
 #   plot_window=<N>   For `make plots`: sliding aggregation window.
@@ -61,11 +95,20 @@
 #   plot_topology=<name>
 #                     For `make plots`: override topology auto-detection.
 #                     Normally not needed because result metadata is used.
+#   archive_dir=<path>
+#                     For `make archive_result` / `make freeze`: destination directory for a
+#                     frozen copy of a finished benchmark result.
+#   archive_include_traces=1
+#                     For `make archive_result` / `make freeze`: also keep archived traces if
+#                     they exist in the source result dir. Default: off.
+#   archive_note="..."
+#                     For `make archive_result` / `make freeze`: optional note stored in
+#                     archive.meta alongside the frozen result.
 #
 # The pipeline produces:
 #   result_dir/
-#     traces_raw/      raw simulator trace_hart_* files (1 per core)
-#     traces_dasm/     disassembled trace_hart_*.trace (1 per core)
+#     <app>            copied benchmark ELF
+#     <app>.dump       copied objdump for the benchmark ELF
 #     data/            results.csv, comm_events_benchmark.csv,
 #                      stall_timeseries_benchmark.csv
 #     avg.txt          Average performance stats
@@ -74,11 +117,21 @@
 #     topology.env     Exact topology used for post-processing
 #     git-info.diff    Source state at run time
 #
+# Temporary Stage-1 trace intermediates still exist internally:
+#   $(buildpath)/*.dasm   raw simulator output
+#   $(buildpath)/traces/* spike-dasm canonical analysis traces
+#   $(buildpath)/*.trace  gen_trace.py temporary parsed trace format
+# These are cleaned after benchmark extraction completes successfully.
+#
 # Examples:
 #   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make benchmark
 #   app=matmul_i32 config=terapool kernel=4x4_asm variant=das make benchmark
+#   app=matmul_i32_das config=terapool kernel=4x4_asm variant=das make benchmark
+#   app=matmul_i32 config=terapool kernel=4x4_asm variant=das trace_jobs=8 make benchmark
 #   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline force=1 make benchmark  # re-run
 #   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make plots
+#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/2x2_xpulpv2_baseline make archive_result
+#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/2x2_xpulpv2_baseline make freeze
 #   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
 #
 # For `app=matmul_i32`, `make benchmark` rebuilds the software binary first so
@@ -96,12 +149,42 @@ config_mk = $(abspath $(ROOT_DIR)/../config/config.mk)
 include $(config_mk)
 
 # Build paths
-buildpath       ?= build
-resultpath      ?= results
+scratch_storage       ?= auto
+scratch_storage_root  ?= /scratch/$(USER)/mempool/hardware
+scratch_user_dir      := /scratch/$(USER)
+scratch_storage_available := $(shell if [ -d "$(scratch_user_dir)" ] && [ -w "$(scratch_user_dir)" ]; then echo 1; else echo 0; fi)
+use_scratch_storage   := 0
+result_data_storage   ?= auto
+result_data_root      ?= $(scratch_storage_root)/results_data
+use_scratch_result_data := 0
+
+ifeq ($(scratch_storage),1)
+use_scratch_storage := 1
+else ifeq ($(scratch_storage),auto)
+use_scratch_storage := $(scratch_storage_available)
+endif
+
+ifeq ($(result_data_storage),1)
+use_scratch_result_data := 1
+else ifeq ($(result_data_storage),auto)
+use_scratch_result_data := $(scratch_storage_available)
+endif
+
+ifeq ($(origin buildpath), undefined)
+	ifeq ($(use_scratch_storage),1)
+buildpath := $(scratch_storage_root)/build
+	else
+buildpath := build
+	endif
+endif
+
+ifeq ($(origin resultpath), undefined)
+resultpath := results
+endif
 # Bender
 bender          ?= $(INSTALL_DIR)/bender/bender
 # Path to the binaries
-app_path        ?= $(abspath $(ROOT_DIR)/../software/bin)
+app_bin_root    ?= $(abspath $(ROOT_DIR)/../software/bin)
 
 # Top level module to compile
 top_level       ?= mempool_tb
@@ -145,23 +228,41 @@ questa_args += +DRAMSYS_RES=$(dramsys_resouces_path)
 questa_args += -sv_lib $(dramsys_lib_path)/libsystemc -sv_lib $(dramsys_lib_path)/libDRAMSys_Simulator
 
 # Path to the binaries
-app_path ?= $(abspath $(ROOT_DIR)/../software/bin)
+default_app_path := $(app_bin_root)
+ifneq ($(strip $(app)),)
+ifneq ($(strip $(config)),)
+ifneq ($(strip $(kernel)),)
+ifneq ($(strip $(variant)),)
+default_app_path := $(app_bin_root)/apps/baremetal/$(app)_$(config)/$(kernel)/$(variant)
+endif
+endif
+endif
+endif
+app_path ?= $(default_app_path)
+default_result_app := $(app)
+ifeq ($(app),matmul_i32_das)
+default_result_app := matmul_i32
+endif
+result_app ?= $(default_result_app)
+preload_skip_validation_goals := $(filter build_app benchmark plots plots_comm archive_result freeze rerun_stall_timeseries,$(MAKECMDGOALS))
 ifdef app
-  preload := "$(app_path)/$(app)"
-  ifeq ("$(shell test -f $(preload))","")
-    # The file doesn't exist, let's search for the app in the bin folder
-    # since we might just be missing the hierarchy
-    search_app := $(shell find $(app_path) -type f -path "*$(app)")
-    num_matches := $(words $(search_app))
-    ifeq ($(num_matches),0)
-      $(error "App ($(app)) not found in bin dir $(app_path)")
-    else ifeq ($(num_matches),1)
-      preload := "$(search_app)"
-      $(warning "Running application $(preload)")
-    else
-      $(error "Multiple apps ($(app)) found in bin dir $(app_path): $(search_app)")
-    endif
-  endif
+preload := "$(app_path)/$(app)"
+ifeq ($(strip $(preload_skip_validation_goals)),)
+ifeq ("$(shell test -f $(preload))","")
+# The file doesn't exist, let's search for the app in the bin folder
+# since we might just be missing the hierarchy
+search_app := $(shell if test -d $(app_path); then find $(app_path) -type f -path "*$(app)"; fi)
+num_matches := $(words $(search_app))
+ifeq ($(num_matches),0)
+$(error "App ($(app)) not found in bin dir $(app_path)")
+else ifeq ($(num_matches),1)
+preload := "$(search_app)"
+$(warning "Running application $(preload)")
+else
+$(error "Multiple apps ($(app)) found in bin dir $(app_path): $(search_app)")
+endif
+endif
+endif
 endif
 
 # QuestaSim args
@@ -201,24 +302,46 @@ dpi_vcs := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%_vcs.o,$(wildcar
 variant         ?=
 # Kernel label for result directory grouping — must be set explicitly
 kernel          ?=
+valid_variants  := baseline das redmule
+
+ifneq ($(strip $(variant)),)
+  ifeq ($(filter $(variant),$(valid_variants)),)
+    $(error Unsupported variant=$(variant). Supported values: $(valid_variants))
+  endif
+endif
 
 # Auto-map variant to das flag: variant=das → das=1, variant=baseline → das=0
 ifeq ($(variant),das)
   das := 1
 else ifeq ($(variant),baseline)
   das := 0
+else ifeq ($(variant),redmule)
+  das := 0
+endif
+
+ifneq ($(strip $(variant)),)
+  ifeq ($(variant),baseline)
+    ifneq ($(das),0)
+      $(error variant=baseline requires das=0, but got das=$(das))
+    endif
+  else ifeq ($(variant),das)
+    ifneq ($(das),1)
+      $(error variant=das requires das=1, but got das=$(das))
+    endif
+  else ifeq ($(variant),redmule)
+    ifneq ($(das),0)
+      $(error variant=redmule currently expects das=0, but got das=$(das))
+    endif
+  endif
 endif
 
 # Traces
 trace = $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
 tracepath ?= $(buildpath)/traces
 traceresult ?= $(tracepath)/results.csv
-timeline_window ?=
-timeline_result ?= $(tracepath)/timeline.csv
-timeline_section ?=
-timeline_benchmark_only ?=
-timeline_delta ?=
-result_dir_goals := $(filter benchmark plots plots_comm rerun_stall_timeseries,$(MAKECMDGOALS))
+tracepartspath ?= $(tracepath)/results_parts
+trace_merge_script ?= $(ROOT_DIR)/scripts/merge_trace_results_csv.py
+result_dir_goals := $(filter benchmark plots plots_comm archive_result freeze rerun_stall_timeseries,$(MAKECMDGOALS))
 ifneq ($(strip $(result_dir_goals)),)
 ifndef result_dir
 	ifndef kernel
@@ -227,8 +350,19 @@ ifndef result_dir
   ifndef variant
     $(error variant is not set. Specify variant=baseline, variant=das, or variant=redmule)
   endif
-	result_dir := $(resultpath)/$(app)_$(config)/$(kernel)/$(variant)
+	result_dir := $(resultpath)/$(result_app)_$(config)/$(kernel)/$(variant)
 endif
+endif
+
+ifdef result_dir
+result_dir_abs := $(abspath $(result_dir))
+result_data_scratch_key := $(shell printf '%s' "$(result_dir_abs)" | sed 's|^/||; s|[^A-Za-z0-9._/-]|_|g')
+result_data_dir := $(result_dir)/data
+comm_events_csv := $(result_data_dir)/comm_events_benchmark.csv
+stall_timeseries_csv := $(result_data_dir)/stall_timeseries_benchmark.csv
+scratch_result_data_dir := $(result_data_root)/$(result_data_scratch_key)/data
+scratch_comm_events_csv := $(scratch_result_data_dir)/comm_events_benchmark.csv
+scratch_stall_timeseries_csv := $(scratch_result_data_dir)/stall_timeseries_benchmark.csv
 endif
 
 vlog_args += -suppress vlog-2583 -suppress vlog-13314 -suppress vlog-13233
@@ -341,12 +475,14 @@ $(buildpath)/compile.tcl: $(bender) $(config_mk) Makefile $(MEMPOOL_DIR)/Bender.
 # Simulation
 .PHONY: sim
 sim: clean-dasm compile
+	rm -f $(buildpath)/transcript
 	cd $(buildpath) && \
 	$(questa_cmd) vsim -voptargs=+acc $(questa_args) $(library).$(top_level) -do "set config ${config}" -do ../scripts/questa/run.tcl
 	./scripts/return_status.sh $(buildpath)/transcript
 
 .PHONY: simc
 simc: clean-dasm compile
+	rm -f $(buildpath)/transcript
 	cd $(buildpath) && \
 	$(questa_cmd) vsim -c $(questa_args) $(library).$(top_level) -do "run -a"
 	./scripts/return_status.sh $(buildpath)/transcript
@@ -408,6 +544,7 @@ $(buildpath)/mempool_simvopt: $(buildpath)/compilevcs.sh $(buildpath)/$(dpi_libr
 
 # Simulation
 simvcs: clean-dasm compile_vcs_simv
+	rm -f $(buildpath)/transcript
 	cd $(buildpath) && \
 	./mempool_simv $(vcs_args) -ucli -do ../scripts/vcs/run.tcl -gui
 
@@ -417,6 +554,7 @@ simcvcs: clean-dasm compile_vcs_simvopt
 		echo "       Run 'make compile_vcs_simvopt config=$(config)' first, or delete build/mempool_simvopt." >&2; \
 		exit 1; \
 	fi
+	rm -f $(buildpath)/transcript
 	cd $(buildpath) && \
 	./mempool_simvopt $(vcs_args)
 
@@ -526,16 +664,18 @@ trace_env += SEQ_MEM_SIZE=$(seq_mem_size)
 trace_env += BANKING_FACTOR=$(banking_factor)
 trace_env += L1_BANK_SIZE=$(l1_bank_size)
 trace_env += NUM_SUB_GROUPS_PER_GROUP=$(num_sub_groups_per_group)
-trace_timeline_section_args = $(if $(timeline_section),--section $(timeline_section),)
-trace_timeline_benchmark_args = $(if $(timeline_benchmark_only),--benchmark-only,)
-trace_timeline_delta_args = $(if $(timeline_delta),--delta,)
 plot_overview ?= 1
 plot_window ?= 64
 plot_section ?= 1
 plot_comm ?= 1
 plot_jobs ?= 1
+extract_jobs ?= 16
+trace_jobs ?= $(extract_jobs)
+benchmark_comm ?= 1
+benchmark_stall ?= 1
 parallel_kernels ?=
 parallel_jobs ?= $(words $(parallel_kernels))
+archive_include_traces ?= 0
 plot_section_args = $(if $(plot_section),--section $(plot_section),)
 plot_overview_args = $(if $(filter 1,$(plot_overview)),--overview,)
 plot_force_args = $(if $(filter 1,$(force)),--force,)
@@ -543,17 +683,40 @@ plot_tiles_args = $(if $(strip $(plot_tiles)),--tiles $(plot_tiles),)
 plot_topology_args = $(if $(strip $(plot_topology)),--topology $(plot_topology),)
 rerun_force_args = $(if $(filter 1,$(force)),--force,)
 
-.PHONY: build_app benchmark plots plots_parallel plots_comm rerun_stall_timeseries save_transcript comm_events_real stall_timeseries_build
+.PHONY: build_app benchmark plots plots_parallel plots_comm archive_result freeze rerun_stall_timeseries save_transcript comm_events_real stall_timeseries_build prepare_result_data_links
+
+prepare_result_data_links:
+	@mkdir -p "$(result_data_dir)"
+ifeq ($(use_scratch_result_data),1)
+	@mkdir -p "$(scratch_result_data_dir)"
+	@ln -snf "$(scratch_comm_events_csv)" "$(comm_events_csv)"
+	@ln -snf "$(scratch_stall_timeseries_csv)" "$(stall_timeseries_csv)"
+endif
 
 build_app:
 ifdef app
-	$(MAKE) -C $(MEMPOOL_DIR)/software/apps/baremetal python="$(python)" $(app)
+	$(MAKE) -C $(MEMPOOL_DIR)/software/apps/baremetal \
+		python="$(python)" \
+		config="$(config)" \
+		kernel="$(kernel)" \
+		variant="$(variant)" \
+		das="$(das)" \
+		clean
+	$(MAKE) -C $(MEMPOOL_DIR)/software/apps/baremetal \
+		python="$(python)" \
+		config="$(config)" \
+		kernel="$(kernel)" \
+		variant="$(variant)" \
+		das="$(das)" \
+		$(app)
 endif
 
 benchmark: build_app
 	@# Guard: refuse to overwrite existing results unless force=1
-	@if [ -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ] && [ "$(force)" != "1" ]; then \
-		echo "ERROR: result_dir already has data: $(result_dir)/data/" >&2; \
+	@if { [ -f "$(result_dir)/data/results.csv" ] || \
+	     [ -f "$(result_dir)/data/comm_events_benchmark.csv" ] || \
+	     [ -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ]; } && [ "$(force)" != "1" ]; then \
+		echo "ERROR: result_dir already has benchmark data: $(result_dir)/data/" >&2; \
 		echo "       Set force=1 to overwrite." >&2; \
 		exit 1; \
 	fi
@@ -564,24 +727,33 @@ benchmark: build_app
 	if [ "$$sim_status" -ne 0 ]; then \
 		exit "$$sim_status"; \
 	fi
-	# Call `make` again to get variable extension with all traces
-	result_dir=$(result_dir) $(MAKE) trace
+	# Call `make` again to get variable extension with all traces.
+	result_dir=$(result_dir) $(MAKE) -j $(trace_jobs) trace trace_jobs="$(trace_jobs)"
 	# Extract CSVs directly from build/ — no copies to result_dir
-	result_dir=$(result_dir) $(MAKE) comm_events_real
-	result_dir=$(result_dir) $(MAKE) stall_timeseries_build
+	@if [ "$(benchmark_comm)" = "1" ]; then \
+		result_dir=$(result_dir) $(MAKE) comm_events_real extract_jobs="$(extract_jobs)"; \
+	else \
+		echo "INFO: skipping communication extraction (benchmark_comm=0)"; \
+	fi
+	@if [ "$(benchmark_stall)" = "1" ]; then \
+		result_dir=$(result_dir) $(MAKE) stall_timeseries_build extract_jobs="$(extract_jobs)"; \
+	else \
+		echo "INFO: skipping stall time-series extraction (benchmark_stall=0)"; \
+	fi
 	# Clean build intermediates — CSVs are in result_dir/data/
 	rm -f $(buildpath)/trace_hart_*.dasm $(buildpath)/trace_hart_*.trace
 	rm -rf $(tracepath)
 
 log:
 	mkdir -p "$(result_dir)"
+	result_dir="$(result_dir)" $(MAKE) --no-print-directory prepare_result_data_links
 	[ -e "$(preload)" ] && cp "$(preload)"* "$(result_dir)" || \
 	([ -e "$(buildpath)/transcript" ] && \
 	cp "$$(grep -oP '(?<=\+PRELOAD=)[^ \" ]*' $(buildpath)/transcript)"* "$(result_dir)" || \
 	echo "No application specified")
 	{ \
-		printf 'app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\n' \
-			"$(app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)"; \
+		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\n' \
+			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)"; \
 		env; \
 	} > "$(result_dir)/env"
 	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\n' \
@@ -614,30 +786,41 @@ pre_trace:
 post_trace:
 	mkdir -p "$(result_dir)/data"
 	result_dir="$(result_dir)" $(MAKE) save_transcript
+	$(python) "$(trace_merge_script)" \
+		--folder "$(tracepartspath)" \
+		--expected-count "$(num_cores)" \
+		--csv "$(traceresult)"
 	cp $(traceresult) "$(result_dir)/data/"
-	[ -e "$(timeline_result)" ] && cp $(timeline_result) "$(result_dir)/data/" || true
 	$(python) $(ROOT_DIR)/scripts/gen_avg.py --folder "$(result_dir)/data" | tee $(result_dir)/avg.txt
+
+$(tracepath): | pre_trace
+	mkdir -p "$@"
+
+$(tracepartspath): | $(tracepath)
+	mkdir -p "$@"
 
 # Read .trace files from build/ during benchmark (no copy needed)
 stall_timeseries_build:
 	$(trace_env) $(python) $(ROOT_DIR)/scripts/trace_analysis/extract/_gen_stall_timeseries_batch.py \
 		--folder "$(buildpath)" \
 		--csv "$(result_dir)/data/stall_timeseries_benchmark.csv" \
-		--benchmark-only -p --force
+		--benchmark-only -p --force \
+		-j $(extract_jobs)
 
 # Read .trace files from an archived result dir (for rerun_stall_timeseries)
 stall_timeseries:
 	$(trace_env) $(python) $(ROOT_DIR)/scripts/trace_analysis/extract/_gen_stall_timeseries_batch.py \
 		--folder "$(result_dir)/traces_dasm" \
 		--csv "$(result_dir)/data/stall_timeseries_benchmark.csv" \
-		--benchmark-only -p --force
+		--benchmark-only -p --force \
+		-j $(extract_jobs)
 
 comm_events_real:
 	$(trace_env) $(python_venv) $(ROOT_DIR)/scripts/trace_analysis/extract/extract_comm_events_batch.py \
 		--folder "$(tracepath)" \
 		--csv "$(result_dir)/data/comm_events_benchmark.csv" \
 		--benchmark-only -p --force \
-		-j $(plot_jobs)
+		-j $(extract_jobs)
 
 # Public Stage 2 plotting entry point.
 # Usage:
@@ -650,6 +833,12 @@ plots:
 		echo "       Run 'make benchmark' first or point result_dir at an existing run." >&2; \
 		exit 1; \
 	fi
+	@if [ "$(plot_comm)" = "1" ] && [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ]; then \
+		echo "ERROR: communication CSV missing: $(result_dir)/data/comm_events_benchmark.csv" >&2; \
+		echo "       The official plotting workflow is CSV-only." >&2; \
+		echo "       Regenerate the CSV explicitly before running 'make plots'." >&2; \
+		exit 1; \
+	fi
 	$(python) $(ROOT_DIR)/scripts/trace_analysis/plot/plot_all_tiles.py \
 		"$(result_dir)" \
 		$(plot_section_args) \
@@ -660,17 +849,9 @@ plots:
 		$(plot_force_args) \
 		-j $(plot_jobs)
 	@if [ "$(plot_comm)" = "1" ]; then \
-		if [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ]; then \
-			$(python_venv) $(ROOT_DIR)/scripts/trace_analysis/extract/extract_comm_events.py \
-				"$(result_dir)" \
-				-p \
-				-j $(plot_jobs); \
-		else \
-			echo "INFO: keeping existing communication CSV: $(result_dir)/data/comm_events_benchmark.csv"; \
-			if [ "$(force)" = "1" ]; then \
-				echo "INFO: force=1 affects plot outputs only; it does not rebuild communication CSVs."; \
-				echo "INFO: To rebuild from raw traces in traces_raw/, run extract_comm_events.py explicitly."; \
-			fi; \
+		echo "INFO: using existing communication CSV: $(result_dir)/data/comm_events_benchmark.csv"; \
+		if [ "$(force)" = "1" ]; then \
+			echo "INFO: force=1 affects plot outputs only; it does not rebuild communication CSVs."; \
 		fi; \
 			set -e; \
 			$(MAKE) --no-print-directory \
@@ -738,6 +919,62 @@ plots_comm:
 		"$(result_dir)" \
 		$(plot_section_args)
 
+# Freeze a selected finished result directory for thesis/reference use.
+# Usage:
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline \
+#   archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_asm_baseline \
+#   make archive_result
+archive_result:
+	@if [ -z "$(archive_dir)" ]; then \
+		echo "ERROR: archive_dir is not set." >&2; \
+		echo "       Example: archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_asm_baseline" >&2; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(result_dir)" ]; then \
+		echo "ERROR: result_dir not found: $(result_dir)" >&2; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ]; then \
+		echo "ERROR: result_dir does not look like a finished benchmark result: $(result_dir)" >&2; \
+		echo "       Missing: $(result_dir)/data/stall_timeseries_benchmark.csv" >&2; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(result_dir)/plots" ]; then \
+		echo "ERROR: plots directory missing: $(result_dir)/plots" >&2; \
+		echo "       Run 'make plots' before archiving a thesis result." >&2; \
+		exit 1; \
+	fi
+	@if [ -e "$(archive_dir)" ] && [ "$(force)" != "1" ]; then \
+		echo "ERROR: archive_dir already exists: $(archive_dir)" >&2; \
+		echo "       Set force=1 to overwrite." >&2; \
+		exit 1; \
+	fi
+	@tmp_dir="$(archive_dir).tmp.$$PPID"; \
+		rm -rf "$$tmp_dir"; \
+		mkdir -p "$$(dirname "$(archive_dir)")"; \
+		mkdir -p "$$tmp_dir"; \
+		cp -aL "$(result_dir)/." "$$tmp_dir/"; \
+		if [ "$(archive_include_traces)" != "1" ]; then \
+			rm -rf "$$tmp_dir/traces_raw" "$$tmp_dir/traces_dasm"; \
+		fi; \
+		{ \
+			printf 'SOURCE_RESULT_DIR=%s\n' "$(abspath $(result_dir))"; \
+			printf 'ARCHIVED_AT=%s\n' "$$(date -Iseconds)"; \
+			printf 'ARCHIVE_INCLUDE_TRACES=%s\n' "$(archive_include_traces)"; \
+			if [ -n "$(archive_note)" ]; then \
+				printf 'NOTE=%s\n' "$(archive_note)"; \
+			fi; \
+		} > "$$tmp_dir/archive.meta"; \
+		if [ -e "$(archive_dir)" ]; then \
+			rm -rf "$(archive_dir)"; \
+		fi; \
+		mv "$$tmp_dir" "$(archive_dir)"; \
+		echo "Archived result to $(archive_dir)"; \
+		echo "NOTE: For reproducibility, commit and push the exact source state that produced this result."; \
+		echo "      If the benchmark was generated from uncommitted local changes, freezing alone is not a full source snapshot.";
+
+freeze: archive_result
+
 # Public reprocessing entry point.
 # Usage:
 #   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
@@ -750,13 +987,13 @@ rerun_stall_timeseries:
 	fi
 	$(python) $(ROOT_DIR)/scripts/trace_analysis/extract/rerun_stall_timeseries.py \
 		"$(result_dir)" \
+		--jobs $(extract_jobs) \
 		--benchmark-only -p \
 		$(rerun_force_args)
 
-$(buildpath)/%.trace: $(buildpath)/%.dasm
-	mkdir -p $(tracepath)
+$(buildpath)/%.trace: $(buildpath)/%.dasm | $(tracepath) $(tracepartspath)
 	$(INSTALL_DIR)/riscv-isa-sim/bin/spike-dasm < $< > $(tracepath)/$*
-	$(trace_env) $(python) $(ROOT_DIR)/scripts/gen_trace.py -p --csv $(traceresult) $(tracepath)/$* > $@
+	$(trace_env) $(python) $(ROOT_DIR)/scripts/gen_trace.py -p --csv $(tracepartspath)/$*.csv $(tracepath)/$* > $@
 
 tracevis:
 	$(MEMPOOL_DIR)/scripts/tracevis.py $(preload) $(buildpath)/*.trace -o $(buildpath)/tracevis.json
