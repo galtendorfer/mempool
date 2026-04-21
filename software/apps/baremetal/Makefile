@@ -10,13 +10,25 @@ ROOT_DIR := $(patsubst %/,%, $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 MEMPOOL_DIR := $(shell git rev-parse --show-toplevel 2>/dev/null || echo $$MEMPOOL_DIR)
 SOFTWARE_DIR := $(abspath $(ROOT_DIR)/../..)
 APPS_DIR := $(ROOT_DIR)
-BIN_DIR := $(abspath $(SOFTWARE_DIR)/bin/$(subst $(SOFTWARE_DIR),,$(APPS_DIR)))
+BIN_ROOT_DIR := $(abspath $(SOFTWARE_DIR)/bin/$(subst $(SOFTWARE_DIR),,$(APPS_DIR)))
+BIN_DIR := $(BIN_ROOT_DIR)
+ifneq ($(strip $(app)),)
+ifneq ($(strip $(config)),)
+ifneq ($(strip $(kernel)),)
+ifneq ($(strip $(variant)),)
+BIN_DIR := $(BIN_ROOT_DIR)/$(app)_$(config)/$(kernel)/$(variant)
+endif
+endif
+endif
+endif
 DATA_DIR := $(abspath $(SOFTWARE_DIR)/data)
 RUNTIME_DIR := $(abspath $(SOFTWARE_DIR)/runtime)
 # This will overwrite the ROOT_DIR variable from the included makefile
 include $(RUNTIME_DIR)/runtime.mk
 
-ifneq ($(filter matmul_i32,$(MAKECMDGOALS)),)
+MATMUL_I32_APPS := matmul_i32 matmul_i32_das
+
+ifneq ($(filter $(MATMUL_I32_APPS),$(MAKECMDGOALS)),)
         # Matrix dimensions: override with matmul_M=, matmul_N=, matmul_P= on the command line.
         # Defaults per config (from BENCHMARK_CONFIGS analysis):
         #   terapool: M=256, N=64, P=256  (100% traffic fill, 4 tiles/core)
@@ -57,8 +69,17 @@ ifneq ($(filter matmul_i32,$(MAKECMDGOALS)),)
 			$(error kernel=4x4_conflict_opt_asm requires xpulpimg=1)
 		endif
 	else ifneq ($(strip $(kernel)),)
-		$(error Unsupported kernel=$(kernel) for matmul_i32. Supported values: 2x2_xpulpv2 2x2_rv32im 4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm)
+		$(error Unsupported kernel=$(kernel) for the matmul_i32 family. Supported values: 2x2_xpulpv2 2x2_rv32im 4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm)
 	endif
+endif
+
+ifneq ($(filter matmul_i32_das,$(MAKECMDGOALS)),)
+	ifeq ($(config),terapool)
+		matmul_tiles_per_partition ?= 32
+	else
+		matmul_tiles_per_partition ?= 16
+	endif
+	DEFINES += -DTILES_PER_PARTITION=$(matmul_tiles_per_partition)
 endif
 
 APPS := $(patsubst $(APPS_DIR)/%/main.c,%,$(shell find $(APPS_DIR) -name "main.c"))
