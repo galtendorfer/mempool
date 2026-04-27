@@ -21,17 +21,24 @@
 #include "baremetal/mempool_checks.h"
 #include "baremetal/mempool_matmul_i32p.h"
 
+/******************************************************************************/
+/*                                                                            */
+/*                    Compile-Time Configuration                              */
+/*                                                                            */
+/******************************************************************************/
+
 #if (defined(MATMUL_I32_KERNEL_2X2_XPULPV2) + \
-     defined(MATMUL_I32_KERNEL_2X2_RV32IM) + \
-     defined(MATMUL_I32_KERNEL_4X4) + \
-     defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) + \
-     defined(MATMUL_I32_KERNEL_4X4_ASM) + \
-     defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)) > 1
+   defined(MATMUL_I32_KERNEL_2X2_RV32IM) + \
+   defined(MATMUL_I32_KERNEL_4X4) + \
+   defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) + \
+   defined(MATMUL_I32_KERNEL_4X4_ASM) + \
+   defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)) > 1
 #error "Select exactly one MATMUL_I32 kernel."
 #endif
 
 #ifdef NUM_DAS_PARTITIONS
-#if !defined(MATMUL_I32_KERNEL_4X4_ASM) && !defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
+#if !defined(MATMUL_I32_KERNEL_4X4_ASM) && \
+  !defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
 #error "DAS-enabled matmul_i32 only supports 4x4_asm and 4x4_conflict_opt_asm."
 #endif
 
@@ -54,16 +61,27 @@
 #endif
 #endif
 
+/******************************************************************************/
+/*                                                                            */
+/*                         L1 Working Buffers                                 */
+/*                                                                            */
+/******************************************************************************/
+
 #ifdef NUM_DAS_PARTITIONS
 int32_t *volatile l1_A __attribute__((section(".l1")));
 int32_t *volatile l1_B __attribute__((section(".l1")));
 int32_t *volatile l1_C __attribute__((section(".l1")));
-uint32_t volatile init_status __attribute__((section(".l1")));
 #else
 int32_t l1_A[matrix_M * matrix_N] __attribute__((section(".l1_prio")));
 int32_t l1_B[matrix_N * matrix_P] __attribute__((section(".l1_prio")));
 int32_t l1_C[matrix_M * matrix_P] __attribute__((section(".l1_prio")));
 #endif
+
+/******************************************************************************/
+/*                                                                            */
+/*                      Core Participation Helper                             */
+/*                                                                            */
+/******************************************************************************/
 
 static uint32_t active_matmul_cores(uint32_t available_cores) {
   uint32_t active_cores = available_cores;
@@ -84,10 +102,22 @@ static uint32_t active_matmul_cores(uint32_t available_cores) {
   return active_cores;
 }
 
+/******************************************************************************/
+/*                                                                            */
+/*                        Benchmark Entry Point                               */
+/*                                                                            */
+/******************************************************************************/
+
 int main() {
   uint32_t core_id = mempool_get_core_id();
   uint32_t num_cores = mempool_get_core_count();
   uint32_t kernel_cores = active_matmul_cores(num_cores);
+
+/****************************************************************************/
+/*                                                                          */
+/*                     Mode-Specific Buffer Setup                            */
+/*                                                                          */
+/****************************************************************************/
 
 #ifdef NUM_DAS_PARTITIONS
   uint32_t a_size = matrix_M * matrix_N * sizeof(int32_t);
@@ -96,13 +126,13 @@ int main() {
 
   mempool_init(core_id);
 #endif
-  mempool_barrier_init(core_id);
+
+mempool_barrier_init(core_id);
 
 #ifdef NUM_DAS_PARTITIONS
   if (core_id == 0) {
     alloc_t *das_alloc;
 
-    init_status = 0;
     mempool_dynamic_heap_alloc_init(core_id);
     das_alloc = get_dynamic_heap_alloc();
 
@@ -110,23 +140,14 @@ int main() {
     l1_B = (int32_t *)partition_malloc(das_alloc, b_size);
     l1_C = (int32_t *)partition_malloc(das_alloc, c_size);
 
-    if (!l1_A || !l1_B || !l1_C) {
-      printf("ERROR: matmul_i32 allocation failed\n");
-      init_status = 1;
-    } else {
-      das_config(0, TILES_PER_PARTITION, (uint32_t)l1_A, a_size);
-      das_config(1, TILES_PER_PARTITION, (uint32_t)l1_B, b_size);
-      das_config(2, TILES_PER_PARTITION, (uint32_t)l1_C, c_size);
+    das_config(0, TILES_PER_PARTITION, (uint32_t)l1_A, a_size);
+    das_config(1, TILES_PER_PARTITION, (uint32_t)l1_B, b_size);
+    das_config(2, TILES_PER_PARTITION, (uint32_t)l1_C, c_size);
 
-      dma_memcpy_blocking(l1_A, l2_A, a_size);
-      dma_memcpy_blocking(l1_B, l2_B, b_size);
-    }
+    dma_memcpy_blocking(l1_A, l2_A, a_size);
+    dma_memcpy_blocking(l1_B, l2_B, b_size);
   }
   mempool_barrier(num_cores);
-
-  if (init_status != 0) {
-    return 1;
-  }
 #else
   // Initialize data
   if (core_id == 0) {
@@ -136,65 +157,92 @@ int main() {
   mempool_barrier(num_cores);
 #endif
 
-  // Benchmark
+  // Snapshot buffer bases before timing to avoid a startup herd on shared DAS pointers.
+  int32_t *const kernel_l1_A = l1_A;
+  int32_t *const kernel_l1_B = l1_B;
+  int32_t *const kernel_l1_C = l1_C;
+
+  // Realign cores after the shared DAS pointer snapshot so benchmark timing
+  // starts after the last post-setup shared-memory read.
+  mempool_barrier(num_cores);
+
   mempool_start_benchmark();
 
+
+/****************************************************************************/
+/*                                                                          */
+/*                     Kernel Selection and Execution                       */
+/*                                                                          */
+/****************************************************************************/
 #if defined(MATMUL_I32_KERNEL_2X2_XPULPV2)
-  #ifndef __XPULPIMG
-  #error "MATMUL_I32_KERNEL_2X2_XPULPV2 requires __XPULPIMG."
-  #endif
-  if (core_id < kernel_cores) {
-    matmul_unrolled_2x2_parallel_i32_xpulpv2(l1_A, l1_B, l1_C, matrix_M,
-                                             matrix_N, matrix_P, core_id,
-                                             kernel_cores);
-  }
+    #ifndef __XPULPIMG
+    #error "MATMUL_I32_KERNEL_2X2_XPULPV2 requires __XPULPIMG."
+    #endif
+    if (core_id < kernel_cores) {
+      matmul_unrolled_2x2_parallel_i32_xpulpv2(kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M,
+                                              matrix_N, matrix_P, core_id,
+                                              kernel_cores);
+    }
 #elif defined(MATMUL_I32_KERNEL_2X2_RV32IM)
-  if (core_id < kernel_cores) {
-    matmul_unrolled_2x2_parallel_i32_rv32im(l1_A, l1_B, l1_C, matrix_M,
-                                            matrix_N, matrix_P, core_id,
-                                            kernel_cores);
-  }
+    if (core_id < kernel_cores) {
+      matmul_unrolled_2x2_parallel_i32_rv32im(kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M,
+                                              matrix_N, matrix_P, core_id,
+                                              kernel_cores);
+    }
 #elif defined(MATMUL_I32_KERNEL_4X4)
-  if (core_id < kernel_cores) {
-    mat_mul_unrolled_4x4_parallel(l1_A, l1_B, l1_C, matrix_M, matrix_N,
-                                  matrix_P, core_id, kernel_cores);
-  }
+    if (core_id < kernel_cores) {
+      mat_mul_unrolled_4x4_parallel(kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M, matrix_N,
+                                    matrix_P, core_id, kernel_cores);
+    }
 #elif defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT)
-  if (core_id < kernel_cores) {
-    mat_mul_unrolled_4x4_conflict_opt_parallel(l1_A, l1_B, l1_C, matrix_M,
-                                               matrix_N, matrix_P, core_id,
-                                               kernel_cores);
-  }
+    if (core_id < kernel_cores) {
+      mat_mul_unrolled_4x4_conflict_opt_parallel(kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M,
+                                                matrix_N, matrix_P, core_id,
+                                                kernel_cores);
+    }
 #elif defined(MATMUL_I32_KERNEL_4X4_ASM)
-  if (core_id < kernel_cores) {
-    mat_mul_unrolled_4x4_parallel_asm(l1_A, l1_B, l1_C, matrix_M, matrix_N,
-                                      matrix_P, core_id, kernel_cores);
-  }
+    if (core_id < kernel_cores) {
+      mat_mul_unrolled_4x4_parallel_asm(kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M, matrix_N,
+                                        matrix_P, core_id, kernel_cores);
+    }
 #elif defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
-  if (core_id < kernel_cores) {
-    mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
-        l1_A, l1_B, l1_C, matrix_M, matrix_N, matrix_P, core_id,
-        kernel_cores);
-  }
+    if (core_id < kernel_cores) {
+      mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
+          kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M, matrix_N, matrix_P, core_id,
+          kernel_cores);
+    }
 #else
-  // Preserve the historical default when no explicit kernel is requested.
-  #ifdef __XPULPIMG
-  if (core_id < kernel_cores) {
-    matmul_unrolled_2x2_parallel_i32_xpulpv2(l1_A, l1_B, l1_C, matrix_M,
-                                             matrix_N, matrix_P, core_id,
-                                             kernel_cores);
-  }
-  #else
-  if (core_id < kernel_cores) {
-    matmul_unrolled_2x2_parallel_i32_rv32im(l1_A, l1_B, l1_C, matrix_M,
-                                            matrix_N, matrix_P, core_id,
-                                            kernel_cores);
-  }
-  #endif
+    // Preserve the historical default when no explicit kernel is requested.
+    #ifdef __XPULPIMG
+    if (core_id < kernel_cores) {
+      matmul_unrolled_2x2_parallel_i32_xpulpv2(kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M,
+                                              matrix_N, matrix_P, core_id,
+                                              kernel_cores);
+    }
+    #else
+    if (core_id < kernel_cores) {
+      matmul_unrolled_2x2_parallel_i32_rv32im(kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M,
+                                              matrix_N, matrix_P, core_id,
+                                              kernel_cores);
+    }
+    #endif
 #endif
   
+
+
+
+
   mempool_stop_benchmark();
   mempool_log_barrier(2, core_id);
+
+
+
+
+    /****************************************************************************/
+    /*                                                                          */
+    /*                      Verification And Cleanup                             */
+    /*                                                                          */
+    /****************************************************************************/
 
 #ifndef SKIP_VERIFY
   // Verify results
@@ -202,6 +250,8 @@ int main() {
   mempool_barrier(num_cores);
 #endif
 
+
+//free 
 #ifdef NUM_DAS_PARTITIONS
   if (core_id == 0) {
     alloc_t *das_alloc = get_dynamic_heap_alloc();

@@ -5,13 +5,51 @@
 # Author: Matheus Cavalcante, ETH Zurich
 #         Samuel Riedel, ETH Zurich
 
-# ── Benchmark pipeline variables ──────────────────────────────────────────
+# ── Benchmark Workflow Overview ───────────────────────────────────────────
+#
+# `make benchmark` drives both the software build and the hardware Stage-1
+# trace/CSV pipeline. For thesis work, the most important paths today are
+# `app=matmul_i32` with `kernel=4x4_asm` or `kernel=4x4_conflict_opt_asm`.
+#
+# Call tree for the matmul_i32 benchmark family:
+#
+#   make benchmark
+#   |-- build_app
+#   |   `-- software/apps/baremetal/Makefile
+#   |       `-- matmul_i32
+#   |           |-- data_%.h
+#   |           |   `-- software/data/gendata_header.py
+#   |           |       `-- generate_imatmul()
+#   |           |           `-- emits data_matmul_i32.h
+#   |           `-- matmul_i32/main.c
+#   |               |-- #include "data_matmul_i32.h"
+#   |               |-- #include "baremetal/mempool_matmul_i32p.h"
+#   |               `-- kernel dispatch
+#   |                   |-- kernel=4x4_asm
+#   |                   |   `-- mat_mul_unrolled_4x4_parallel_asm()
+#   |                   `-- kernel=4x4_conflict_opt_asm
+#   |                       `-- mat_mul_unrolled_4x4_conflict_opt_parallel_asm()
+#   `-- Stage 1 hardware pipeline
+#       |-- log
+#       |-- simcvcs
+#       |-- trace
+#       |   |-- spike-dasm
+#       |   |-- scripts/gen_trace.py
+#       |   |-- scripts/merge_trace_results_csv.py
+#       |   `-- scripts/gen_avg.py
+#       |-- comm_events_real
+#       |   `-- scripts/trace_analysis/extract/extract_comm_events_batch.py
+#       `-- stall_timeseries_build
+#           `-- scripts/trace_analysis/extract/_gen_stall_timeseries_batch.py
+#
+# Exact target order for `make benchmark`:
+#   build_app -> log -> simcvcs -> trace -> comm_events_real -> stall_timeseries_build
 #
 # Public workflow targets:
-#   make benchmark               Stage 1: simulation → traces → CSVs
-#   make plots                   Stage 2: tile plots plus communication analysis from an existing result_dir
+#   make benchmark               Stage 1: software build, simulation, traces, CSVs
+#   make plots                   Stage 2: tile plots plus communication figures from an existing result_dir
 #   make plots_parallel          Stage 2: run `make plots` across selected kernels in parallel
-#   make plots_comm              Stage 2b: thesis communication figures from result_dir
+#   make plots_comm              Stage 2b: thesis communication figures from an existing result_dir
 #   make archive_result          Save a selected finished result_dir for thesis/reference
 #   make freeze                  Alias for `make archive_result`
 #   make rerun_stall_timeseries  Rebuild only stall_timeseries_benchmark.csv
@@ -24,9 +62,6 @@
 #      `parallel_kernels="..."` and `parallel_jobs=N`.
 #   3. Only use `make rerun_stall_timeseries` when you want to rebuild the stall CSV
 #      from saved traces without re-running simulation.
-#
-# The `benchmark` target runs the full Stage 1 pipeline:
-#   log → simcvcs → trace → comm_events_real → stall_timeseries
 #
 # Required variables (no defaults — must be set explicitly):
 #   app=<name>        Application name, e.g. app=matmul_i32
@@ -71,7 +106,7 @@
 #                     Setting this bypasses the kernel/variant requirements.
 #   force=1           Allow overwriting an existing result directory.
 #                     Without this, `make benchmark` refuses to run if
-#                     result_dir/data/stall_timeseries_benchmark.csv already exists.
+#                     result_dir/data/ already contains benchmark CSV outputs.
 #   extract_jobs=<N>  For benchmark-time and rerun CSV extraction: number of
 #                     workers for communication/stall extraction. Defaults to 16.
 #   trace_jobs=<N>    For `make benchmark`: number of parallel per-hart trace
@@ -83,11 +118,11 @@
 #                     Default: enabled. Set plot_overview=0 to skip it.
 #   plot_window=<N>   For `make plots`: sliding aggregation window.
 #                     Default: 64 cycles.
-#   plot_comm=0       For `make plots`: disable communication extraction,
-#                     summaries, and thesis communication figures.
+#   plot_comm=0       For `make plots`: skip communication figures and the
+#                     requirement to have `comm_events_benchmark.csv`.
 #   parallel_kernels="..."
 #                     For `make plots_parallel`: kernel subset to run.
-#                     Example: "4x4 4x4_asm"
+#                     Example: "4x4_asm 4x4_conflict_opt_asm"
 #   parallel_jobs=<N> For `make plots_parallel`: number of concurrent kernels.
 #                     Default: number of kernels in `parallel_kernels`.
 #   plot_tiles="..."  For `make plots`: optional tile list, e.g. "0 1 2".
@@ -128,15 +163,16 @@
 # These are cleaned after benchmark extraction completes successfully.
 #
 # Examples:
-#   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make benchmark
-#   app=matmul_i32 config=terapool kernel=4x4_asm variant=das make benchmark
-#   app=matmul_i32 config=terapool kernel=4x4_asm variant=das trace_jobs=8 make benchmark
-#   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline force=1 make benchmark  # re-run
-#   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make plots
-#   app=matmul_i32 config=terapool kernel=4x4_asm variant=das tiles_per_partition=32 make benchmark
-#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/2x2_xpulpv2_baseline make archive_result
-#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/2x2_xpulpv2_baseline make freeze
-#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
+#   app=matmul_i32 config=mempool  kernel=4x4_asm              variant=baseline make benchmark
+#   app=matmul_i32 config=mempool  kernel=4x4_conflict_opt_asm variant=baseline make benchmark
+#   app=matmul_i32 config=terapool kernel=4x4_asm              variant=baseline make benchmark
+#   app=matmul_i32 config=terapool kernel=4x4_conflict_opt_asm variant=baseline make benchmark
+#   app=matmul_i32 config=terapool kernel=4x4_asm              variant=das trace_jobs=8 make benchmark
+#   app=matmul_i32 config=terapool kernel=4x4_asm              variant=das tiles_per_partition=32 make benchmark
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make plots
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make rerun_stall_timeseries force=1
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_asm_baseline make archive_result
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_asm_baseline make freeze
 #
 # For `app=matmul_i32`, `make benchmark` rebuilds the software binary first so
 # the compiled kernel matches `kernel=<name>`.
@@ -503,10 +539,10 @@ $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 # VCS          #
 ################
 
-# Config stamp — forces VCS rebuild when config= changes on the command line.
-# The stamp captures the effective config fingerprint (config name + num_cores +
-# num_groups).  If the stamp file is missing or its content differs from the
-# current invocation, we delete the stale VCS artefacts so Make sees them as
+# Config stamp — forces VCS rebuild when the effective VCS fingerprint changes.
+# The stamp captures config name, core/group topology, subgroup count, and DAS
+# mode. If the stamp file is missing or its content differs from the current
+# invocation, we delete the stale VCS artefacts so Make sees them as
 # out-of-date and re-elaborates / recompiles.
 vcs_config_stamp      := $(buildpath)/.vcs_config_stamp
 vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das)
@@ -727,9 +763,11 @@ benchmark: build_app
 	if [ "$$sim_status" -ne 0 ]; then \
 		exit "$$sim_status"; \
 	fi
-	# Call `make` again to get variable extension with all traces.
+	# Re-run `trace` after simulation so `$(trace)` expands to the newly created
+	# per-hart raw trace files.
 	result_dir=$(result_dir) $(MAKE) -j $(trace_jobs) trace trace_jobs="$(trace_jobs)"
-	# Extract CSVs directly from build/ — no copies to result_dir
+	# Extract benchmark CSVs from build intermediates; only the final CSVs are
+	# written into result_dir/data.
 	@if [ "$(benchmark_comm)" = "1" ]; then \
 		result_dir=$(result_dir) $(MAKE) comm_events_real extract_jobs="$(extract_jobs)"; \
 	else \
@@ -824,9 +862,9 @@ comm_events_real:
 
 # Public Stage 2 plotting entry point.
 # Usage:
-#   app=matmul_i32 config=mempool kernel=2x2_xpulpv2 variant=baseline make plots
-#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make plots plot_tiles="0 1" force=1
-#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make plots plot_comm=0
+#   app=matmul_i32 config=mempool kernel=4x4_asm variant=baseline make plots
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make plots plot_tiles="0 1" force=1
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make plots plot_comm=0
 plots:
 	@if [ ! -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ]; then \
 		echo "ERROR: stall CSV missing: $(result_dir)/data/stall_timeseries_benchmark.csv" >&2; \
@@ -864,9 +902,9 @@ plots:
 # Public Stage 2 parallel plotting entry point.
 # Usage:
 #   app=matmul_i32 config=mempool variant=baseline \
-#     parallel_kernels="4x4 4x4_asm" make plots_parallel
+#     parallel_kernels="4x4_asm 4x4_conflict_opt_asm" make plots_parallel
 #   app=matmul_i32 config=mempool variant=baseline \
-#     parallel_kernels="4x4 4x4_asm" parallel_jobs=1 make plots_parallel
+#     parallel_kernels="4x4_asm 4x4_conflict_opt_asm" parallel_jobs=1 make plots_parallel
 plots_parallel:
 	@if [ -n "$(result_dir)" ]; then \
 		echo "ERROR: plots_parallel does not accept result_dir; use parallel_kernels instead." >&2; \
@@ -906,9 +944,9 @@ plots_parallel:
 # Usually invoked automatically by `make plots`; can also be run directly
 # after extracting communication events.
 # Usage:
-#   app=matmul_i32 kernel=4x4 variant=baseline make plots_comm
-#   app=matmul_i32 kernel=2x2_xpulpv2 variant=baseline make plots_comm
-#   result_dir=results/matmul_i32_mempool/4x4/baseline make plots_comm
+#   app=matmul_i32 kernel=4x4_asm variant=baseline make plots_comm
+#   app=matmul_i32 kernel=4x4_conflict_opt_asm variant=baseline make plots_comm
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make plots_comm
 plots_comm:
 	@if [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ]; then \
 		echo "ERROR: comm_events_benchmark.csv missing: $(result_dir)/data/comm_events_benchmark.csv" >&2; \
@@ -977,7 +1015,7 @@ freeze: archive_result
 
 # Public reprocessing entry point.
 # Usage:
-#   result_dir=results/matmul_i32_mempool/2x2_xpulpv2/baseline make rerun_stall_timeseries force=1
+#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make rerun_stall_timeseries force=1
 # This reuses saved traces and metadata; it does not re-run simulation.
 rerun_stall_timeseries:
 	@if [ ! -d "$(result_dir)/traces_dasm" ]; then \
