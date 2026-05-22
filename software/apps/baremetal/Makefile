@@ -28,33 +28,7 @@ include $(RUNTIME_DIR)/runtime.mk
 
 MATMUL_I32_APPS := matmul_i32
 
-# Public DAS sweep knob: prefer `tiles_per_partition=<N>`. Keep the older
-# `matmul_tiles_per_partition=<N>` alias for compatibility.
-effective_tiles_per_partition := $(strip $(tiles_per_partition))
-ifneq ($(strip $(matmul_tiles_per_partition)),)
-ifneq ($(strip $(tiles_per_partition)),)
-ifneq ($(strip $(tiles_per_partition)),$(strip $(matmul_tiles_per_partition)))
-$(error tiles_per_partition=$(tiles_per_partition) and matmul_tiles_per_partition=$(matmul_tiles_per_partition) disagree)
-endif
-endif
-effective_tiles_per_partition := $(strip $(matmul_tiles_per_partition))
-endif
-
 ifneq ($(filter $(MATMUL_I32_APPS),$(MAKECMDGOALS)),)
-        # Matrix dimensions: override with matmul_M=, matmul_N=, matmul_P= on the command line.
-        # Defaults per config (from BENCHMARK_CONFIGS analysis):
-        #   terapool: M=256, N=64, P=256  (100% traffic fill, 4 tiles/core)
-        #   mempool:  M=128, N=64, P=128  (62.5% traffic fill, 1 tile/core)
-        ifeq ($(config),terapool)
-          matmul_M ?= 256
-          matmul_N ?= 64
-          matmul_P ?= 256
-        else
-          matmul_M ?= 128
-          matmul_N ?= 64
-          matmul_P ?= 128
-        endif
-        GENDATA_OVERRIDES += --define matrix_M=$(matmul_M) --define matrix_N=$(matmul_N) --define matrix_P=$(matmul_P)
         # Skip verification by default (saves huge simulation time). Use verify=1 to enable.
         ifneq ($(verify),1)
           DEFINES += -DSKIP_VERIFY
@@ -62,7 +36,7 @@ ifneq ($(filter $(MATMUL_I32_APPS),$(MAKECMDGOALS)),)
 	ifeq ($(kernel),2x2_xpulpv2)
 		DEFINES += -DMATMUL_I32_KERNEL_2X2_XPULPV2
 		ifneq ($(XPULPIMG),1)
-			$(error kernel=2x2_xpulpv2 requires xpulpimg=1)
+$(error kernel=2x2_xpulpv2 requires xpulpimg=1)
 		endif
 	else ifeq ($(kernel),2x2_rv32im)
 		DEFINES += -DMATMUL_I32_KERNEL_2X2_RV32IM
@@ -73,15 +47,15 @@ ifneq ($(filter $(MATMUL_I32_APPS),$(MAKECMDGOALS)),)
 	else ifeq ($(kernel),4x4_asm)
 		DEFINES += -DMATMUL_I32_KERNEL_4X4_ASM
 		ifneq ($(XPULPIMG),1)
-			$(error kernel=4x4_asm requires xpulpimg=1)
+$(error kernel=4x4_asm requires xpulpimg=1)
 		endif
 	else ifeq ($(kernel),4x4_conflict_opt_asm)
 		DEFINES += -DMATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM
 		ifneq ($(XPULPIMG),1)
-			$(error kernel=4x4_conflict_opt_asm requires xpulpimg=1)
+$(error kernel=4x4_conflict_opt_asm requires xpulpimg=1)
 		endif
 	else ifneq ($(strip $(kernel)),)
-		$(error Unsupported kernel=$(kernel) for the matmul_i32 family. Supported values: 2x2_xpulpv2 2x2_rv32im 4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm)
+$(error Unsupported kernel=$(kernel) for the matmul_i32 family. Supported values: 2x2_xpulpv2 2x2_rv32im 4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm)
 	endif
 endif
 
@@ -89,9 +63,6 @@ ifneq ($(filter matmul_i32,$(MAKECMDGOALS)),)
 ifeq ($(das),1)
 ifneq ($(filter 4x4_asm 4x4_conflict_opt_asm,$(kernel)),$(kernel))
 $(error DAS-enabled matmul_i32 only supports kernel=4x4_asm or kernel=4x4_conflict_opt_asm)
-endif
-ifneq ($(effective_tiles_per_partition),)
-DEFINES += -DTILES_PER_PARTITION=$(effective_tiles_per_partition)
 endif
 endif
 endif

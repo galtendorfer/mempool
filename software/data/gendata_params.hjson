@@ -313,9 +313,9 @@
   "matmul_i32": {
     "type": "int32",
     "defines": [
-      ("matrix_M", 64)
-      ("matrix_N", 32)
-      ("matrix_P", 64)
+      ("matrix_M", 128)
+      ("matrix_N", 64)
+      ("matrix_P", 128)
     ]
     "arrays": [
       ("int32_t", "l2_A")

@@ -28,11 +28,11 @@
 /******************************************************************************/
 
 #if (defined(MATMUL_I32_KERNEL_2X2_XPULPV2) + \
-   defined(MATMUL_I32_KERNEL_2X2_RV32IM) + \
-   defined(MATMUL_I32_KERNEL_4X4) + \
-   defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) + \
-   defined(MATMUL_I32_KERNEL_4X4_ASM) + \
-   defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)) > 1
+  defined(MATMUL_I32_KERNEL_2X2_RV32IM) + \
+  defined(MATMUL_I32_KERNEL_4X4) + \
+  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) + \
+  defined(MATMUL_I32_KERNEL_4X4_ASM) + \
+  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)) > 1
 #error "Select exactly one MATMUL_I32 kernel."
 #endif
 
@@ -44,20 +44,45 @@
 
 #define NUM_TILES (NUM_CORES / NUM_CORES_PER_TILE)
 
-#ifndef TILES_PER_PARTITION
-#define TILES_PER_PARTITION NUM_TILES
+// Paper DAS placement: localize A/C and keep B fully interleaved.
+#define A_TILES_PER_PARTITION 1
+#define B_TILES_PER_PARTITION NUM_TILES
+#define C_TILES_PER_PARTITION 1
+
+#if (A_TILES_PER_PARTITION < 1) || (A_TILES_PER_PARTITION > NUM_TILES)
+#error "A_TILES_PER_PARTITION must be within [1, NUM_TILES]."
 #endif
 
-#if (TILES_PER_PARTITION < 1) || (TILES_PER_PARTITION > NUM_TILES)
-#error "TILES_PER_PARTITION must be within [1, NUM_TILES]."
+#if (B_TILES_PER_PARTITION < 1) || (B_TILES_PER_PARTITION > NUM_TILES)
+#error "B_TILES_PER_PARTITION must be within [1, NUM_TILES]."
 #endif
 
-#if (NUM_TILES % TILES_PER_PARTITION) != 0
-#error "TILES_PER_PARTITION must divide NUM_TILES exactly."
+#if (C_TILES_PER_PARTITION < 1) || (C_TILES_PER_PARTITION > NUM_TILES)
+#error "C_TILES_PER_PARTITION must be within [1, NUM_TILES]."
 #endif
 
-#if (TILES_PER_PARTITION & (TILES_PER_PARTITION - 1)) != 0
-#error "TILES_PER_PARTITION must be a power of two."
+#if (NUM_TILES % A_TILES_PER_PARTITION) != 0
+#error "A_TILES_PER_PARTITION must divide NUM_TILES exactly."
+#endif
+
+#if (NUM_TILES % B_TILES_PER_PARTITION) != 0
+#error "B_TILES_PER_PARTITION must divide NUM_TILES exactly."
+#endif
+
+#if (NUM_TILES % C_TILES_PER_PARTITION) != 0
+#error "C_TILES_PER_PARTITION must divide NUM_TILES exactly."
+#endif
+
+#if (A_TILES_PER_PARTITION & (A_TILES_PER_PARTITION - 1)) != 0
+#error "A_TILES_PER_PARTITION must be a power of two."
+#endif
+
+#if (B_TILES_PER_PARTITION & (B_TILES_PER_PARTITION - 1)) != 0
+#error "B_TILES_PER_PARTITION must be a power of two."
+#endif
+
+#if (C_TILES_PER_PARTITION & (C_TILES_PER_PARTITION - 1)) != 0
+#error "C_TILES_PER_PARTITION must be a power of two."
 #endif
 #endif
 
@@ -89,7 +114,7 @@ static uint32_t active_matmul_cores(uint32_t available_cores) {
 #if defined(MATMUL_I32_KERNEL_4X4) || \
     defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) || \
     defined(MATMUL_I32_KERNEL_4X4_ASM) || \
-    defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
+  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
   uint32_t max_tiles = (matrix_M / 4) * (matrix_P / 4);
 #else
   uint32_t max_tiles = (matrix_M / 2) * (matrix_P / 2);
@@ -140,9 +165,9 @@ mempool_barrier_init(core_id);
     l1_B = (int32_t *)partition_malloc(das_alloc, b_size);
     l1_C = (int32_t *)partition_malloc(das_alloc, c_size);
 
-    das_config(0, TILES_PER_PARTITION, (uint32_t)l1_A, a_size);
-    das_config(1, TILES_PER_PARTITION, (uint32_t)l1_B, b_size);
-    das_config(2, TILES_PER_PARTITION, (uint32_t)l1_C, c_size);
+    das_config(0, A_TILES_PER_PARTITION, (uint32_t)l1_A, a_size);
+    das_config(1, B_TILES_PER_PARTITION, (uint32_t)l1_B, b_size);
+    das_config(2, C_TILES_PER_PARTITION, (uint32_t)l1_C, c_size);
 
     dma_memcpy_blocking(l1_A, l2_A, a_size);
     dma_memcpy_blocking(l1_B, l2_B, b_size);
