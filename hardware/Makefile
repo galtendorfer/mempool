@@ -8,8 +8,8 @@
 # ── Benchmark Workflow Overview ───────────────────────────────────────────
 #
 # `make benchmark` drives both the software build and the hardware Stage-1
-# trace/CSV pipeline. For thesis work, the most important paths today are
-# `app=matmul_i32` with `kernel=4x4_asm` or `kernel=4x4_conflict_opt_asm`.
+# trace/CSV pipeline. For thesis DAS work, the primary software path today is
+# `app=matmul_i32` with `kernel=4x4_das_thesis_asm`.
 #
 # Call tree for the matmul_i32 benchmark family:
 #
@@ -25,10 +25,8 @@
 #   |               |-- #include "data_matmul_i32.h"
 #   |               |-- #include "baremetal/mempool_matmul_i32p.h"
 #   |               `-- kernel dispatch
-#   |                   |-- kernel=4x4_asm
-#   |                   |   `-- mat_mul_unrolled_4x4_parallel_asm()
-#   |                   `-- kernel=4x4_conflict_opt_asm
-#   |                       `-- mat_mul_unrolled_4x4_conflict_opt_parallel_asm()
+#   |                   `-- kernel=4x4_das_thesis_asm
+#   |                       `-- mat_mul_unrolled_4x4_das_thesis_parallel_asm()
 #   `-- Stage 1 hardware pipeline
 #       |-- log
 #       |-- simcvcs
@@ -63,15 +61,15 @@
 #   3. Only use `make rerun_stall_timeseries` when you want to rebuild the stall CSV
 #      from saved traces without re-running simulation.
 #
-# Required variables (no defaults — must be set explicitly):
-#   app=<name>        Application name, e.g. app=matmul_i32
-#                     Resolved via software/bin/ search.
+# Required variables:
 #   kernel=<name>     Kernel folder name, e.g. kernel=2x2_xpulpv2.
 #                     Select this to separate benchmark outputs by kernel.
+#
+# Defaults for thesis workflow targets:
+#   app=<name>        Defaults to app=matmul_i32 for build_app/benchmark/plot
+#                     workflow targets. Resolved via software/bin/ search.
 #   variant=<name>    System variant: baseline, das, or redmule.
-#                     Controls the result subdirectory.
-#                     Omitting this causes an immediate error to prevent
-#                     accidental writes to the wrong location.
+#                     Defaults to variant=das and controls the result subdirectory.
 #
 # Optional variables:
 #   config=<name>     Hardware topology (default: mempool).
@@ -116,24 +114,27 @@
 #   benchmark_stall=0 For `make benchmark`: skip stall-timeseries extraction.
 #   plot_overview=1   For `make plots`: also generate the cluster overview.
 #                     Default: enabled. Set plot_overview=0 to skip it.
+#   plot_group_details=1
+#                     For `make plots`: generate group/subgroup detail pages
+#                     with one tile-row heatmap per page.
+#   plot_tile_details=0
+#                     For `make plots`: skip the slow per-tile detail pages.
 #   plot_window=<N>   For `make plots`: sliding aggregation window.
 #                     Default: 64 cycles.
 #   plot_comm=0       For `make plots`: skip communication figures and the
 #                     requirement to have `comm_events_benchmark.csv`.
 #   parallel_kernels="..."
 #                     For `make plots_parallel`: kernel subset to run.
-#                     Example: "4x4_asm 4x4_conflict_opt_asm"
+#                     Example: "4x4_das_thesis_asm"
 #   parallel_jobs=<N> For `make plots_parallel`: number of concurrent kernels.
 #                     Default: number of kernels in `parallel_kernels`.
 #   plot_tiles="..."  For `make plots`: optional tile list, e.g. "0 1 2".
 #   plot_topology=<name>
 #                     For `make plots`: override topology auto-detection.
 #                     Normally not needed because result metadata is used.
-#   tiles_per_partition=<N>
-#                     For DAS-enabled software builds: override the app-side
-#                     `TILES_PER_PARTITION` value passed to `das_config()`.
-#                     Useful as the public sweep knob for DAS placement
-#                     granularity. Defaults remain app-specific.
+#   back2local=0/1    Enable the Back2Local routing path for same-group loads.
+#                     Default is in config/config.mk; command-line override is
+#                     still accepted for one-off runs.
 #   archive_dir=<path>
 #                     For `make archive_result` / `make freeze`: destination directory for a
 #                     frozen copy of a finished benchmark result.
@@ -163,16 +164,15 @@
 # These are cleaned after benchmark extraction completes successfully.
 #
 # Examples:
-#   app=matmul_i32 config=mempool  kernel=4x4_asm              variant=baseline make benchmark
-#   app=matmul_i32 config=mempool  kernel=4x4_conflict_opt_asm variant=baseline make benchmark
-#   app=matmul_i32 config=terapool kernel=4x4_asm              variant=baseline make benchmark
-#   app=matmul_i32 config=terapool kernel=4x4_conflict_opt_asm variant=baseline make benchmark
-#   app=matmul_i32 config=terapool kernel=4x4_asm              variant=das trace_jobs=8 make benchmark
-#   app=matmul_i32 config=terapool kernel=4x4_asm              variant=das tiles_per_partition=32 make benchmark
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make plots
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make rerun_stall_timeseries force=1
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_asm_baseline make archive_result
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_asm_baseline make freeze
+#   kernel=4x4_das_thesis_asm make benchmark
+#   kernel=4x4_das_thesis_asm make plots
+#   kernel=4x4_das_thesis_asm make plots_comm
+#   config=terapool kernel=4x4_das_thesis_asm trace_jobs=8 make benchmark
+#   variant=baseline kernel=4x4_das_thesis_asm make benchmark
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das make plots
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das make rerun_stall_timeseries force=1
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_das_thesis_asm_das make archive_result
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_das_thesis_asm_das make freeze
 #
 # For `app=matmul_i32`, `make benchmark` rebuilds the software binary first so
 # the compiled kernel matches `kernel=<name>`.
@@ -225,6 +225,11 @@ endif
 bender          ?= $(INSTALL_DIR)/bender/bender
 # Path to the binaries
 app_bin_root    ?= $(abspath $(ROOT_DIR)/../software/bin)
+variant         ?= das
+app_default_goals := $(filter build_app benchmark plots plots_parallel plots_comm archive_result freeze rerun_stall_timeseries,$(MAKECMDGOALS))
+ifneq ($(strip $(app_default_goals)),)
+app             ?= matmul_i32
+endif
 
 # Top level module to compile
 top_level       ?= mempool_tb
@@ -280,7 +285,7 @@ endif
 endif
 app_path ?= $(default_app_path)
 result_app ?= $(app)
-preload_skip_validation_goals := $(filter build_app benchmark plots plots_comm archive_result freeze rerun_stall_timeseries,$(MAKECMDGOALS))
+preload_skip_validation_goals := $(filter build_app benchmark plots plots_parallel plots_comm archive_result freeze rerun_stall_timeseries,$(MAKECMDGOALS))
 ifdef app
 preload := "$(app_path)/$(app)"
 ifeq ($(strip $(preload_skip_validation_goals)),)
@@ -334,8 +339,7 @@ endif
 # DPI source files
 dpi     := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cpp))
 dpi_vcs := $(patsubst tb/dpi/%.cpp,$(buildpath)/$(dpi_library)/%_vcs.o,$(wildcard tb/dpi/*.cpp))
-# System variant (baseline, das, redmule) — must be set explicitly
-variant         ?=
+# System variant (baseline, das, redmule)
 # Kernel label for result directory grouping — must be set explicitly
 kernel          ?=
 valid_variants  := baseline das redmule
@@ -369,6 +373,10 @@ ifneq ($(strip $(variant)),)
       $(error variant=redmule currently expects das=0, but got das=$(das))
     endif
   endif
+endif
+
+ifneq ($(filter $(back2local),0 1),$(back2local))
+$(error Unsupported back2local=$(back2local). Supported values: 0 1)
 endif
 
 # Traces
@@ -421,6 +429,9 @@ ifeq ($(das),1)
 vlog_defs   += -DDAS
 vlog_defs   += -DNUM_DAS_PARTITIONS=$(num_das_partitions)
 vlog_defs   += -DDAS_MEM_SIZE=$(das_mem_size)
+endif
+ifeq ($(back2local),1)
+vlog_defs   += -DBACK2LOCAL
 endif
 # Snitch ISA
 vlog_defs   += -DXPULPIMG=$(xpulpimg)
@@ -545,7 +556,7 @@ $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 # invocation, we delete the stale VCS artefacts so Make sees them as
 # out-of-date and re-elaborates / recompiles.
 vcs_config_stamp      := $(buildpath)/.vcs_config_stamp
-vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das)
+vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das):back2local=$(back2local)
 
 $(vcs_config_stamp): FORCE | $(buildpath)
 	@if [ ! -f "$@" ] || [ "$$(cat $@)" != "$(vcs_config_fingerprint)" ]; then \
@@ -686,7 +697,8 @@ lint: spyglass/tmp/files spyglass/sdc/func.sdc spyglass/scripts/run_lint.tcl
 
 spyglass/tmp/files: $(bender)
 	mkdir -p spyglass/tmp
-	$(bender) script verilator $(vlog_defs) -t rtl -t mempool_verilator > spyglass/tmp/files
+	$(bender) script verilator $(vlog_defs) -t rtl -t mempool_verilator | \
+		sed "/^+define+.*'.*$$/s/.*/\"&\"/" > spyglass/tmp/files
 
 ################
 # Tracing      #
@@ -701,6 +713,8 @@ trace_env += BANKING_FACTOR=$(banking_factor)
 trace_env += L1_BANK_SIZE=$(l1_bank_size)
 trace_env += NUM_SUB_GROUPS_PER_GROUP=$(num_sub_groups_per_group)
 plot_overview ?= 1
+plot_group_details ?= 0
+plot_tile_details ?= 1
 plot_window ?= 64
 plot_section ?= 1
 plot_comm ?= 1
@@ -714,6 +728,8 @@ parallel_jobs ?= $(words $(parallel_kernels))
 archive_include_traces ?= 0
 plot_section_args = $(if $(plot_section),--section $(plot_section),)
 plot_overview_args = $(if $(filter 1,$(plot_overview)),--overview,)
+plot_group_detail_args = $(if $(filter 1,$(plot_group_details)),--group-details,)
+plot_tile_detail_args = $(if $(filter 0,$(plot_tile_details)),--skip-tile-details,)
 plot_force_args = $(if $(filter 1,$(force)),--force,)
 plot_tiles_args = $(if $(strip $(plot_tiles)),--tiles $(plot_tiles),)
 plot_topology_args = $(if $(strip $(plot_topology)),--topology $(plot_topology),)
@@ -732,6 +748,7 @@ endif
 build_app:
 ifdef app
 	$(MAKE) -C $(MEMPOOL_DIR)/software/apps/baremetal \
+		app="$(app)" \
 		python="$(python)" \
 		config="$(config)" \
 		kernel="$(kernel)" \
@@ -739,6 +756,7 @@ ifdef app
 		das="$(das)" \
 		clean
 	$(MAKE) -C $(MEMPOOL_DIR)/software/apps/baremetal \
+		app="$(app)" \
 		python="$(python)" \
 		config="$(config)" \
 		kernel="$(kernel)" \
@@ -790,12 +808,12 @@ log:
 	cp "$$(grep -oP '(?<=\+PRELOAD=)[^ \" ]*' $(buildpath)/transcript)"* "$(result_dir)" || \
 	echo "No application specified")
 	{ \
-		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\n' \
-			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)"; \
+		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\nback2local=%s\n' \
+			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)" "$(back2local)"; \
 		env; \
 	} > "$(result_dir)/env"
-	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\n' \
-		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(num_das_partitions)" "$(das_mem_size)" > "$(result_dir)/topology.env"
+	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nBACK2LOCAL=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\n' \
+		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(back2local)" "$(num_das_partitions)" "$(das_mem_size)" > "$(result_dir)/topology.env"
 	cp $(MEMPOOL_DIR)/config/config.mk $(result_dir)/config
 	git rev-parse HEAD > "$(result_dir)/git-info.diff"
 	git show --oneline -s >> "$(result_dir)/git-info.diff"
@@ -862,9 +880,9 @@ comm_events_real:
 
 # Public Stage 2 plotting entry point.
 # Usage:
-#   app=matmul_i32 config=mempool kernel=4x4_asm variant=baseline make plots
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make plots plot_tiles="0 1" force=1
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make plots plot_comm=0
+#   kernel=4x4_das_thesis_asm make plots
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das make plots plot_tiles="0 1" force=1
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das make plots plot_comm=0
 plots:
 	@if [ ! -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ]; then \
 		echo "ERROR: stall CSV missing: $(result_dir)/data/stall_timeseries_benchmark.csv" >&2; \
@@ -881,6 +899,8 @@ plots:
 		"$(result_dir)" \
 		$(plot_section_args) \
 		$(plot_overview_args) \
+		$(plot_group_detail_args) \
+		$(plot_tile_detail_args) \
 		--window $(plot_window) \
 		$(plot_tiles_args) \
 		$(plot_topology_args) \
@@ -901,17 +921,15 @@ plots:
 
 # Public Stage 2 parallel plotting entry point.
 # Usage:
-#   app=matmul_i32 config=mempool variant=baseline \
-#     parallel_kernels="4x4_asm 4x4_conflict_opt_asm" make plots_parallel
-#   app=matmul_i32 config=mempool variant=baseline \
-#     parallel_kernels="4x4_asm 4x4_conflict_opt_asm" parallel_jobs=1 make plots_parallel
+#   config=mempool parallel_kernels="4x4_das_thesis_asm" make plots_parallel
+#   config=terapool parallel_kernels="4x4_das_thesis_asm" make plots_parallel
 plots_parallel:
 	@if [ -n "$(result_dir)" ]; then \
 		echo "ERROR: plots_parallel does not accept result_dir; use parallel_kernels instead." >&2; \
 		exit 1; \
 	fi
 	@if [ -z "$(strip $(parallel_kernels))" ]; then \
-		echo "ERROR: parallel_kernels is empty. Example: parallel_kernels=\"4x4 4x4_asm\"" >&2; \
+		echo "ERROR: parallel_kernels is empty. Example: parallel_kernels=\"4x4_das_thesis_asm\"" >&2; \
 		exit 1; \
 	fi
 	@if [ -z "$(app)" ]; then \
@@ -919,7 +937,7 @@ plots_parallel:
 		exit 1; \
 	fi
 	@if [ -z "$(variant)" ]; then \
-		echo "ERROR: variant is not set. Example: variant=baseline" >&2; \
+		echo "ERROR: variant is not set. Example: variant=das" >&2; \
 		exit 1; \
 	fi
 	@printf '%s\n' $(parallel_kernels) | xargs -I{} -P $(parallel_jobs) sh -c '\
@@ -932,6 +950,8 @@ plots_parallel:
 			python_venv="$(python_venv)" \
 			plot_section="$(plot_section)" \
 			plot_overview="$(plot_overview)" \
+			plot_group_details="$(plot_group_details)" \
+			plot_tile_details="$(plot_tile_details)" \
 			plot_window="$(plot_window)" \
 			plot_comm="$(plot_comm)" \
 			plot_tiles="$(plot_tiles)" \
@@ -944,9 +964,8 @@ plots_parallel:
 # Usually invoked automatically by `make plots`; can also be run directly
 # after extracting communication events.
 # Usage:
-#   app=matmul_i32 kernel=4x4_asm variant=baseline make plots_comm
-#   app=matmul_i32 kernel=4x4_conflict_opt_asm variant=baseline make plots_comm
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make plots_comm
+#   kernel=4x4_das_thesis_asm make plots_comm
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das make plots_comm
 plots_comm:
 	@if [ ! -f "$(result_dir)/data/comm_events_benchmark.csv" ]; then \
 		echo "ERROR: comm_events_benchmark.csv missing: $(result_dir)/data/comm_events_benchmark.csv" >&2; \
@@ -959,13 +978,13 @@ plots_comm:
 
 # Freeze a selected finished result directory for thesis/reference use.
 # Usage:
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline \
-#   archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_asm_baseline \
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das \
+#   archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_das_thesis_asm_das \
 #   make archive_result
 archive_result:
 	@if [ -z "$(archive_dir)" ]; then \
 		echo "ERROR: archive_dir is not set." >&2; \
-		echo "       Example: archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_asm_baseline" >&2; \
+		echo "       Example: archive_dir=/scratch/$$USER/mempool/thesis_results/4x4_das_thesis_asm_das" >&2; \
 		exit 1; \
 	fi
 	@if [ ! -d "$(result_dir)" ]; then \
@@ -1015,7 +1034,7 @@ freeze: archive_result
 
 # Public reprocessing entry point.
 # Usage:
-#   result_dir=results/matmul_i32_mempool/4x4_asm/baseline make rerun_stall_timeseries force=1
+#   result_dir=results/matmul_i32_mempool/4x4_das_thesis_asm/das make rerun_stall_timeseries force=1
 # This reuses saved traces and metadata; it does not re-run simulation.
 rerun_stall_timeseries:
 	@if [ ! -d "$(result_dir)/traces_dasm" ]; then \
@@ -1030,6 +1049,7 @@ rerun_stall_timeseries:
 		$(rerun_force_args)
 
 $(buildpath)/%.trace: $(buildpath)/%.dasm | $(tracepath) $(tracepartspath)
+	mkdir -p "$(tracepath)" "$(tracepartspath)"
 	$(INSTALL_DIR)/riscv-isa-sim/bin/spike-dasm < $< > $(tracepath)/$*
 	$(trace_env) $(python) $(ROOT_DIR)/scripts/gen_trace.py -p --csv $(tracepartspath)/$*.csv $(tracepath)/$* > $@
 
