@@ -175,6 +175,65 @@ def build_tile_series(rows, csv_path, tile_id, traces_dir=None):
     }
 
 
+def build_group_series(rows, title):
+    """Build a tile-row detail series for one group or subgroup."""
+    if not rows:
+        raise ValueError(f"No rows for {title}")
+
+    cycles = np.array(sorted({row["cycle"] for row in rows}), dtype=int)
+    cycle_to_index = {int(cycle): index for index, cycle in enumerate(cycles)}
+    num_cycles = len(cycles)
+    issue_cur = np.zeros(num_cycles)
+    stall_cur = np.zeros(num_cycles)
+    cat_cur = {category: np.zeros(num_cycles) for category in STALL_CATEGORIES}
+
+    tiles = sorted({row["tile"] for row in rows})
+    tile_to_index = {tile_id: index for index, tile_id in enumerate(tiles)}
+    per_tile_state = np.zeros((len(tiles), num_cycles))
+    per_tile_issue = np.zeros((len(tiles), num_cycles))
+    per_tile_categories = {
+        category: np.zeros((len(tiles), num_cycles))
+        for category in STALL_CATEGORIES
+    }
+
+    cat_index = {category: index for index, category in enumerate(STALL_CATEGORIES)}
+    for row in rows:
+        cycle_index = cycle_to_index[row["cycle"]]
+        tile_index = tile_to_index[row["tile"]]
+        if row["state"] == "issue":
+            issue_cur[cycle_index] += 1
+            per_tile_issue[tile_index, cycle_index] += 1
+        else:
+            stall_cur[cycle_index] += 1
+            cats_hit = split_stall_kind(row["stall_kind"])
+            for category in cats_hit:
+                cat_cur[category][cycle_index] += 1
+                per_tile_categories[category][tile_index, cycle_index] += 1
+
+    for tile_index in range(len(tiles)):
+        for cycle_index in range(num_cycles):
+            counts = [per_tile_issue[tile_index, cycle_index]] + [
+                per_tile_categories[category][tile_index, cycle_index]
+                for category in STALL_CATEGORIES
+            ]
+            if sum(counts) <= 0:
+                continue
+            dominant = int(np.argmax(counts))
+            per_tile_state[tile_index, cycle_index] = (
+                1.0 if dominant == 0 else 2.0 + cat_index[STALL_CATEGORIES[dominant - 1]])
+
+    present = [category for category in STALL_CATEGORIES if np.any(cat_cur[category] > 0)]
+    return {
+        "title": title, "tiles": tiles, "per_tile_state": per_tile_state,
+        "cycles": cycles,
+        "issue_current": issue_cur, "stall_current": stall_cur,
+        "issue_cumulative": np.cumsum(issue_cur), "stall_cumulative": np.cumsum(stall_cur),
+        "category_current": cat_cur,
+        "category_cumulative": {category: np.cumsum(values) for category, values in cat_cur.items()},
+        "present_categories": present,
+    }
+
+
 # ── Overview page ─────────────────────────────────────────────────────────────
 
 def _agg_ticks(ax, agg, max_ticks=12):
@@ -261,6 +320,143 @@ def write_overview_page(path, agg, filter_desc, window):
     fig.text(0.01, -0.005,
              f"Reconstructed from annotated traces, not a true cycle logger. "
              f"Filters: {filter_desc}. Window={window} cycles.",
+             fontsize=9, alpha=0.82, va="top")
+    fig.savefig(path, dpi=96, bbox_inches="tight")
+    pdf_path = path.with_suffix(".pdf")
+    fig.savefig(pdf_path, bbox_inches="tight")
+    return fig, pdf_path
+
+
+def build_group_overview_stats(rows):
+    """Aggregate issue/stall/core-cycle statistics by group."""
+    if not rows:
+        raise ValueError("No rows for group overview")
+
+    groups = sorted({row["group"] for row in rows if row.get("group") is not None})
+    min_cycle = min(row["cycle"] for row in rows)
+    max_cycle = max(row["cycle"] for row in rows)
+    elapsed_cycles = max(1, max_cycle - min_cycle + 1)
+    stats = {
+        group: {
+            "issue": 0.0,
+            "stall": 0.0,
+            "mix": {category: 0.0 for category in STALL_CATEGORIES},
+            "cores": set(),
+        }
+        for group in groups
+    }
+
+    for row in rows:
+        group = row.get("group")
+        if group not in stats:
+            continue
+        stats[group]["cores"].add(row.get("core"))
+        if row["state"] == "issue":
+            stats[group]["issue"] += 1.0
+        else:
+            stats[group]["stall"] += 1.0
+            cats = split_stall_kind(row["stall_kind"])
+            weight = 1.0 / len(cats)
+            for category in cats:
+                stats[group]["mix"][category] += weight
+
+    return {
+        "groups": groups,
+        "elapsed_cycles": elapsed_cycles,
+        "stats": stats,
+    }
+
+
+def _annotate_stacked_barh(ax, left, width, y, total, label):
+    if total <= 0 or width / total <= 0.04:
+        return
+    pct = width / total * 100.0
+    text = f"{pct:.1f}%"
+    if width / total > 0.10:
+        text = f"{label}\n{pct:.1f}%\n{int(width)} cyc."
+    ax.text(left + width / 2, y, text, ha="center", va="center",
+            fontsize=9, fontweight="bold", color="white")
+
+
+def write_group_overview_page(path, group_stats, filter_desc):
+    groups = group_stats["groups"]
+    stats = group_stats["stats"]
+    elapsed_cycles = group_stats["elapsed_cycles"]
+    y = np.arange(len(groups))
+
+    issue_vals = np.array([stats[group]["issue"] for group in groups], dtype=float)
+    stall_vals = np.array([stats[group]["stall"] for group in groups], dtype=float)
+    totals = issue_vals + stall_vals
+    ipc_vals = np.divide(issue_vals, totals, out=np.zeros_like(issue_vals), where=totals > 0)
+
+    fig, axes = plt.subplots(3, 1, figsize=(15, 12), constrained_layout=True,
+                             gridspec_kw={"height_ratios": [1.0, 1.15, 1.35]})
+    ax_ipc, ax_state, ax_mix = axes
+
+    # 1. Group IPC.
+    ipc_colors = ["#78C679" for _ in groups]
+    ax_ipc.bar(y, ipc_vals, color=ipc_colors, edgecolor="white", linewidth=0.7)
+    ax_ipc.set_xticks(y)
+    ax_ipc.set_xticklabels([f"Group {group}" for group in groups])
+    ax_ipc.set_ylabel("Instructions / core-cycle")
+    ax_ipc.set_title("1. Group average per-core IPC")
+    ax_ipc.grid(True, axis="y", alpha=0.25)
+    ax_ipc.set_ylim(0, 1)
+    for xpos, value in zip(y, ipc_vals):
+        ax_ipc.text(xpos, value, f"{value:.2f}", ha="center", va="bottom",
+                    fontsize=9, fontweight="bold", color="#333333")
+
+    # 2. Issue/stall cycle split, with stall causes expanded in-place.
+    left = np.zeros(len(groups))
+    ax_state.barh(y, issue_vals, left=left, color=STALL_COLORS["issue"],
+                  edgecolor="white", linewidth=0.5, label="Issuing")
+    for idx, width in enumerate(issue_vals):
+        _annotate_stacked_barh(ax_state, left[idx], width, y[idx], totals[idx], "Issuing")
+    left += issue_vals
+
+    for category in STALL_CATEGORIES:
+        values = np.array([stats[group]["mix"][category] for group in groups], dtype=float)
+        ax_state.barh(y, values, left=left, color=STALL_COLORS[category],
+                      edgecolor="white", linewidth=0.5, label=stall_label(category))
+        for idx, width in enumerate(values):
+            _annotate_stacked_barh(ax_state, left[idx], width, y[idx], totals[idx],
+                                   stall_label(category))
+        left += values
+
+    ax_state.set_yticks(y)
+    ax_state.set_yticklabels([f"Group {group}" for group in groups])
+    ax_state.set_xlabel("Core-cycles")
+    ax_state.set_title("2. Cycle breakdown: issuing and stall causes")
+    ax_state.grid(True, axis="x", alpha=0.25)
+    ax_state.legend(loc="center left", bbox_to_anchor=(1.005, 0.5), ncol=1,
+                    frameon=True, fancybox=True,
+                    edgecolor="#CCCCCC", facecolor="white", framealpha=0.9,
+                    handleheight=1.15, handlelength=2.5)
+
+    # 3. Stall breakdown by reason.
+    left = np.zeros(len(groups))
+    for category in STALL_CATEGORIES:
+        values = np.array([stats[group]["mix"][category] for group in groups], dtype=float)
+        ax_mix.barh(y, values, left=left, color=STALL_COLORS[category],
+                    edgecolor="white", linewidth=0.5, label=stall_label(category))
+        for idx, width in enumerate(values):
+            _annotate_stacked_barh(ax_mix, left[idx], width, y[idx], max(stall_vals[idx], 1.0),
+                                   stall_label(category))
+        left += values
+    ax_mix.set_yticks(y)
+    ax_mix.set_yticklabels([f"Group {group}" for group in groups])
+    ax_mix.set_xlabel("Stalled core-cycles")
+    ax_mix.set_title("3. Stall breakdown by cause")
+    ax_mix.grid(True, axis="x", alpha=0.25)
+    ax_mix.legend(loc="center left", bbox_to_anchor=(1.005, 0.5), ncol=1,
+                  frameon=True, fancybox=True,
+                  edgecolor="#CCCCCC", facecolor="white", framealpha=0.9,
+                  handleheight=1.15, handlelength=2.5)
+
+    fig.suptitle("Per-Group IPC and Cycle Breakdown", fontsize=17, fontweight="bold")
+    fig.text(0.01, -0.005,
+             f"Filters: {filter_desc}. IPC = issuing core-cycles / observed core-cycles; "
+             f"elapsed section span={elapsed_cycles} cycles.",
              fontsize=9, alpha=0.82, va="top")
     fig.savefig(path, dpi=96, bbox_inches="tight")
     pdf_path = path.with_suffix(".pdf")
@@ -403,6 +599,108 @@ def write_tile_detail(png_path, ts):
     # row += 1
 
     fig.suptitle(f"Tile {tid} Detail Report", fontsize=17, fontweight="bold")
+
+    fig.savefig(png_path, dpi=96, bbox_inches="tight")
+    pdf_path = png_path.with_suffix(".pdf")
+    fig.savefig(pdf_path, bbox_inches="tight")
+    return fig, pdf_path
+
+
+def write_group_detail(png_path, series):
+    """All-in-one group/subgroup detail figure.
+
+    This mirrors the tile detail page, but each heatmap row is a tile inside the
+    selected group or subgroup instead of a core inside one tile.
+    """
+    title = series["title"]
+    tiles = series["tiles"]
+    cycles = series["cycles"]
+    cats = series["present_categories"]
+
+    nrows = 4
+    ratios = [1.2, 0.8, 1.5, 1.5]
+    fig, axes = plt.subplots(nrows, 1, figsize=(20, 29),
+                             gridspec_kw={"height_ratios": ratios},
+                             constrained_layout=True)
+    row = 0
+
+    # ── 1. per-tile state heatmap (dominant stall subtype colours) ──────
+    n_cats = len(STALL_CATEGORIES)
+    hm_colors = ["#FFFFFF", STALL_COLORS["issue"]] + [STALL_COLORS[category] for category in STALL_CATEGORIES]
+    hm_cmap = plt.matplotlib.colors.ListedColormap(hm_colors)
+    axes[row].imshow(series["per_tile_state"], aspect="auto", interpolation="nearest",
+                     cmap=hm_cmap, vmin=0, vmax=1 + n_cats, origin="lower")
+    axes[row].set_title("Per-Tile Execution State by Dominant Stall Cause")
+    axes[row].set_ylabel("Tile")
+    axes[row].set_yticks(np.arange(len(tiles)))
+    axes[row].set_yticklabels([str(tile_id) for tile_id in tiles])
+    axes[row].set_yticks(np.arange(-0.5, len(tiles), 1.0), minor=True)
+    axes[row].grid(which="minor", axis="y", color="#F2F2F2", linewidth=2.0)
+    axes[row].tick_params(which="minor", left=False)
+    set_cycle_ticks(axes[row], np.arange(len(cycles)), cycles)
+    from matplotlib.patches import Patch as _Patch
+    hm_handles = [_Patch(facecolor=STALL_COLORS["issue"], edgecolor="black",
+                         linewidth=0.5, label="Issuing")] + \
+                 [_Patch(facecolor=STALL_COLORS[category], edgecolor="black", linewidth=0.5,
+                         label=stall_label(category)) for category in cats]
+    axes[row].legend(handles=hm_handles, loc="lower left",
+                     bbox_to_anchor=(0, 1.02), frameon=True, fancybox=True,
+                     edgecolor="#CCCCCC", facecolor="white", framealpha=0.9,
+                     ncol=len(hm_handles),
+                     handleheight=1.15, handlelength=2.5)
+    axes[row].set_xlabel("Cycle")
+    row += 1
+
+    # ── 2. stacked horizontal bar: summed core-cycle breakdown ───────────
+    total = float(series["issue_cumulative"][-1] + series["stall_cumulative"][-1])
+    bar_labels = ["Issuing"] + [stall_label(category) for category in cats]
+    bar_values = [float(series["issue_cumulative"][-1])] + [
+        float(series["category_cumulative"][category][-1]) for category in cats
+    ]
+    bar_colors = [STALL_COLORS["issue"]] + [STALL_COLORS[category] for category in cats]
+
+    ax_bar = axes[row]
+    left = 0.0
+    for label, value, color in zip(bar_labels, bar_values, bar_colors):
+        pct = value / total * 100 if total else 0
+        display_label = label
+        count_text = f"{int(value)} cyc."
+        ax_bar.barh("Core-cycles", value, left=left, color=color, edgecolor="white", linewidth=0.5,
+                    label=f"{label} ({pct:.1f}%)")
+        if value / total > 0.10:
+            ax_bar.text(left + value / 2, 0, f"{display_label}\n{pct:.1f}%\n{count_text}",
+                        ha="center", va="center", fontsize=9, fontweight="bold", color="white")
+        elif value / total > 0.04:
+            medium_text = f"{pct:.1f}%\n{count_text}"
+            if display_label in {"RAW", "LSU"}:
+                medium_text = f"{display_label}\n{pct:.1f}%\n{count_text}"
+            ax_bar.text(left + value / 2, 0, medium_text, ha="center", va="center",
+                        fontsize=9, fontweight="bold", color="white")
+        left += value
+    ax_bar.set_xlim(0, total)
+    ax_bar.set_xlabel("Core-cycle amount")
+    ax_bar.set_title(f"{title} Summed Core-Cycle Breakdown  ({int(total)} total core-cycles across {len(tiles)} tiles)")
+    ax_bar.legend(loc="upper left", frameon=True,
+                  fancybox=True, edgecolor="#CCCCCC", facecolor="white", framealpha=0.9,
+                  ncol=1,
+                  handleheight=1.15, handlelength=2.5)
+    row += 1
+
+    # ── 3. current stall causes ──────────────────────────────────────────
+    plot_categories_current(axes[row], cycles, series["category_current"], cats,
+                            "Current Stall Causes",
+                            ylabel="Total stalled cores")
+    axes[row].set_xlabel("Cycle")
+    set_cycle_ticks(axes[row], cycles)
+    row += 1
+
+    # ── 4. cumulative stall causes ───────────────────────────────────────
+    plot_categories_cumulative(axes[row], cycles, series["category_cumulative"], cats,
+                               "Cumulative Stall Causes")
+    axes[row].set_xlabel("Cycle")
+    set_cycle_ticks(axes[row], cycles)
+
+    fig.suptitle(title, fontsize=17, fontweight="bold")
 
     fig.savefig(png_path, dpi=96, bbox_inches="tight")
     pdf_path = png_path.with_suffix(".pdf")

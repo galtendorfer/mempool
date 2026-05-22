@@ -20,8 +20,12 @@ Optional flags:
                         then from the directory name as a fallback.
     --tiles T [T ...]   Only generate for these specific tile IDs.
                         Default: all tiles discovered from the CSV.
-    --overview          Also generate the cluster overview page
+    --overview          Also generate the cluster overview page and per-group
+                        IPC/cycle breakdown into plots/overview/.
                         into plots/overview/.
+    --group-details     Generate group/subgroup detail pages. These mirror the
+                        tile-detail style, but each heatmap row is a tile.
+    --skip-tile-details Do not generate per-tile detail pages.
     --window N          Sliding-window width (in cycles) for the timeseries
                         aggregation.  Forwarded to _plot_specific_tile.
                         Default: 64.
@@ -111,6 +115,42 @@ def tile_output_dir(plots_dir, topology_name, tile_id):
         return plots_dir / f"group{group}"
 
 
+def group_detail_specs(plots_dir, topology_name, tile_ids):
+    """Return group/subgroup detail output specs for the selected tiles."""
+    topo = TOPOLOGIES[topology_name]
+    tiles_per_group = topo["tiles_per_group"]
+    specs = {}
+
+    for tile_id in tile_ids:
+        group = tile_id // tiles_per_group
+        if topo["subgroups_per_group"] > 0:
+            tiles_per_subgroup = topo["tiles_per_subgroup"]
+            subgroup = (tile_id % tiles_per_group) // tiles_per_subgroup
+            key = (group, subgroup)
+            out_dir = plots_dir / f"group{group}" / f"subgroup{subgroup}"
+            png_path = out_dir / f"subgroup_detail_group{group}_subgroup{subgroup}.png"
+            title = f"Group {group} Subgroup {subgroup} Detail Report"
+        else:
+            key = (group, None)
+            out_dir = plots_dir / f"group{group}"
+            png_path = out_dir / f"group_detail_group{group}.png"
+            title = f"Group {group} Detail Report"
+
+        if key not in specs:
+            specs[key] = {
+                "key": key,
+                "out_dir": out_dir,
+                "png_path": png_path,
+                "title": title,
+                "tile_ids": [],
+            }
+        specs[key]["tile_ids"].append(tile_id)
+
+    for spec in specs.values():
+        spec["tile_ids"] = sorted(spec["tile_ids"])
+    return [specs[key] for key in sorted(specs)]
+
+
 def expected_tile_count(topology_name):
     topo = TOPOLOGIES[topology_name]
     return topo["num_groups"] * topo["tiles_per_group"]
@@ -166,7 +206,11 @@ def parse_args(argv=None):
     p.add_argument("--tiles", type=int, nargs="+",
                    help="Only these tile IDs (default: all from CSV)")
     p.add_argument("--overview", action="store_true",
-                   help="Also generate the cluster overview page")
+                   help="Also generate cluster overview and per-group breakdown pages")
+    p.add_argument("--group-details", action="store_true",
+                   help="Generate group/subgroup detail pages")
+    p.add_argument("--skip-tile-details", action="store_true",
+                   help="Skip per-tile detail pages")
     p.add_argument("--window", type=int, default=64,
                    help="Sliding-window width for timeseries (default: 64)")
     p.add_argument("--force", action="store_true",
@@ -228,7 +272,8 @@ def main(argv=None):
     print(f"CSV:      {csv_path}")
     print(f"Plots:    {plots_dir}")
 
-    if (not args.tiles and not args.force and not args.dry_run):
+    if (not args.tiles and not args.force and not args.dry_run
+            and not args.overview and not args.group_details and not args.skip_tile_details):
         existing_tile_pngs = list(plots_dir.rglob("tile_detail_tile*.png")) if plots_dir.exists() else []
         if len(existing_tile_pngs) >= expected_tile_count(topology):
             print(f"Tiles:    {expected_tile_count(topology)} (0–{expected_tile_count(topology) - 1})")
@@ -268,11 +313,16 @@ def main(argv=None):
 
     # ── Overview ──────────────────────────────────────────────────────
     overview_needs_work = False
+    overview_paths = {}
     if args.overview:
         ov_dir = plots_dir / "overview"
-        ov_existing = list(ov_dir.glob("*.png")) if ov_dir.exists() else []
-        if ov_existing and not args.force:
-            print(f"Overview: skipped ({len(ov_existing)} PNGs already exist, use --force to overwrite)")
+        overview_paths = {
+            "workload": ov_dir / "overview_workload.png",
+            "group_breakdown": ov_dir / "group_ipc_breakdown.png",
+        }
+        missing = [path.name for path in overview_paths.values() if not path.exists()]
+        if not missing and not args.force:
+            print("Overview: skipped (overview outputs already exist, use --force to overwrite)")
         else:
             overview_needs_work = True
             if args.dry_run:
@@ -281,56 +331,105 @@ def main(argv=None):
     # ── Per-tile detail ───────────────────────────────────────────────
     digits = TOPOLOGIES[topology]["tile_digits"]
     failed = []
+    group_failed = []
+    group_skipped = 0
     skipped = 0
+
+    # ── Group/subgroup detail ────────────────────────────────────────
+    group_work_items = []
+    if args.group_details:
+        for spec in group_detail_specs(plots_dir, topology, tile_ids):
+            if spec["png_path"].exists() and not args.force:
+                group_skipped += 1
+                continue
+            group_work_items.append(spec)
+            if args.dry_run:
+                rel = spec["png_path"].relative_to(plots_dir)
+                print(f"[dry-run] {spec['title']} → {rel}")
 
     # Build work items
     work_items = []
-    for tid in tile_ids:
-        out_dir = tile_output_dir(plots_dir, topology, tid)
-        tile_png = out_dir / f"tile_detail_tile{tid}.png"
-        if tile_png.exists() and not args.force:
-            skipped += 1
-            continue
-        tile_argv = [str(csv_path), str(tid)] + section_args + window_args + [
-            "--output-dir", str(out_dir),
-            "--prefix", "tile_detail",
-        ]
-        work_items.append((tid, out_dir, tile_argv, digits))
+    if args.skip_tile_details:
+        print("Tile details: skipped (--skip-tile-details)")
+    else:
+        for tid in tile_ids:
+            out_dir = tile_output_dir(plots_dir, topology, tid)
+            tile_png = out_dir / f"tile_detail_tile{tid}.png"
+            if tile_png.exists() and not args.force:
+                skipped += 1
+                continue
+            tile_argv = [str(csv_path), str(tid)] + section_args + window_args + [
+                "--output-dir", str(out_dir),
+                "--prefix", "tile_detail",
+            ]
+            work_items.append((tid, out_dir, tile_argv, digits))
 
-    if not args.dry_run and not overview_needs_work and not work_items:
+    if not args.dry_run and not overview_needs_work and not group_work_items and not work_items:
         print("Nothing to do: all requested plots already exist.")
         print(f"\nDone: 0 generated / {skipped} skipped (exist, use --force)  ({len(tile_ids)} total)")
         return
 
     rows = None
     rows_by_tile = None
-    if not args.dry_run and (overview_needs_work or args.jobs <= 1):
+    if not args.dry_run and (overview_needs_work or group_work_items or (work_items and args.jobs <= 1)):
         print("Loading stall CSV once for all tile plots ...", flush=True)
         rows = filter_rows(load_rows(csv_path), section=args.section)
         if not rows:
             sys.exit("No rows after filtering")
-        if args.jobs <= 1:
+        if group_work_items or (work_items and args.jobs <= 1):
             rows_by_tile = group_rows_by_tile(rows, tile_ids)
 
     if args.dry_run:
         for tid, out_dir, _, dg in work_items:
             label = f"tile {tid:0{dg}d} → {out_dir.relative_to(plots_dir)}"
             print(f"[dry-run] {label}")
-    elif work_items:
+    else:
+        if overview_needs_work:
+            ov_dir.mkdir(parents=True, exist_ok=True)
+            filter_desc = _plot_specific_tile._filter_desc(args)
+
+            print(f"Overview → {ov_dir}")
+            if args.force or not overview_paths["workload"].exists():
+                agg = _plot_specific_tile.aggregate_rows(rows, args.window, context_field="tile")
+                fig, _ = _plot_specific_tile.write_overview_page(
+                    overview_paths["workload"], agg, filter_desc, args.window)
+                plt.close(fig)
+            else:
+                print("  skipped overview_workload.png (exists)")
+
+            if args.force or not overview_paths["group_breakdown"].exists():
+                group_stats = _plot_specific_tile.build_group_overview_stats(rows)
+                fig, _ = _plot_specific_tile.write_group_overview_page(
+                    overview_paths["group_breakdown"], group_stats, filter_desc)
+                plt.close(fig)
+            else:
+                print("  skipped group_ipc_breakdown.png (exists)")
+            print()
+
+        if group_work_items:
+            for index, spec in enumerate(group_work_items, 1):
+                rel = spec["png_path"].relative_to(plots_dir)
+                print(f"[{index}/{len(group_work_items)}] {spec['title']} → {rel}", end=" ... ", flush=True)
+                try:
+                    spec["out_dir"].mkdir(parents=True, exist_ok=True)
+                    group_rows = []
+                    for tile_id in spec["tile_ids"]:
+                        group_rows.extend(rows_by_tile.get(tile_id, []))
+                    if not group_rows:
+                        raise ValueError(f"No rows for {spec['title']}")
+                    series = _plot_specific_tile.build_group_series(group_rows, spec["title"])
+                    fig, _ = _plot_specific_tile.write_group_detail(spec["png_path"], series)
+                    plt.close(fig)
+                    print("ok")
+                except Exception as e:
+                    print(f"FAILED: {e}")
+                    group_failed.append((spec["title"], str(e)))
+
+    if not args.dry_run and work_items:
         n_jobs = min(args.jobs, len(work_items))
         # Ensure output dirs exist
         for _, out_dir, _, _ in work_items:
             out_dir.mkdir(parents=True, exist_ok=True)
-
-        if overview_needs_work:
-            print(f"Overview → {ov_dir}")
-            ov_dir.mkdir(parents=True, exist_ok=True)
-            agg = _plot_specific_tile.aggregate_rows(rows, args.window, context_field="tile")
-            ov_path = ov_dir / "overview_workload.png"
-            fig, _ = _plot_specific_tile.write_overview_page(
-                ov_path, agg, _plot_specific_tile._filter_desc(args), args.window)
-            plt.close(fig)
-            print()
 
         if n_jobs <= 1:
             # Fast sequential path: reuse the already loaded CSV rows.
@@ -364,17 +463,34 @@ def main(argv=None):
 
     # ── Summary ───────────────────────────────────────────────────────
     if not args.dry_run:
-        generated = len(tile_ids) - len(failed) - skipped
-        parts = [f"{generated} generated"]
-        if skipped:
-            parts.append(f"{skipped} skipped (exist, use --force)")
+        parts = []
+        if args.skip_tile_details:
+            parts.append("tile details skipped")
+        else:
+            generated = len(work_items) - len(failed)
+            parts.append(f"{generated} tile details generated")
+            if skipped:
+                parts.append(f"{skipped} skipped (exist, use --force)")
+        if overview_needs_work:
+            parts.append("overview generated")
+        if args.group_details:
+            generated = len(group_work_items) - len(group_failed)
+            parts.append(f"{generated} group details generated")
+            if group_skipped:
+                parts.append(f"{group_skipped} group details skipped (exist, use --force)")
         if failed:
             parts.append(f"{len(failed)} failed")
+        if group_failed:
+            parts.append(f"{len(group_failed)} group details failed")
         print(f"\nDone: {' / '.join(parts)}  ({len(tile_ids)} total)")
         if failed:
             print("Failed tiles:")
             for tid, err in failed:
                 print(f"  tile {tid}: {err}")
+        if group_failed:
+            print("Failed group details:")
+            for title, err in group_failed:
+                print(f"  {title}: {err}")
 
 
 if __name__ == "__main__":

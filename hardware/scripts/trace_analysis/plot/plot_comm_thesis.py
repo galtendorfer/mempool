@@ -4,8 +4,9 @@
 Generates publication-ready figures including:
     1. Tile-to-tile traffic matrix
     2. Group-level traffic aggregate
-    3. Locality breakdown & latency by network distance
-    4. Temporal communication profile (stacked area + incoming heatmap + latency)
+    3. Source/destination request pressure by tile
+    4. Locality breakdown & latency by network distance
+    5. Temporal communication profile (stacked area + incoming heatmap + latency)
 
 Usage:
     python plot_comm_thesis.py <result_dir> [--section 1]
@@ -787,6 +788,139 @@ def plot_traffic_matrix_full(source_dest_rows, topology, output_dir, section):
         if pdf_dir.is_dir():
             for legacy in pdf_dir.glob(pattern):
                 legacy.unlink()
+
+
+def _latency_style_colormap(name):
+    colors = ["#1a9641", "#55b748", "#91cf60", "#d0ec8a",
+              "#f0f4a4", "#fee08b", "#fdae61", "#f46d43",
+              "#d73027", "#a50026"]
+    cmap = LinearSegmentedColormap.from_list(name, colors, N=256)
+    cmap.set_bad(color="#F5F5F5")
+    return cmap
+
+
+def _pressure_norm(source_pressure, dest_pressure):
+    combined = np.concatenate([source_pressure, dest_pressure])
+    positive = combined[combined > 0]
+    if len(positive) == 0:
+        return Normalize(vmin=0, vmax=1), [0, 1]
+    vmin = max(1.0, float(positive.min()))
+    vmax = max(vmin * 1.01, float(positive.max()))
+    import math as _m
+    lo = _m.floor(_m.log10(vmin))
+    hi = _m.ceil(_m.log10(vmax))
+    ticks = []
+    for exp in range(int(lo), int(hi) + 1):
+        base = 10 ** exp
+        for mult in (1, 2.5, 5):
+            value = base * mult
+            if vmin <= value <= vmax:
+                ticks.append(value)
+    if not ticks:
+        ticks = [vmin, vmax]
+    return LogNorm(vmin=vmin, vmax=vmax), ticks
+
+
+def _pressure_grid(values, n_groups, tpg):
+    grid = np.full((n_groups, tpg), np.nan)
+    for tile, value in enumerate(values):
+        group = tile // tpg
+        local_tile = tile % tpg
+        if group < n_groups:
+            grid[group, local_tile] = value if value > 0 else np.nan
+    return grid
+
+
+def _format_pressure_grid_axis(ax, tpg, n_groups, topology):
+    ax.set_yticks(range(n_groups))
+    ax.set_yticklabels([f"G{group}" for group in range(n_groups)], fontsize=FONT_TICK)
+    for label, color in zip(ax.get_yticklabels(), GRP_COLORS):
+        label.set_color(color)
+        label.set_fontweight("bold")
+
+    tps = topology.get("tiles_per_subgroup")
+    if tps and tps < tpg:
+        ticks = list(range(0, tpg, tps))
+        if (tpg - 1) not in ticks:
+            ticks.append(tpg - 1)
+        for subgroup_boundary in range(tps, tpg, tps):
+            ax.axvline(subgroup_boundary - 0.5, color="#777777", lw=0.8,
+                       ls="--", alpha=0.65)
+    else:
+        step = max(1, tpg // 8)
+        ticks = list(range(0, tpg, step))
+        if (tpg - 1) not in ticks:
+            ticks.append(tpg - 1)
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([str(tick) for tick in ticks], fontsize=FONT_TICK)
+    ax.set_xlabel("Tile index inside group", fontsize=FONT_LABEL)
+
+    for boundary in range(1, n_groups):
+        ax.axhline(boundary - 0.5, color="#333333", lw=1.4, alpha=0.65)
+
+
+def plot_request_pressure_by_tile(source_dest_rows, topology, output_dir, section):
+    """Collapse the tile-to-tile request matrix into source and destination pressure."""
+    matrices = _build_traffic_matrices(source_dest_rows, topology)
+    if matrices is None:
+        print("  [skip] No traffic data for request pressure")
+        return
+
+    mat = matrices["mat"]
+    n_tiles = matrices["n_tiles"]
+    tpg = matrices["tpg"]
+    n_groups = topology["n_groups"]
+    source_pressure = mat.sum(axis=1)
+    dest_pressure = mat.sum(axis=0)
+
+    cmap = _latency_style_colormap("request_pressure_GnYlRd")
+    norm, ticks = _pressure_norm(source_pressure, dest_pressure)
+    src_plot = _pressure_grid(source_pressure, n_groups, tpg)
+    dst_plot = _pressure_grid(dest_pressure, n_groups, tpg)
+
+    fig_w = max(10.5, tpg * 0.35 + 4.0)
+    fig, axes = plt.subplots(2, 1, figsize=(fig_w, 6.8), sharex=True,
+                             gridspec_kw={"hspace": 0.42})
+    panel_data = [
+        (axes[0], src_plot, source_pressure,
+         "(a) Source pressure: each tile summed over all destinations"),
+        (axes[1], dst_plot, dest_pressure,
+         "(b) Destination pressure: each tile summed over all sources"),
+    ]
+
+    im = None
+    for ax, image_data, values, title in panel_data:
+        im = ax.imshow(image_data, origin="lower", cmap=cmap, aspect="auto",
+                       norm=norm, interpolation="nearest")
+        ax.set_title(title, fontsize=FONT_SUBTITLE, fontweight="bold", pad=8)
+        _format_pressure_grid_axis(ax, tpg, n_groups, topology)
+
+        if n_tiles <= 128:
+            annot_fs = max(5.0, min(FONT_ANNOT, fig_w * 11.5 / max(tpg, 1)))
+            for tile, value in enumerate(values):
+                if value <= 0:
+                    continue
+                txt_col = "white" if norm(value) > 0.62 else FIG_TEXT_COLOR
+                ax.text(tile % tpg, tile // tpg, _nice_count(value), ha="center", va="center",
+                        fontsize=annot_fs, fontweight="bold", color=txt_col)
+
+    divider = make_axes_locatable(axes[1])
+    cax = divider.append_axes("right", size="2.5%", pad=0.25)
+    cb = fig.colorbar(im, cax=cax)
+    cb.set_label("Load/store issues", fontsize=FONT_LABEL - 1)
+    cb.set_ticks(ticks)
+    cb.set_ticklabels([_nice_count(tick) for tick in ticks])
+    cb.ax.tick_params(labelsize=FONT_TICK)
+
+    sec_lbl = f"Section {section}" if section is not None else "All sections"
+    fig.suptitle("Tile request pressure from collapsed source-destination matrix",
+                 fontsize=FONT_SUBTITLE + 1, fontweight="bold", y=0.99)
+    fig.text(0.5, 0.01,
+             f"{sec_lbl}  ·  {n_tiles} tiles  ·  {n_groups} groups  ·  "
+             f"{_nice_count(mat.sum())} total load/store issues",
+             ha="center", fontsize=FONT_ANNOT, color="#666666", style="italic")
+
+    _save(fig, output_dir, "request_pressure_by_tile", section)
 
 
 # ===================================================================
@@ -1659,7 +1793,7 @@ def _parse_args(argv=None):
                    help="Number of tile groups (default: 4)")
     p.add_argument("--figures", nargs="*", default=None,
                    help="Which figures: matrix "
-                        "temporal latency tile_latency latency_matrix latency_over_minimum (default: all)")
+                        "pressure temporal latency tile_latency latency_matrix latency_over_minimum (default: all)")
     return p.parse_args(argv)
 
 
@@ -1690,21 +1824,25 @@ def main(argv=None):
     ts_rows = _build_timeseries_rows(raw_events)
 
     if "matrix" in figs:
-        print("\n[1/6] Traffic matrix …")
+        print("\n[1/7] Traffic matrix …")
         plot_traffic_matrix_full(sd_rows, topology, output_dir, section)
         plot_traffic_matrix_group(sd_rows, topology, output_dir, section)
 
+    if "matrix" in figs or "pressure" in figs:
+        print("\n[2/7] Source/destination request pressure …")
+        plot_request_pressure_by_tile(sd_rows, topology, output_dir, section)
+
     if "temporal" in figs and ts_rows:
-        print("\n[2/6] Temporal profile …")
+        print("\n[3/7] Temporal profile …")
         plot_temporal_profile(ts_rows, raw_events, paths["result_dir"], n_groups, output_dir, section)
 
     if "latency" in figs and ts_rows:
-        print("\n[3/6] Latency over time …")
+        print("\n[4/7] Latency over time …")
         plot_latency_over_time(ts_rows, n_groups, output_dir, section)
 
     if "tile_latency" in figs and ts_rows:
         for tg in range(n_groups):
-            print(f"\n[4/6] Per-tile latency — Group {tg} …")
+            print(f"\n[5/7] Per-tile latency — Group {tg} …")
             plot_per_tile_group_latency(ts_rows, n_groups, output_dir,
                                         section, target_group=tg)
 
@@ -1713,11 +1851,11 @@ def main(argv=None):
     pair_data = _build_pair_data(raw_events) if need_pair else {}
 
     if "latency_matrix" in figs:
-        print("\n[5/6] Tile-pair latency heatmap …")
+        print("\n[6/7] Tile-pair latency heatmap …")
         plot_traffic_vs_latency(pair_data, topology, output_dir, section)
 
     if "latency_over_minimum" in figs:
-        print("\n[6/6] Latency above hierarchy minimum …")
+        print("\n[7/7] Latency above hierarchy minimum …")
         plot_latency_over_minimum(pair_data, topology, output_dir, section)
 
     print("\nDone.")
