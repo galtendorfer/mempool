@@ -32,14 +32,16 @@
   defined(MATMUL_I32_KERNEL_4X4) + \
   defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) + \
   defined(MATMUL_I32_KERNEL_4X4_ASM) + \
-  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)) > 1
+  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM) + \
+  defined(MATMUL_I32_KERNEL_4X4_DAS_THESIS_ASM)) > 1
 #error "Select exactly one MATMUL_I32 kernel."
 #endif
 
 #ifdef NUM_DAS_PARTITIONS
 #if !defined(MATMUL_I32_KERNEL_4X4_ASM) && \
-  !defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
-#error "DAS-enabled matmul_i32 only supports 4x4_asm and 4x4_conflict_opt_asm."
+  !defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM) && \
+  !defined(MATMUL_I32_KERNEL_4X4_DAS_THESIS_ASM)
+#error "DAS-enabled matmul_i32 only supports 4x4_asm, 4x4_conflict_opt_asm, and 4x4_das_thesis_asm."
 #endif
 
 #define NUM_TILES (NUM_CORES / NUM_CORES_PER_TILE)
@@ -114,7 +116,8 @@ static uint32_t active_matmul_cores(uint32_t available_cores) {
 #if defined(MATMUL_I32_KERNEL_4X4) || \
     defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT) || \
     defined(MATMUL_I32_KERNEL_4X4_ASM) || \
-  defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM)
+    defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM) || \
+    defined(MATMUL_I32_KERNEL_4X4_DAS_THESIS_ASM)
   uint32_t max_tiles = (matrix_M / 4) * (matrix_P / 4);
 #else
   uint32_t max_tiles = (matrix_M / 2) * (matrix_P / 2);
@@ -236,6 +239,12 @@ mempool_barrier_init(core_id);
           kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M, matrix_N, matrix_P, core_id,
           kernel_cores);
     }
+#elif defined(MATMUL_I32_KERNEL_4X4_DAS_THESIS_ASM)
+  if (core_id < kernel_cores) {
+    mat_mul_unrolled_4x4_das_thesis_parallel_asm(
+        kernel_l1_A, kernel_l1_B, kernel_l1_C, matrix_M, matrix_N, matrix_P,
+        core_id, kernel_cores);
+  }
 #else
     // Preserve the historical default when no explicit kernel is requested.
     #ifdef __XPULPIMG

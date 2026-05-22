@@ -652,56 +652,56 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
 /*******************************/
 
 // Define immediate values that used in asm code.
+#define MATMUL_4X4_ROWS 4u
+#define MATMUL_4X4_COLS 4u
 #define N3 (matrix_M - 3) * 4
 #define N31 (-3 * matrix_N + 1) * 4
 #define P3 (matrix_P - 3) * 4
 #define P31 (-3 * matrix_N + 1) * 4
+
+#ifndef NUM_CORES_PER_TILE
+#define NUM_CORES_PER_TILE 4u
+#endif
+#ifndef NUM_TILES_PER_GROUP
+#define NUM_TILES_PER_GROUP 16u
+#endif
+#ifndef BANKING_FACTOR
+#define BANKING_FACTOR 4u
+#endif
+#ifndef NUM_BANKS_PER_TILE
+#define NUM_BANKS_PER_TILE (NUM_CORES_PER_TILE * BANKING_FACTOR)
+#endif
 
 void mat_mul_unrolled_4x4_parallel_asm(int32_t const *__restrict__ A,
                                        int32_t const *__restrict__ B,
                                        int32_t *__restrict__ C, uint32_t M,
                                        uint32_t N, uint32_t P, uint32_t id,
                                        uint32_t numThreads) {
-  // Parallelize by assigning each tile one row
   uint32_t c = numThreads / (M / 4);
   if (numThreads * 4 < M) {
     c = 1;
   }
-  // numThreads / (M / 4); // How many columns to split the matrix into
   uint32_t const c_start = (P / c) * (id % c);
   uint32_t const c_end = (P / c) * ((id % c) + 1);
   for (uint32_t i = 4 * (id / c); i < M; i += 4 * (numThreads / c)) {
     for (uint32_t j = c_start; j < c_end; j += 4) {
-      // Address registers
       int32_t const *addr_a = &A[i * N];
       int32_t const *addr_b = &B[j];
       int32_t const *end_b = &B[N * P + j];
       int32_t const *addr_c = &C[i * P + j];
       int32_t const N3_1_r = (-3 * (int32_t)N + 1) * 4;
       int32_t const P_3_r = ((int32_t)P - 3) * 4;
-
       register int32_t k asm("x1") = (int32_t)end_b;
-      //      x12 x13 x14 x15
-      //
-      // x3   x16 x17 x18 x19
-      // x4   x20 x21 x22 x23
-      // x10  x24 x25 x26 x27
-      // x11  x28 x29 x30 x31
-      //
-      //
       __asm__ volatile(
           ".balign 16 \n\t"
-          // Outer loop: Initialize and preload. Execute this loop P times
-          // TODO arrange
           "p.lw  x3, %[N](%[addr_a]!) \n\t"
           "p.lw x12, 4(%[addr_b]!) \n\t"
           "p.lw x13, 4(%[addr_b]!) \n\t"
           "p.lw x14, 4(%[addr_b]!) \n\t"
-          "p.lw x15, %[P_3](%[addr_b]!) \n\t" // Increment by P-3
+          "p.lw x15, %[P_3](%[addr_b]!) \n\t"
           "p.lw  x4, %[N](%[addr_a]!) \n\t"
           "p.lw x10, %[N](%[addr_a]!) \n\t"
-          "p.lw x11, %[N3_1](%[addr_a]!) \n\t" // Increment by -3N+1
-          // Initial computation + prefetching
+          "p.lw x11, %[N3_1](%[addr_a]!) \n\t"
           "mul x16,  x3, x12 \n\t"
           "mul x17,  x3, x13 \n\t"
           "mul x18,  x3, x14 \n\t"
@@ -724,9 +724,8 @@ void mat_mul_unrolled_4x4_parallel_asm(int32_t const *__restrict__ A,
           "mul x30, x11, x14 \n\t"
           "p.lw x14, 4(%[addr_b]!) \n\t"
           "mul x31, x11, x15 \n\t"
-          "p.lw x15, %[P_3](%[addr_b]!) \n\t"  // Increment by P-3
-          "p.lw x11, %[N3_1](%[addr_a]!) \n\t" // Increment by -3N+1
-          // Inner loop: Do this loop N times
+          "p.lw x15, %[P_3](%[addr_b]!) \n\t"
+          "p.lw x11, %[N3_1](%[addr_a]!) \n\t"
           "1: \n\t"
           "p.mac x16,  x3, x12 \n\t"
           "p.mac x17,  x3, x13 \n\t"
@@ -749,11 +748,10 @@ void mat_mul_unrolled_4x4_parallel_asm(int32_t const *__restrict__ A,
           "p.lw x14, 4(%[addr_b]!) \n\t"
           "p.mac x27, x10, x15 \n\t"
           "p.mac x31, x11, x15 \n\t"
-          "p.lw x15, %[P_3](%[addr_b]!) \n\t" // Increment by P-3
+          "p.lw x15, %[P_3](%[addr_b]!) \n\t"
           "p.lw x10, %[N](%[addr_a]!) \n\t"
-          "p.lw x11, %[N3_1](%[addr_a]!) \n\t" // Increment by -3N+1
+          "p.lw x11, %[N3_1](%[addr_a]!) \n\t"
           "bne %[addr_b], x1, 1b \n\t"
-          // Loop done store
           "p.mac x16,  x3, x12 \n\t"
           "p.mac x17,  x3, x13 \n\t"
           "p.mac x18,  x3, x14 \n\t"
@@ -787,15 +785,200 @@ void mat_mul_unrolled_4x4_parallel_asm(int32_t const *__restrict__ A,
           "p.sw x30, 4(%[addr_c]!) \n\t"
           "p.sw x31, %[P_3](%[addr_c]!) \n\t"
           : [addr_a] "+&r"(addr_a), [addr_b] "+&r"(addr_b),
-            [addr_c] "+&r"(addr_c) // Outputs
+            [addr_c] "+&r"(addr_c)
           : [N3_1] "r"(N3_1_r), [P_3] "r"(P_3_r), [x1] "r"(k),
-            [N] "I"(matrix_N * 4) // Inputs
-          : "x3", "x4", "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17",
-            "x18", "x19", "x20", "x21", "x22", "x23", "x24", "x25", "x26",
-            "x27", "x28", "x29", "x30", "x31", "memory"); // Clobber
+            [N] "I"(matrix_N * 4)
+          : "x3", "x4", "x10", "x11", "x12", "x13", "x14", "x15",
+            "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+            "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31",
+            "memory");
     }
   }
 }
+
+/********************************************************************/
+/*                                                                  */
+/*                     4x4 SPECIALIZED KERNELS                      */
+/*                                                                  */
+/*   Specialized 4x4 kernels for non-uniform data placement live in */
+/*   this block. Keep them visually separate from the legacy        */
+/*   reference kernels above and below.                             */
+/*                                                                  */
+/********************************************************************/
+
+/**************************************/
+/* THESIS DAS KERNEL                  */
+/* MemPool 128x64x128 IPC:            */
+/* total_ipc = 0.9224                 */
+/**************************************/
+// Starts the K loop at a core-dependent offset and rewinds A with the
+// configured N stride instead of assuming a fixed matrix shape.
+void mat_mul_unrolled_4x4_das_thesis_parallel_asm(
+    int32_t const *__restrict__ A, int32_t const *__restrict__ B,
+    int32_t *__restrict__ C, uint32_t M, uint32_t N, uint32_t P, uint32_t id,
+    uint32_t numThreads) {
+  uint32_t c = numThreads / (M / MATMUL_4X4_ROWS);
+  if (numThreads * MATMUL_4X4_ROWS < M) {
+    c = 1;
+  }
+  uint32_t const c_start = (P / c) * (id % c);
+  uint32_t const c_end = (P / c) * ((id % c) + 1);
+  uint32_t const rowblock = id / c;
+  uint32_t const source_core = id % 4u;
+  uint32_t const k_offset = (rowblock + 2u * source_core) % 8u;
+  int32_t const NP_bytes_r = matrix_N * matrix_P * 4;
+  for (uint32_t i = MATMUL_4X4_ROWS * (id / c); i < M;
+       i += MATMUL_4X4_ROWS * (numThreads / c)) {
+    for (uint32_t j = c_start; j < c_end; j += MATMUL_4X4_COLS) {
+      int32_t const *addr_a = &A[i * N + k_offset];
+      int32_t const *addr_b = &B[k_offset * P + j];
+      int32_t const *prefix_end_b = addr_b;
+      int32_t const *end_b = &B[N * P + j];
+      int32_t const *addr_c = &C[i * P + j];
+      register int32_t k asm("x1") = (int32_t)end_b;
+      __asm__ volatile(
+          ".balign 16 \n\t"
+          "p.lw  x3, %[N](%[addr_a]!) \n\t"
+          "p.lw x12, 4(%[addr_b]!) \n\t"
+          "p.lw x13, 4(%[addr_b]!) \n\t"
+          "p.lw x14, 4(%[addr_b]!) \n\t"
+          "p.lw x15, %[P_3](%[addr_b]!) \n\t"
+          "p.lw  x4, %[N](%[addr_a]!) \n\t"
+          "p.lw x10, %[N](%[addr_a]!) \n\t"
+          "p.lw x11, %[N3_1](%[addr_a]!) \n\t"
+          "mul x16,  x3, x12 \n\t"
+          "mul x17,  x3, x13 \n\t"
+          "mul x18,  x3, x14 \n\t"
+          "mul x19,  x3, x15 \n\t"
+          "p.lw  x3, %[N](%[addr_a]!) \n\t"
+          "mul x20,  x4, x12 \n\t"
+          "mul x21,  x4, x13 \n\t"
+          "mul x22,  x4, x14 \n\t"
+          "mul x23,  x4, x15 \n\t"
+          "p.lw  x4, %[N](%[addr_a]!) \n\t"
+          "mul x24, x10, x12 \n\t"
+          "mul x25, x10, x13 \n\t"
+          "mul x26, x10, x14 \n\t"
+          "mul x27, x10, x15 \n\t"
+          "p.lw x10, %[N](%[addr_a]!) \n\t"
+          "mul x28, x11, x12 \n\t"
+          "p.lw x12, 4(%[addr_b]!) \n\t"
+          "mul x29, x11, x13 \n\t"
+          "p.lw x13, 4(%[addr_b]!) \n\t"
+          "mul x30, x11, x14 \n\t"
+          "p.lw x14, 4(%[addr_b]!) \n\t"
+          "mul x31, x11, x15 \n\t"
+          "p.lw x15, %[P_3](%[addr_b]!) \n\t"
+          "p.lw x11, %[N3_1](%[addr_a]!) \n\t"
+          "1: \n\t"
+          "p.mac x16,  x3, x12 \n\t"
+          "p.mac x17,  x3, x13 \n\t"
+          "p.mac x20,  x4, x12 \n\t"
+          "p.mac x21,  x4, x13 \n\t"
+          "p.mac x18,  x3, x14 \n\t"
+          "p.mac x22,  x4, x14 \n\t"
+          "p.mac x19,  x3, x15 \n\t"
+          "p.lw  x3, %[N](%[addr_a]!) \n\t"
+          "p.mac x23,  x4, x15 \n\t"
+          "p.lw  x4, %[N](%[addr_a]!) \n\t"
+          "p.mac x24, x10, x12 \n\t"
+          "p.mac x28, x11, x12 \n\t"
+          "p.lw x12, 4(%[addr_b]!) \n\t"
+          "p.mac x25, x10, x13 \n\t"
+          "p.mac x29, x11, x13 \n\t"
+          "p.lw x13, 4(%[addr_b]!) \n\t"
+          "p.mac x26, x10, x14 \n\t"
+          "p.mac x30, x11, x14 \n\t"
+          "p.lw x14, 4(%[addr_b]!) \n\t"
+          "p.mac x27, x10, x15 \n\t"
+          "p.mac x31, x11, x15 \n\t"
+          "p.lw x15, %[P_3](%[addr_b]!) \n\t"
+          "p.lw x10, %[N](%[addr_a]!) \n\t"
+          "p.lw x11, %[N3_1](%[addr_a]!) \n\t"
+          "bne %[addr_b], x1, 1b \n\t"
+          "p.mac x16,  x3, x12 \n\t"
+          "p.mac x17,  x3, x13 \n\t"
+          "p.mac x18,  x3, x14 \n\t"
+          "p.mac x19,  x3, x15 \n\t"
+          "p.mac x20,  x4, x12 \n\t"
+          "p.mac x21,  x4, x13 \n\t"
+          "p.mac x22,  x4, x14 \n\t"
+          "p.mac x23,  x4, x15 \n\t"
+          "p.mac x24, x10, x12 \n\t"
+          "p.mac x25, x10, x13 \n\t"
+          "p.mac x26, x10, x14 \n\t"
+          "p.mac x27, x10, x15 \n\t"
+          "p.mac x28, x11, x12 \n\t"
+          "p.mac x29, x11, x13 \n\t"
+          "p.mac x30, x11, x14 \n\t"
+          "p.mac x31, x11, x15 \n\t"
+          "sub %[addr_b], %[addr_b], %[NP_BYTES] \n\t"
+          "beq %[addr_b], %[prefix_end], 2f \n\t"
+          "addi %[addr_a], %[addr_a], -%[N] \n\t"
+          "addi x1, %[prefix_end], 0 \n\t"
+          "3: \n\t"
+          "p.lw  x3, %[N](%[addr_a]!) \n\t"
+          "p.lw x12, 4(%[addr_b]!) \n\t"
+          "p.lw x13, 4(%[addr_b]!) \n\t"
+          "p.lw x14, 4(%[addr_b]!) \n\t"
+          "p.lw x15, %[P_3](%[addr_b]!) \n\t"
+          "p.lw  x4, %[N](%[addr_a]!) \n\t"
+          "p.lw x10, %[N](%[addr_a]!) \n\t"
+          "p.lw x11, %[N3_1](%[addr_a]!) \n\t"
+          "p.mac x16,  x3, x12 \n\t"
+          "p.mac x17,  x3, x13 \n\t"
+          "p.mac x18,  x3, x14 \n\t"
+          "p.mac x19,  x3, x15 \n\t"
+          "p.mac x20,  x4, x12 \n\t"
+          "p.mac x21,  x4, x13 \n\t"
+          "p.mac x22,  x4, x14 \n\t"
+          "p.mac x23,  x4, x15 \n\t"
+          "p.mac x24, x10, x12 \n\t"
+          "p.mac x25, x10, x13 \n\t"
+          "p.mac x26, x10, x14 \n\t"
+          "p.mac x27, x10, x15 \n\t"
+          "p.mac x28, x11, x12 \n\t"
+          "p.mac x29, x11, x13 \n\t"
+          "p.mac x30, x11, x14 \n\t"
+          "p.mac x31, x11, x15 \n\t"
+          "bne %[addr_b], x1, 3b \n\t"
+          "2: \n\t"
+          "p.sw x16, 4(%[addr_c]!) \n\t"
+          "p.sw x17, 4(%[addr_c]!) \n\t"
+          "p.sw x18, 4(%[addr_c]!) \n\t"
+          "p.sw x19, %[P_3](%[addr_c]!) \n\t"
+          "p.sw x20, 4(%[addr_c]!) \n\t"
+          "p.sw x21, 4(%[addr_c]!) \n\t"
+          "p.sw x22, 4(%[addr_c]!) \n\t"
+          "p.sw x23, %[P_3](%[addr_c]!) \n\t"
+          "p.sw x24, 4(%[addr_c]!) \n\t"
+          "p.sw x25, 4(%[addr_c]!) \n\t"
+          "p.sw x26, 4(%[addr_c]!) \n\t"
+          "p.sw x27, %[P_3](%[addr_c]!) \n\t"
+          "p.sw x28, 4(%[addr_c]!) \n\t"
+          "p.sw x29, 4(%[addr_c]!) \n\t"
+          "p.sw x30, 4(%[addr_c]!) \n\t"
+          "p.sw x31, %[P_3](%[addr_c]!) \n\t"
+          : [addr_a] "+&r"(addr_a), [addr_b] "+&r"(addr_b),
+            [addr_c] "+&r"(addr_c)
+          : [N3_1] "I"(N31), [P_3] "I"(P3), [x1] "r"(k),
+            [prefix_end] "r"(prefix_end_b), [NP_BYTES] "r"(NP_bytes_r),
+            [N] "I"(matrix_N * 4)
+          : "x3", "x4", "x10", "x11", "x12", "x13", "x14", "x15",
+            "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+            "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31",
+            "memory");
+    }
+  }
+}
+
+/********************************************************************/
+/*                                                                  */
+/*                END SPECIALIZED 4x4 KERNELS                       */
+/*                                                                  */
+/*   Legacy/reference kernels resume below this line.               */
+/*                                                                  */
+/********************************************************************/
 
 void mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
     int32_t const *__restrict__ A, int32_t const *__restrict__ B,
