@@ -133,6 +133,7 @@ module mempool_cluster
     .TransFifoDepth (16                   ),
     .NumTiles       (NumTiles             ),
     .NumDASPartitions  (NumDASPartitions  ),
+    .RowsInterleavingWidth (RowsInterleavingWidth),
     .burst_req_t    (dma_req_t            ),
     .meta_t         (dma_meta_t           )
   ) i_idma_distributed_midend (

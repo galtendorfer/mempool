@@ -21,6 +21,7 @@ module idma_distributed_midend #(
   parameter int unsigned TransFifoDepth = 1,
   parameter int unsigned NumTiles          = 64,
   parameter int unsigned NumDASPartitions  = 4,
+  parameter int unsigned RowsInterleavingWidth = $clog2(NumTiles) + 1,
   /// Arbitrary 1D burst request definition
   parameter type         burst_req_t    = logic,
   /// Meta data response definition
@@ -30,7 +31,7 @@ module idma_distributed_midend #(
   input  logic                            rst_ni,
 `ifdef DAS
   // DAS signals
-  input  logic       [$clog2(NumTiles):0] rows_das_i,
+  input  logic       [RowsInterleavingWidth-1:0] rows_das_i,
 `endif
   // Slave
   input  burst_req_t                      burst_req_i,
@@ -212,7 +213,7 @@ module idma_distributed_midend #(
           burst_req_o[i].src[FullRegionAddressBits-1:0] = i*DmaRegionWidth;
           burst_req_o[i].dst = burst_req_i.dst+i*DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
         end else begin
-          burst_req_o[i].src = burst_req_i.src+(i-start_addr[DmaRegionAddressBits+1:DmaRegionAddressBits])*DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
+          burst_req_o[i].src = burst_req_i.src+(full_addr_t'(i)-(start_addr >> DmaRegionAddressBits))*DmaRegionWidth-start_addr[DmaRegionAddressBits-1:0];
           burst_req_o[i].dst[FullRegionAddressBits-1:0] = i*DmaRegionWidth;
         end
 `else
