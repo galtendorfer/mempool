@@ -405,6 +405,7 @@ module mempool_tile
     meta_id_t meta_id;
     tile_group_id_t tile_id;
     tile_core_id_t core_id;
+    logic back2local;
     logic wide;
   } bank_metadata_t;
 
@@ -546,6 +547,7 @@ module mempool_tile
       meta_id   : bank_req_payload[b].wdata.meta_id,
       core_id   : bank_req_payload[b].wdata.core_id,
       tile_id   : bank_req_payload[b].ini_addr,
+      back2local: bank_req_payload[b].wdata.back2local,
       wide      : bank_req_wide[b]
     };
     assign bank_resp_ini_addr[b]              = meta_out.ini_addr;
@@ -553,6 +555,7 @@ module mempool_tile
     assign bank_resp_payload[b].ini_addr      = meta_out.tile_id;
     assign bank_resp_payload[b].rdata.core_id = meta_out.core_id;
     assign bank_resp_payload[b].rdata.amo     = '0; // Don't care
+    assign bank_resp_payload[b].rdata.back2local = meta_out.back2local;
     assign bank_resp_wide[b]                  = meta_out.wide;
 
     tcdm_adapter #(
@@ -701,6 +704,7 @@ module mempool_tile
     sgroup_group_id_t  [NumCoresPerTile-1:0] remote_req_interco_tgt_sg_sel_tmp;
   `else
     group_id_t         [NumCoresPerTile-1:0] remote_req_interco_tgt_sel;
+    group_id_t         [NumCoresPerTile-1:0] remote_req_interco_tgt_g_sel;
   `endif
 
   stream_xbar #(
@@ -846,6 +850,9 @@ module mempool_tile
     }
   };
 
+
+// CORE MUX 
+
   for (genvar c = 0; c < NumCoresPerTile; c++) begin: gen_core_mux
     `ifdef TERAPOOL
       // Remove tile index from local_req_interco_addr_int, since it will not be used for routing.
@@ -904,7 +911,7 @@ module mempool_tile
       addr_t local_req_interco_addr_int;
       assign local_req_interco_payload[c].tgt_addr =
        tcdm_addr_t'({local_req_interco_addr_int[ByteOffset + idx_width(NumBanksPerTile) + $clog2(NumTiles) +: TCDMAddrMemWidth], // Bank address
-               local_req_interco_addr_int[ByteOffset +: idx_width(NumBanksPerTile)]}); // Bank
+                     local_req_interco_addr_int[ByteOffset +: idx_width(NumBanksPerTile)]}); // Bank
 
       // Switch tile and bank indexes for correct upper level routing, and remove the group index
       addr_t prescramble_tcdm_req_tgt_addr;
@@ -919,10 +926,16 @@ module mempool_tile
            prescramble_tcdm_req_tgt_addr[ByteOffset + idx_width(NumBanksPerTile) +: $clog2(NumTilesPerGroup)]}); // Tile
       end
       if (NumGroups == 1) begin : gen_remote_req_interco_tgt_sel
+        assign remote_req_interco_tgt_g_sel[c] = '0;
         assign remote_req_interco_tgt_sel[c] = 1'b0;
       end else begin : gen_remote_req_interco_tgt_sel
         // Output port depends on both the target and initiator group
-        assign remote_req_interco_tgt_sel[c] = (prescramble_tcdm_req_tgt_addr[ByteOffset + $clog2(NumBanksPerTile) + $clog2(NumTilesPerGroup) +: $clog2(NumGroups)]) ^ group_id;
+        assign remote_req_interco_tgt_g_sel[c] = (prescramble_tcdm_req_tgt_addr[ByteOffset + $clog2(NumBanksPerTile) + $clog2(NumTilesPerGroup) +: $clog2(NumGroups)]) ^ group_id;
+`ifdef BACK2LOCAL
+        assign remote_req_interco_tgt_sel[c] = (remote_req_interco_tgt_g_sel[c] == '0) ? group_id_t'(c % NumGroups) : remote_req_interco_tgt_g_sel[c];
+`else
+        assign remote_req_interco_tgt_sel[c] = remote_req_interco_tgt_g_sel[c];
+`endif
       end
     `endif
 
@@ -933,6 +946,17 @@ module mempool_tile
 
     // Constant value
     assign remote_req_interco[c].wdata.core_id = c[idx_width(NumCoresPerTile)-1:0];
+
+  `ifdef TERAPOOL
+    assign remote_req_interco[c].wdata.back2local = 1'b0;
+  `else
+  `ifdef BACK2LOCAL
+    assign remote_req_interco[c].wdata.back2local = (remote_req_interco_tgt_g_sel[c] == '0);
+  `else
+    assign remote_req_interco[c].wdata.back2local = 1'b0;
+  `endif
+  `endif
+    assign local_req_interco_payload[c].wdata.back2local = 1'b0;
 
     // Scramble address before entering TCDM shim for sequential+interleaved memory map
     addr_t snitch_data_qaddr_scrambled;
@@ -951,7 +975,7 @@ module mempool_tile
       .start_das_i        (start_das_i         ),
       .rows_das_i         (rows_das_i          ),
 `else
-      .tiles_das_i        (NumTiles            ),
+  .tiles_das_i        ({NumDASPartitions{TileInterleavingWidth'(NumTiles)}}),
       .start_das_i        ('0                  ),
       .rows_das_i         ('0                  ),
 `endif

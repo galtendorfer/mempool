@@ -252,6 +252,7 @@ package mempool_pkg;
     meta_id_t meta_id;
     tile_core_id_t core_id;
     amo_t amo;
+    logic back2local;
     data_t data;
   } tcdm_payload_t;
 

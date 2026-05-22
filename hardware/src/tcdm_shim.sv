@@ -136,6 +136,7 @@ module tcdm_shim
     .address_map_i (address_map_i                    )
   );
 
+//TODO
   // Connect TCDM output ports
   for (genvar i = 0; i < NrTCDM; i++) begin : gen_tcdm_con
     assign tcdm_req_tgt_addr_o[i] = tcdm_qpayload[i].addr;

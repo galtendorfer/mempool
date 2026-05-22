@@ -671,6 +671,7 @@ module mempool_group
       .TransFifoDepth (8                                       ),
       .NumTiles       (NumTiles                                ),
       .NumDASPartitions  (NumDASPartitions                     ),
+      .RowsInterleavingWidth (RowsInterleavingWidth            ),
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
     ) i_idma_distributed_midend (
@@ -727,9 +728,6 @@ module mempool_group
     logic           [NumTilesPerGroup-1:0] tcdm_dma_resp_ready;
 
     // Connect the IOs to the tiles' signals
-    assign tcdm_master_resp[NumGroups-1:1]         = tcdm_master_resp_i[NumGroups-1:1];
-    assign tcdm_master_resp_valid[NumGroups-1:1]   = tcdm_master_resp_valid_i[NumGroups-1:1];
-    assign tcdm_master_resp_ready_o[NumGroups-1:1] = tcdm_master_resp_ready[NumGroups-1:1];
     assign tcdm_slave_req[NumGroups-1:1]           = tcdm_slave_req_i[NumGroups-1:1];
     assign tcdm_slave_req_valid[NumGroups-1:1]     = tcdm_slave_req_valid_i[NumGroups-1:1];
     assign tcdm_slave_req_ready_o[NumGroups-1:1]   = tcdm_slave_req_ready[NumGroups-1:1];
@@ -740,6 +738,18 @@ module mempool_group
     axi_tile_req_t  [NumDmasPerGroup-1:0]  axi_dma_req;
     axi_tile_resp_t [NumDmasPerGroup-1:0]  axi_dma_resp;
 
+    // Mux output channels into the tile TCDM input ports.
+    tcdm_master_resp_t [NumTilesPerGroup-1:0][NumGroups-1:0] mux_to_tile_master_resp;
+    logic              [NumTilesPerGroup-1:0][NumGroups-1:0] mux_to_tile_master_resp_valid;
+    logic              [NumTilesPerGroup-1:0][NumGroups-1:0] mux_to_tile_master_resp_ready;
+    tcdm_slave_req_t  [NumTilesPerGroup-1:0][NumGroups-1:0] mux_to_tile_slave_req;
+    logic             [NumTilesPerGroup-1:0][NumGroups-1:0] mux_to_tile_slave_req_valid;
+    logic             [NumTilesPerGroup-1:0][NumGroups-1:0] mux_to_tile_slave_req_ready;
+    tcdm_slave_resp_t [NumTilesPerGroup-1:0][NumGroups-1:0] tile_slave_resp;
+    logic             [NumTilesPerGroup-1:0][NumGroups-1:0] tile_slave_resp_valid;
+    logic             [NumTilesPerGroup-1:0][NumGroups-1:0] tile_slave_resp_ready;
+
+
     for (genvar t = 0; unsigned'(t) < NumTilesPerGroup; t++) begin: gen_tiles
       tile_id_t id;
       assign id = (group_id_i << $clog2(NumTilesPerGroup)) | t[idx_width(NumTilesPerGroup)-1:0];
@@ -747,15 +757,7 @@ module mempool_group
       tcdm_master_req_t  [NumGroups-1:0] tran_tcdm_master_req;
       logic              [NumGroups-1:0] tran_tcdm_master_req_valid;
       logic              [NumGroups-1:0] tran_tcdm_master_req_ready;
-      tcdm_slave_req_t   [NumGroups-1:0] tran_tcdm_slave_req;
-      logic              [NumGroups-1:0] tran_tcdm_slave_req_valid;
-      logic              [NumGroups-1:0] tran_tcdm_slave_req_ready;
-      tcdm_master_resp_t [NumGroups-1:0] tran_tcdm_master_resp;
-      logic              [NumGroups-1:0] tran_tcdm_master_resp_valid;
-      logic              [NumGroups-1:0] tran_tcdm_master_resp_ready;
-      tcdm_slave_resp_t  [NumGroups-1:0] tran_tcdm_slave_resp;
-      logic              [NumGroups-1:0] tran_tcdm_slave_resp_valid;
-      logic              [NumGroups-1:0] tran_tcdm_slave_resp_ready;
+
 
       mempool_tile #(
         .TCDMBaseAddr(TCDMBaseAddr),
@@ -771,16 +773,16 @@ module mempool_group
         .tcdm_master_req_o       (tran_tcdm_master_req                           ),
         .tcdm_master_req_valid_o (tran_tcdm_master_req_valid                     ),
         .tcdm_master_req_ready_i (tran_tcdm_master_req_ready                     ),
-        .tcdm_master_resp_i      (tran_tcdm_master_resp                          ),
-        .tcdm_master_resp_valid_i(tran_tcdm_master_resp_valid                    ),
-        .tcdm_master_resp_ready_o(tran_tcdm_master_resp_ready                    ),
+        .tcdm_master_resp_i      (mux_to_tile_master_resp[t]                     ),
+        .tcdm_master_resp_valid_i(mux_to_tile_master_resp_valid[t]               ),
+        .tcdm_master_resp_ready_o(mux_to_tile_master_resp_ready[t]               ),
         // TCDM banks interface
-        .tcdm_slave_req_i        (tran_tcdm_slave_req                            ),
-        .tcdm_slave_req_valid_i  (tran_tcdm_slave_req_valid                      ),
-        .tcdm_slave_req_ready_o  (tran_tcdm_slave_req_ready                      ),
-        .tcdm_slave_resp_o       (tran_tcdm_slave_resp                           ),
-        .tcdm_slave_resp_valid_o (tran_tcdm_slave_resp_valid                     ),
-        .tcdm_slave_resp_ready_i (tran_tcdm_slave_resp_ready                     ),
+        .tcdm_slave_req_i        (mux_to_tile_slave_req[t]                       ),
+        .tcdm_slave_req_valid_i  (mux_to_tile_slave_req_valid[t]                 ),
+        .tcdm_slave_req_ready_o  (mux_to_tile_slave_req_ready[t]                 ),
+        .tcdm_slave_resp_o       (tile_slave_resp[t]                             ),
+        .tcdm_slave_resp_valid_o (tile_slave_resp_valid[t]                       ),
+        .tcdm_slave_resp_ready_i (tile_slave_resp_ready[t]                       ),
         // TCDM DMA interfaces
         .tcdm_dma_req_i          (tcdm_dma_req[t]                                ),
         .tcdm_dma_req_valid_i    (tcdm_dma_req_valid[t]                          ),
@@ -800,21 +802,23 @@ module mempool_group
         .wake_up_i               (wake_up_q[t*NumCoresPerTile +: NumCoresPerTile])
       );
 
+
       // Transpose the group requests
       for (genvar g = 0; g < NumGroups; g++) begin: gen_tran_group_req
         assign tcdm_master_req[g][t]          = tran_tcdm_master_req[g];
         assign tcdm_master_req_valid[g][t]    = tran_tcdm_master_req_valid[g];
         assign tran_tcdm_master_req_ready[g]  = tcdm_master_req_ready[g][t];
-        assign tran_tcdm_master_resp[g]       = tcdm_master_resp[g][t];
-        assign tran_tcdm_master_resp_valid[g] = tcdm_master_resp_valid[g][t];
-        assign tcdm_master_resp_ready[g][t]   = tran_tcdm_master_resp_ready[g];
-        assign tran_tcdm_slave_req[g]         = tcdm_slave_req[g][t];
-        assign tran_tcdm_slave_req_valid[g]   = tcdm_slave_req_valid[g][t];
-        assign tcdm_slave_req_ready[g][t]     = tran_tcdm_slave_req_ready[g];
-        assign tcdm_slave_resp[g][t]          = tran_tcdm_slave_resp[g];
-        assign tcdm_slave_resp_valid[g][t]    = tran_tcdm_slave_resp_valid[g];
-        assign tran_tcdm_slave_resp_ready[g]  = tcdm_slave_resp_ready[g][t];
+        assign tcdm_slave_resp[g][t]          = tile_slave_resp[t][g];
+        assign tcdm_slave_resp_valid[g][t]    = tile_slave_resp_valid[t][g];
+        assign tile_slave_resp_ready[t][g]    = tcdm_slave_resp_ready[g][t];
       end: gen_tran_group_req
+
+      assign mux_to_tile_master_resp[t][0]       = tcdm_master_resp[0][t];
+      assign mux_to_tile_master_resp_valid[t][0] = tcdm_master_resp_valid[0][t];
+      assign tcdm_master_resp_ready[0][t]        = mux_to_tile_master_resp_ready[t][0];
+      assign mux_to_tile_slave_req[t][0]         = tcdm_slave_req[0][t];
+      assign mux_to_tile_slave_req_valid[t][0]   = tcdm_slave_req_valid[0][t];
+      assign tcdm_slave_req_ready[0][t]          = mux_to_tile_slave_req_ready[t][0];
     end : gen_tiles
 
     /*************************
@@ -931,6 +935,172 @@ module mempool_group
       tile_group_id_t [NumTilesPerGroup-1:0] slave_remote_resp_ini_addr;
       tcdm_payload_t  [NumTilesPerGroup-1:0] slave_remote_resp_rdata;
 
+    `ifdef BACK2LOCAL
+      //after demux back2local wires that will connect to the mux before entering tile port
+      logic           [NumTilesPerGroup-1:0] slave_back2local_req_valid;
+      logic           [NumTilesPerGroup-1:0] slave_back2local_req_ready;
+      tile_group_id_t [NumTilesPerGroup-1:0] slave_back2local_req_ini_addr;
+      tile_addr_t     [NumTilesPerGroup-1:0] slave_back2local_req_tgt_addr;
+      strb_t          [NumTilesPerGroup-1:0] slave_back2local_req_be;
+      tcdm_payload_t  [NumTilesPerGroup-1:0] slave_back2local_req_wdata;
+      logic           [NumTilesPerGroup-1:0] slave_back2local_req_wen;
+
+      logic           [NumTilesPerGroup-1:0] master_back2local_resp_valid;
+      logic           [NumTilesPerGroup-1:0] master_back2local_resp_ready;
+      tcdm_payload_t  [NumTilesPerGroup-1:0] master_back2local_resp_rdata;
+
+
+      // Remote interconnect to demux signals.
+      logic           [NumTilesPerGroup-1:0] slave_demux_req_valid;
+      logic           [NumTilesPerGroup-1:0] slave_demux_req_ready;
+      tile_group_id_t [NumTilesPerGroup-1:0] slave_demux_req_ini_addr;
+      tile_addr_t     [NumTilesPerGroup-1:0] slave_demux_req_tgt_addr;
+      strb_t          [NumTilesPerGroup-1:0] slave_demux_req_be;
+      tcdm_payload_t  [NumTilesPerGroup-1:0] slave_demux_req_wdata;
+      logic           [NumTilesPerGroup-1:0] slave_demux_req_wen;
+
+      logic           [NumTilesPerGroup-1:0] master_demux_resp_valid;
+      logic           [NumTilesPerGroup-1:0] master_demux_resp_ready;
+      tcdm_payload_t  [NumTilesPerGroup-1:0] master_demux_resp_rdata;
+
+
+      for (genvar t = 0; t < NumTilesPerGroup; t++) begin: gen_back2local_demux
+        logic [1:0] slave_split_req_valid;
+        logic [1:0] slave_split_req_ready;
+
+        logic [1:0] master_split_resp_valid;
+        logic [1:0] master_split_resp_ready;
+
+        stream_demux #(
+          .N_OUP    (2)
+        ) i_stream_demux_req (
+          .inp_valid_i(slave_demux_req_valid[t]),
+          .inp_ready_o(slave_demux_req_ready[t]),
+          .oup_sel_i  (slave_demux_req_wdata[t].back2local),
+          .oup_valid_o(slave_split_req_valid),
+          .oup_ready_i(slave_split_req_ready)
+        );
+
+        assign slave_split_req_ready[0]      = slave_remote_req_ready[t];
+        assign slave_split_req_ready[1]      = slave_back2local_req_ready[t];
+        assign slave_remote_req_valid[t]     = slave_split_req_valid[0];
+        assign slave_back2local_req_valid[t] = slave_split_req_valid[1];
+
+        stream_demux #(
+          .N_OUP    (2)
+        ) i_stream_demux_resp (
+          .inp_valid_i(master_demux_resp_valid[t]),
+          .inp_ready_o(master_demux_resp_ready[t]),
+          .oup_sel_i  (master_demux_resp_rdata[t].back2local),
+          .oup_valid_o(master_split_resp_valid),
+          .oup_ready_i(master_split_resp_ready)
+        );
+        // Connect stream-demux handshake outputs to remote and Back2Local paths.
+        assign master_split_resp_ready[0]       = tcdm_slave_resp_ready_i[r][t];
+        assign master_split_resp_ready[1]       = master_back2local_resp_ready[t];
+        assign tcdm_slave_resp_valid_o[r][t]    = master_split_resp_valid[0];
+        assign master_back2local_resp_valid[t]  = master_split_resp_valid[1];
+
+        end: gen_back2local_demux
+
+
+        //broadcast resp&req data to remote and back2local
+        for(genvar t=0; t< NumTilesPerGroup; t++ ) begin: gen_demux_broadcast
+          assign slave_remote_req_tgt_addr[t]     = slave_demux_req_tgt_addr[t];
+          assign slave_remote_req_ini_addr[t]     = slave_demux_req_ini_addr[t];
+          assign slave_remote_req_wdata[t]        = slave_demux_req_wdata[t];
+          assign slave_remote_req_wen[t]          = slave_demux_req_wen[t];
+          assign slave_remote_req_be[t]           = slave_demux_req_be[t];
+
+          assign slave_back2local_req_tgt_addr[t] = slave_demux_req_tgt_addr[t];
+          assign slave_back2local_req_ini_addr[t] = slave_demux_req_ini_addr[t];
+          assign slave_back2local_req_wdata[t]    = slave_demux_req_wdata[t];
+          assign slave_back2local_req_wen[t]      = slave_demux_req_wen[t];
+          assign slave_back2local_req_be[t]       = slave_demux_req_be[t];
+
+
+          assign tcdm_slave_resp_s[r][t].rdata    = master_demux_resp_rdata[t];
+          assign master_back2local_resp_rdata[t]  = master_demux_resp_rdata[t];
+        end: gen_demux_broadcast
+
+      // Merge original remote tile traffic with Back2Local traffic before the tile port.
+      for (genvar t = 0; t < NumTilesPerGroup; t++) begin: gen_back2local_mux
+        // 2-to-1 mux inputs.
+        logic [1:0] slave_premux_req_valid;
+        logic [1:0] slave_premux_req_ready;
+        tcdm_slave_req_t   [1:0] slave_premux_req_data;
+        logic [1:0] master_premux_resp_valid;
+        logic [1:0] master_premux_resp_ready;
+        tcdm_master_resp_t [1:0] master_premux_resp_data;
+
+        //handshake on req side, premux INPUT 0 (remote)
+        assign slave_premux_req_valid[0]  = tcdm_slave_req_valid[r][t];
+        assign tcdm_slave_req_ready[r][t] = slave_premux_req_ready[0];
+        assign slave_premux_req_data[0]   = tcdm_slave_req[r][t];
+
+        //handshake req side, premux INPUT 1 (local)
+        assign slave_back2local_req_ready[t]     = slave_premux_req_ready[1];
+        assign slave_premux_req_valid[1]         = slave_back2local_req_valid[t];
+        assign slave_premux_req_data[1].wdata    = slave_back2local_req_wdata[t];
+        assign slave_premux_req_data[1].wen      = slave_back2local_req_wen[t];
+        assign slave_premux_req_data[1].be       = slave_back2local_req_be[t];
+        assign slave_premux_req_data[1].tgt_addr = slave_back2local_req_tgt_addr[t];
+        assign slave_premux_req_data[1].ini_addr = slave_back2local_req_ini_addr[t];
+
+        //handshake on master response side, premux INPUT 0 (remote)
+        assign master_premux_resp_valid[0]  = tcdm_master_resp_valid_i[r][t];
+        assign tcdm_master_resp_ready_o[r][t] = master_premux_resp_ready[0];
+        assign master_premux_resp_data[0]   = tcdm_master_resp_i[r][t];
+
+        //handshake on master response side, premux INPUT 1 (back2local)
+        assign master_back2local_resp_ready[t] = master_premux_resp_ready[1];
+        assign master_premux_resp_valid[1]     = master_back2local_resp_valid[t];
+        assign master_premux_resp_data[1].rdata = master_back2local_resp_rdata[t];
+
+
+        stream_arbiter #(
+          .DATA_T  (tcdm_slave_req_t),
+          .N_INP   (2               ),
+          .ARBITER ("rr"            )
+        ) i_stream_arbiter_req (
+          .clk_i      (clk_i                                  ),
+          .rst_ni     (rst_ni                                 ),
+          .inp_data_i (slave_premux_req_data                  ),
+          .inp_valid_i(slave_premux_req_valid                 ),
+          .inp_ready_o(slave_premux_req_ready                 ),
+          .oup_data_o (mux_to_tile_slave_req[t][r]            ),
+          .oup_valid_o(mux_to_tile_slave_req_valid[t][r]      ),
+          .oup_ready_i(mux_to_tile_slave_req_ready[t][r]      )
+        );
+        stream_arbiter #(
+          .DATA_T  (tcdm_master_resp_t),
+          .N_INP   (2                  ),
+          .ARBITER ("rr"               )
+        ) i_stream_arbiter_master_resp (
+          .clk_i      (clk_i                                  ),
+          .rst_ni     (rst_ni                                 ),
+          .inp_data_i (master_premux_resp_data                ),
+          .inp_valid_i(master_premux_resp_valid               ),
+          .inp_ready_o(master_premux_resp_ready               ),
+          .oup_data_o (mux_to_tile_master_resp[t][r]          ),
+          .oup_valid_o(mux_to_tile_master_resp_valid[t][r]    ),
+          .oup_ready_i(mux_to_tile_master_resp_ready[t][r]    )
+        );
+
+      end: gen_back2local_mux
+
+
+`else
+      for (genvar t = 0; t < NumTilesPerGroup; t++) begin: gen_remote_tile_passthrough
+        assign mux_to_tile_master_resp[t][r]       = tcdm_master_resp_i[r][t];
+        assign mux_to_tile_master_resp_valid[t][r] = tcdm_master_resp_valid_i[r][t];
+        assign tcdm_master_resp_ready_o[r][t]      = mux_to_tile_master_resp_ready[t][r];
+        assign mux_to_tile_slave_req[t][r]         = tcdm_slave_req[r][t];
+        assign mux_to_tile_slave_req_valid[t][r]   = tcdm_slave_req_valid[r][t];
+        assign tcdm_slave_req_ready[r][t]          = mux_to_tile_slave_req_ready[t][r];
+      end: gen_remote_tile_passthrough
+`endif
+
       for (genvar t = 0; t < NumTilesPerGroup; t++) begin: gen_remote_connections
         assign master_remote_req_valid[t]       = tcdm_master_req_valid[r][t];
         assign master_remote_req_tgt_addr[t]    = tcdm_master_req[r][t].tgt_addr;
@@ -949,9 +1119,12 @@ module mempool_group
         assign slave_remote_resp_ini_addr[t]    = tcdm_slave_resp[r][t].ini_addr;
         assign slave_remote_resp_rdata[t]       = tcdm_slave_resp[r][t].rdata;
         assign tcdm_slave_resp_ready[r][t]      = slave_remote_resp_ready[t];
+      `ifndef BACK2LOCAL
         assign tcdm_slave_resp_valid_o[r][t]    = master_remote_resp_valid[t];
         assign tcdm_slave_resp_s[r][t].rdata    = master_remote_resp_rdata[t];
         assign master_remote_resp_ready[t]      = tcdm_slave_resp_ready_i[r][t];
+      `endif
+
       end: gen_remote_connections
 
       variable_latency_interconnect #(
@@ -970,19 +1143,42 @@ module mempool_group
       ) i_remote_interco (
         .clk_i          (clk_i                     ),
         .rst_ni         (rst_ni                    ),
+
+        //incoming from local tile
         .req_valid_i    (master_remote_req_valid   ),
         .req_ready_o    (master_remote_req_ready   ),
         .req_tgt_addr_i (master_remote_req_tgt_addr),
         .req_wen_i      (master_remote_req_wen     ),
         .req_wdata_i    (master_remote_req_wdata   ),
         .req_be_i       (master_remote_req_be      ),
-        .resp_valid_o   (master_remote_resp_valid  ),
-        .resp_ready_i   (master_remote_resp_ready  ),
-        .resp_rdata_o   (master_remote_resp_rdata  ),
+
+      `ifdef BACK2LOCAL
+        //outgoing resp to remote or back2local
+        .resp_valid_o   (master_demux_resp_valid  ),
+        .resp_ready_i   (master_demux_resp_ready  ),
+        .resp_rdata_o   (master_demux_resp_rdata  ),
+      `else
+        .resp_valid_o   (master_remote_resp_valid ),
+        .resp_ready_i   (master_remote_resp_ready ),
+        .resp_rdata_o   (master_remote_resp_rdata ),
+      `endif
+
+        //incoming from local tile
         .resp_ini_addr_i(slave_remote_resp_ini_addr),
         .resp_rdata_i   (slave_remote_resp_rdata   ),
         .resp_valid_i   (slave_remote_resp_valid   ),
         .resp_ready_o   (slave_remote_resp_ready   ),
+
+      `ifdef BACK2LOCAL
+        //outgoing to remote group
+        .req_valid_o    (slave_demux_req_valid    ),
+        .req_ready_i    (slave_demux_req_ready    ),
+        .req_be_o       (slave_demux_req_be       ),
+        .req_wdata_o    (slave_demux_req_wdata    ),
+        .req_wen_o      (slave_demux_req_wen      ),
+        .req_ini_addr_o (slave_demux_req_ini_addr ),
+        .req_tgt_addr_o (slave_demux_req_tgt_addr )
+      `else
         .req_valid_o    (slave_remote_req_valid    ),
         .req_ready_i    (slave_remote_req_ready    ),
         .req_be_o       (slave_remote_req_be       ),
@@ -990,9 +1186,13 @@ module mempool_group
         .req_wen_o      (slave_remote_req_wen      ),
         .req_ini_addr_o (slave_remote_req_ini_addr ),
         .req_tgt_addr_o (slave_remote_req_tgt_addr )
+      `endif
       );
 
     end: gen_remote_interco
+
+
+
 
     /**********************
      *  AXI Interconnect  *
@@ -1091,6 +1291,7 @@ module mempool_group
       .TransFifoDepth (8                                       ),
       .NumTiles       (NumTiles                                ),
       .NumDASPartitions  (NumDASPartitions                     ),
+      .RowsInterleavingWidth (RowsInterleavingWidth            ),
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
     ) i_idma_distributed_midend (
