@@ -123,6 +123,19 @@
 #                     Default: 64 cycles.
 #   plot_comm=0       For `make plots`: skip communication figures and the
 #                     requirement to have `comm_events_benchmark.csv`.
+#   plot_port=1       For `make plots`: also generate monitor-derived
+#                     route-port pressure/fan-in/source-target plots.
+#                     Requires a monitor-enabled result directory.
+#   plot_port_cycle_start=<cycle>
+#                     First monitor cycle for port plots. Default: 7500.
+#   plot_port_cycle_end=<cycle|auto>
+#                     Last monitor cycle for port plots. Default: auto, which
+#                     uses the end of plot_section rounded up to 500 cycles.
+#   plot_port_id=<P>  Route port for focused fan-in/source-target plots.
+#                     Default: 0.
+#   plot_port_threshold=<N>
+#                     Same-tile source-core fan-in threshold for contention
+#                     drilldown CSVs. Default: 2.
 #   parallel_kernels="..."
 #                     For `make plots_parallel`: kernel subset to run.
 #                     Example: "4x4_das_thesis_asm"
@@ -781,6 +794,17 @@ plot_window ?= 64
 plot_section ?= 1
 plot_comm ?= 1
 plot_jobs ?= 1
+plot_port ?= 0
+plot_port_id ?= 0
+plot_port_cycle_start ?= 7500
+plot_port_cycle_end ?= auto
+plot_port_window ?= $(plot_window)
+plot_port_threshold ?= 2
+plot_port_node_point ?= tcdm_remote
+plot_port_graph_dir ?= $(result_dir)/analysis/path_graph
+plot_port_output_dir ?= $(result_dir)/plots/port_pressure
+plot_port_exact_operands ?= 1
+plot_port_operand_offsets ?= 1
 extract_jobs ?= 16
 trace_jobs ?= $(extract_jobs)
 benchmark_comm ?= 1
@@ -796,8 +820,12 @@ plot_force_args = $(if $(filter 1,$(force)),--force,)
 plot_tiles_args = $(if $(strip $(plot_tiles)),--tiles $(plot_tiles),)
 plot_topology_args = $(if $(strip $(plot_topology)),--topology $(plot_topology),)
 rerun_force_args = $(if $(filter 1,$(force)),--force,)
+plot_port_prefix = port$(plot_port_id)
+plot_port_source_target_prefix = $(plot_port_prefix)_source_target
+plot_port_source_target_dir = $(plot_port_graph_dir)/$(plot_port_source_target_prefix)_classification
+plot_port_source_target_matrix = $(plot_port_source_target_dir)/$(plot_port_source_target_prefix)_source_target_matrix.csv
 
-.PHONY: build_app benchmark plots plots_parallel plots_comm archive_result freeze rerun_stall_timeseries save_transcript save_path_monitor comm_events_real stall_timeseries_build prepare_result_data_links
+.PHONY: build_app benchmark plots plots_port plots_parallel plots_comm archive_result freeze rerun_stall_timeseries save_transcript save_path_monitor comm_events_real stall_timeseries_build prepare_result_data_links
 
 prepare_result_data_links:
 	@mkdir -p "$(result_data_dir)"
@@ -996,6 +1024,129 @@ plots:
 				plot_section="$(plot_section)" \
 				python_venv="$(python_venv)" \
 				plots_comm; \
+	fi
+	@if [ "$(plot_port)" = "1" ]; then \
+		$(MAKE) --no-print-directory \
+			result_dir="$(result_dir)" \
+			plot_section="$(plot_section)" \
+			plot_port_id="$(plot_port_id)" \
+			plot_port_cycle_start="$(plot_port_cycle_start)" \
+			plot_port_cycle_end="$(plot_port_cycle_end)" \
+			plot_port_window="$(plot_port_window)" \
+			plot_port_threshold="$(plot_port_threshold)" \
+			plot_port_node_point="$(plot_port_node_point)" \
+			plot_port_graph_dir="$(plot_port_graph_dir)" \
+			plot_port_output_dir="$(plot_port_output_dir)" \
+			plot_port_exact_operands="$(plot_port_exact_operands)" \
+			plot_port_operand_offsets="$(plot_port_operand_offsets)" \
+			python="$(python)" \
+			force="$(force)" \
+			plots_port; \
+	fi
+
+plots_port:
+	@if [ ! -d "$(result_dir)/monitor" ]; then \
+		echo "ERROR: monitor directory missing: $(result_dir)/monitor" >&2; \
+		echo "       Re-run the benchmark with tile_path_monitor=1 and tile_path_source_ports_only=1." >&2; \
+		exit 1; \
+	fi
+	@if ! ls "$(result_dir)"/monitor/tile_path_tile*.csv >/dev/null 2>&1; then \
+		echo "ERROR: no tile path monitor CSVs found in $(result_dir)/monitor" >&2; \
+		exit 1; \
+	fi
+	@if [ "$(plot_port_cycle_end)" = "auto" ] && [ ! -f "$(result_dir)/data/stall_timeseries_benchmark.csv" ]; then \
+		echo "ERROR: cannot infer plot_port_cycle_end=auto without $(result_dir)/data/stall_timeseries_benchmark.csv" >&2; \
+		exit 1; \
+	fi
+	@plot_port_cycle_end_resolved="$(plot_port_cycle_end)"; \
+	if [ "$$plot_port_cycle_end_resolved" = "auto" ]; then \
+		plot_port_cycle_end_resolved="$$( \
+			$(python) -c 'import csv,sys; path=sys.argv[1]; section=int(sys.argv[2]); cycles=[]; f=open(path, newline=""); reader=csv.DictReader(f); [cycles.append(int(row["cycle"])) for row in reader if row.get("section") not in (None, "") and int(row["section"]) == section]; f.close(); print(((max(cycles)+499)//500)*500 if cycles else "")' \
+				"$(result_dir)/data/stall_timeseries_benchmark.csv" "$(plot_section)" \
+		)"; \
+	fi; \
+	if [ -z "$$plot_port_cycle_end_resolved" ]; then \
+		echo "ERROR: no cycles found for plot_section=$(plot_section); cannot infer plot_port_cycle_end" >&2; \
+		exit 1; \
+	fi; \
+	if [ "$(plot_port_exact_operands)" = "1" ]; then \
+		plot_port_operand_args="--require-exact-operands"; \
+		plot_port_classified_operand_args=""; \
+	else \
+		plot_port_operand_args="--allow-legacy-route-operands"; \
+		plot_port_classified_operand_args="--allow-legacy-route-operands"; \
+	fi; \
+	plot_port_force_args=""; \
+	if [ "$(force)" = "1" ]; then \
+		plot_port_force_args="--force"; \
+	fi; \
+	echo "INFO: port plots use cycles $(plot_port_cycle_start)..$$plot_port_cycle_end_resolved"; \
+	$(python) $(ROOT_DIR)/scripts/trace_analysis/path_graph_dataset.py \
+		"$(result_dir)" \
+		--output-dir "$(plot_port_graph_dir)" \
+		--point "$(plot_port_node_point)" \
+		--cycle-start "$(plot_port_cycle_start)" \
+		--cycle-end "$$plot_port_cycle_end_resolved" \
+		--window-size "$(plot_port_window)" \
+		--no-html; \
+	$(python) $(ROOT_DIR)/scripts/trace_analysis/plot/plot_port_pressure.py \
+		"$(plot_port_graph_dir)" \
+		--metric-source node-state \
+		--node-point "$(plot_port_node_point)" \
+		--cycle-start "$(plot_port_cycle_start)" \
+		--cycle-end "$$plot_port_cycle_end_resolved" \
+		--average-section "$(plot_section)" \
+		--window "$(plot_port_window)" \
+		--output-dir "$(plot_port_output_dir)" \
+		--prefix all_ports_pressure \
+		$$plot_port_force_args; \
+	$(python) $(ROOT_DIR)/scripts/trace_analysis/plot/plot_port_fanin_heatmap.py \
+		"$(plot_port_graph_dir)" \
+		--cycle-start "$(plot_port_cycle_start)" \
+		--cycle-end "$$plot_port_cycle_end_resolved" \
+		--window "$(plot_port_window)" \
+		--port "$(plot_port_id)" \
+		--node-point "$(plot_port_node_point)" \
+		--output-dir "$(plot_port_output_dir)" \
+		--prefix "$(plot_port_prefix)_tile_fanin" \
+		$$plot_port_operand_args \
+		$$plot_port_force_args; \
+	$(python) $(ROOT_DIR)/scripts/trace_analysis/plot/plot_fanin_flow_overlay.py \
+		"$(plot_port_graph_dir)" \
+		--cycle-start "$(plot_port_cycle_start)" \
+		--cycle-end "$$plot_port_cycle_end_resolved" \
+		--window "$(plot_port_window)" \
+		--port "$(plot_port_id)" \
+		--node-point "$(plot_port_node_point)" \
+		--threshold "$(plot_port_threshold)" \
+		--output-dir "$(plot_port_output_dir)" \
+		--prefix "$(plot_port_prefix)_fanin_flow" \
+		$$plot_port_operand_args \
+		$$plot_port_force_args; \
+	$(python) $(ROOT_DIR)/scripts/trace_analysis/classify_source_targets.py \
+		"$(plot_port_graph_dir)" \
+		--cycle-start "$(plot_port_cycle_start)" \
+		--cycle-end "$$plot_port_cycle_end_resolved" \
+		--port "$(plot_port_id)" \
+		--node-point "$(plot_port_node_point)" \
+		--high-fanin-threshold "$(plot_port_threshold)" \
+		--prefix "$(plot_port_source_target_prefix)" \
+		$$plot_port_operand_args \
+		$$plot_port_force_args; \
+	$(python) $(ROOT_DIR)/scripts/trace_analysis/plot/plot_source_target_classification.py \
+		"$(plot_port_source_target_matrix)" \
+		--output-dir "$(plot_port_output_dir)" \
+		--prefix "$(plot_port_source_target_prefix)" \
+		$$plot_port_classified_operand_args \
+		$$plot_port_force_args; \
+	if [ "$(plot_port_operand_offsets)" = "1" ]; then \
+		$(python) $(ROOT_DIR)/scripts/trace_analysis/plot/plot_source_target_operand_offsets.py \
+			"$(plot_port_source_target_matrix)" \
+			--port "$(plot_port_id)" \
+			--output-dir "$(plot_port_output_dir)" \
+			--prefix "$(plot_port_prefix)_operand_offsets" \
+			$$plot_port_classified_operand_args \
+			$$plot_port_force_args; \
 	fi
 
 # Public Stage 2 parallel plotting entry point.

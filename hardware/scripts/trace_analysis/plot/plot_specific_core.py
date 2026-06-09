@@ -42,6 +42,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from _plot_output_paths import pdf_path_for_png
+
 from _stall_plot_common import (
     STALL_CATEGORIES, STALL_COLORS, stall_label,
     load_rows, filter_rows, split_stall_kind,
@@ -242,7 +244,8 @@ def write_core_detail(png_path, csv_path, series, traces_dir=None):
     fig.suptitle(f"Core {cid} Detail Report", fontsize=17, fontweight="bold")
 
     fig.savefig(png_path, dpi=96, bbox_inches="tight")
-    pdf_path = png_path.with_suffix(".pdf")
+    pdf_path = pdf_path_for_png(png_path)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(pdf_path, bbox_inches="tight")
     return fig, png_path, pdf_path
 

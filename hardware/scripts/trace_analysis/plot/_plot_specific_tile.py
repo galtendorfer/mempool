@@ -19,8 +19,8 @@ Positional arguments:
 Options:
     --output-dir DIR   Output directory for PNGs [default: <csv-dir>/plots]
     --prefix STR       Filename prefix [default: tile_detail]
-                       Output files: <prefix>_overview.png/.pdf,
-                                     <prefix>_tile<id>.png/.pdf
+                       Output files: <prefix>_overview.png + pdf/<prefix>_overview.pdf,
+                                     <prefix>_tile<id>.png + pdf/<prefix>_tile<id>.pdf
     --window N         Cycle window for windowed aggregation [default: 64]
     --overview         Also generate the cluster overview PNG + PDF
     --traces-dir DIR   Deprecated compatibility flag. Ignored in the
@@ -46,6 +46,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+from _plot_output_paths import pdf_path_for_png
 
 from _stall_plot_common import (
     STALL_CATEGORIES, STALL_COLORS, stall_label,
@@ -322,7 +324,8 @@ def write_overview_page(path, agg, filter_desc, window):
              f"Filters: {filter_desc}. Window={window} cycles.",
              fontsize=9, alpha=0.82, va="top")
     fig.savefig(path, dpi=96, bbox_inches="tight")
-    pdf_path = path.with_suffix(".pdf")
+    pdf_path = pdf_path_for_png(path)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(pdf_path, bbox_inches="tight")
     return fig, pdf_path
 
@@ -459,7 +462,8 @@ def write_group_overview_page(path, group_stats, filter_desc):
              f"elapsed section span={elapsed_cycles} cycles.",
              fontsize=9, alpha=0.82, va="top")
     fig.savefig(path, dpi=96, bbox_inches="tight")
-    pdf_path = path.with_suffix(".pdf")
+    pdf_path = pdf_path_for_png(path)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(pdf_path, bbox_inches="tight")
     return fig, pdf_path
 
@@ -601,7 +605,8 @@ def write_tile_detail(png_path, ts):
     fig.suptitle(f"Tile {tid} Detail Report", fontsize=17, fontweight="bold")
 
     fig.savefig(png_path, dpi=96, bbox_inches="tight")
-    pdf_path = png_path.with_suffix(".pdf")
+    pdf_path = pdf_path_for_png(png_path)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(pdf_path, bbox_inches="tight")
     return fig, pdf_path
 
@@ -703,7 +708,8 @@ def write_group_detail(png_path, series):
     fig.suptitle(title, fontsize=17, fontweight="bold")
 
     fig.savefig(png_path, dpi=96, bbox_inches="tight")
-    pdf_path = png_path.with_suffix(".pdf")
+    pdf_path = pdf_path_for_png(png_path)
+    pdf_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(pdf_path, bbox_inches="tight")
     return fig, pdf_path
 
