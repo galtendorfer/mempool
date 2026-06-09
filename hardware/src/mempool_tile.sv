@@ -709,10 +709,11 @@ module mempool_tile
   tcdm_master_resp_t [NumCoresPerTile-1:0] remote_resp_interco;
   logic              [NumCoresPerTile-1:0] remote_resp_interco_valid;
   logic              [NumCoresPerTile-1:0] remote_resp_interco_ready;
+  tcdm_master_resp_t [NumCoresPerTile-1:0] remote_resp_from_memory;
+  logic              [NumCoresPerTile-1:0] remote_resp_from_memory_valid;
+  logic              [NumCoresPerTile-1:0] remote_resp_from_memory_ready;
 
   assign remote_req_mem = remote_req_interco;
-  assign remote_req_mem_valid = remote_req_interco_valid;
-  assign remote_req_interco_ready = remote_req_mem_ready;
 
   `ifdef TERAPOOL
     tile_remote_sel_t  [NumCoresPerTile-1:0] remote_req_interco_tgt_sel;
@@ -722,6 +723,506 @@ module mempool_tile
     group_id_t         [NumCoresPerTile-1:0] remote_req_interco_tgt_sel;
     group_id_t         [NumCoresPerTile-1:0] remote_req_interco_tgt_g_sel;
   `endif
+
+`ifndef TCDM_PREFETCH_EXPERIMENT
+  assign remote_req_mem_valid = remote_req_interco_valid;
+  assign remote_req_interco_ready = remote_req_mem_ready;
+  assign remote_resp_interco = remote_resp_from_memory;
+  assign remote_resp_interco_valid = remote_resp_from_memory_valid;
+  assign remote_resp_from_memory_ready = remote_resp_interco_ready;
+`endif
+
+`ifdef TCDM_PREFETCH_EXPERIMENT
+  localparam int unsigned TCDMPrefetchBlockWords = 4;
+  localparam int unsigned TCDMPrefetchDegree = 3;
+  localparam int unsigned TCDMPrefetchPhaseWidth = idx_width(TCDMPrefetchBlockWords);
+  localparam tcdm_addr_t  TCDMPrefetchInnerDelta = tcdm_addr_t'(16);
+  localparam int unsigned TCDMPrefetchBufferDepth = 4;
+  localparam int unsigned TCDMPrefetchOwnerDepth = 8;
+  localparam int unsigned TCDMPrefetchBufferIdxWidth = idx_width(TCDMPrefetchBufferDepth);
+  localparam int unsigned TCDMPrefetchOwnerPtrWidth = idx_width(TCDMPrefetchOwnerDepth);
+  localparam int unsigned TCDMPrefetchOwnerCountWidth = idx_width(TCDMPrefetchOwnerDepth+1);
+  localparam int unsigned TCDMPrefetchCoreEventWidth = idx_width(NumCoresPerTile+1);
+  localparam int unsigned TCDMPrefetchRouteEventWidth = idx_width(NumRemoteReqRoutes+1);
+
+  typedef struct packed {
+    logic                  is_prefetch;
+    tile_core_id_t         core;
+    remote_req_route_sel_t route;
+    tcdm_addr_t            addr;
+  } tcdm_prefetch_owner_t;
+
+  logic       [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0] tcdm_prefetch_stream_valid_q;
+  logic       [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0] tcdm_prefetch_jump_valid_q;
+  logic       [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0][TCDMPrefetchPhaseWidth-1:0]
+              tcdm_prefetch_phase_q;
+  tcdm_addr_t [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0] tcdm_prefetch_last_addr_q;
+  tcdm_addr_t [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0] tcdm_prefetch_last_jump_q;
+  logic       [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0] tcdm_prefetch_last_back2local_q;
+  logic       [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0] tcdm_prefetch_predict_valid;
+  tcdm_addr_t [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0][TCDMPrefetchDegree-1:0]
+              tcdm_prefetch_predict_addr;
+  logic       [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0][TCDMPrefetchBufferDepth-1:0]
+              tcdm_prefetch_buffer_valid_q;
+  tcdm_addr_t [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0][TCDMPrefetchBufferDepth-1:0]
+              tcdm_prefetch_buffer_addr_q;
+  data_t      [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0][TCDMPrefetchBufferDepth-1:0]
+              tcdm_prefetch_buffer_data_q;
+  logic       [NumCoresPerTile-1:0][NumRemoteReqRoutes-1:0] tcdm_prefetch_buffer_has_free;
+  logic       [NumCoresPerTile-1:0] tcdm_prefetch_hit_valid;
+  remote_req_route_sel_t [NumCoresPerTile-1:0] tcdm_prefetch_hit_route;
+  logic       [NumCoresPerTile-1:0][TCDMPrefetchBufferIdxWidth-1:0] tcdm_prefetch_hit_index;
+  tcdm_master_resp_t [NumCoresPerTile-1:0] tcdm_prefetch_hit_resp_q;
+  logic       [NumCoresPerTile-1:0] tcdm_prefetch_hit_resp_valid_q;
+  tcdm_master_resp_t [NumRemoteReqRoutes-1:0] tcdm_prefetch_resp_xbar_data;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_resp_xbar_valid;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_resp_xbar_ready;
+  tcdm_master_req_t [NumRemoteReqRoutes-1:0] tcdm_prefetch_demand_req;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_demand_valid;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_demand_ready;
+  tcdm_master_req_t [NumRemoteReqRoutes-1:0] tcdm_prefetch_req;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_req_valid;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_req_ready;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_out_is_prefetch;
+  tcdm_prefetch_owner_t [NumRemoteReqRoutes-1:0][TCDMPrefetchOwnerDepth-1:0]
+                         tcdm_prefetch_owner_q;
+  logic       [NumRemoteReqRoutes-1:0][TCDMPrefetchOwnerDepth-1:0]
+              tcdm_prefetch_owner_valid_q;
+  logic       [NumRemoteReqRoutes-1:0][TCDMPrefetchOwnerPtrWidth-1:0]
+              tcdm_prefetch_owner_head_q;
+  logic       [NumRemoteReqRoutes-1:0][TCDMPrefetchOwnerPtrWidth-1:0]
+              tcdm_prefetch_owner_tail_q;
+  logic       [NumRemoteReqRoutes-1:0][TCDMPrefetchOwnerCountWidth-1:0]
+              tcdm_prefetch_owner_count_q;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_owner_full;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_owner_empty;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_owner_push;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_owner_pop;
+  tcdm_prefetch_owner_t [NumRemoteReqRoutes-1:0] tcdm_prefetch_owner_push_data;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_resp_capture;
+  logic       [NumRemoteReqRoutes-1:0] tcdm_prefetch_capture_has_free;
+  logic       [TCDMPrefetchCoreEventWidth-1:0] tcdm_prefetch_observed_reads_d;
+  logic       [idx_width(NumCoresPerTile*TCDMPrefetchDegree+1)-1:0]
+              tcdm_prefetch_predict_candidates_d;
+  logic       [TCDMPrefetchRouteEventWidth-1:0] tcdm_prefetch_issued_d;
+  logic       [TCDMPrefetchRouteEventWidth-1:0] tcdm_prefetch_captured_d;
+  logic       [TCDMPrefetchCoreEventWidth-1:0] tcdm_prefetch_hits_d;
+  logic       [TCDMPrefetchRouteEventWidth-1:0] tcdm_prefetch_dropped_d;
+  logic [63:0] tcdm_prefetch_observed_reads_q;
+  logic [63:0] tcdm_prefetch_predict_candidates_q;
+  logic [63:0] tcdm_prefetch_issued_q;
+  logic [63:0] tcdm_prefetch_captured_q;
+  logic [63:0] tcdm_prefetch_hits_q;
+  logic [63:0] tcdm_prefetch_dropped_q;
+
+  always_comb begin : proc_tcdm_prefetch_predict
+    tcdm_prefetch_predict_valid = '0;
+    tcdm_prefetch_predict_addr = '0;
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      for (int r = 0; r < NumRemoteReqRoutes; r++) begin
+        tcdm_addr_t predicted_addr;
+        logic [TCDMPrefetchPhaseWidth-1:0] predicted_phase;
+
+        tcdm_prefetch_predict_valid[c][r] =
+          tcdm_prefetch_stream_valid_q[c][r] && tcdm_prefetch_jump_valid_q[c][r];
+        predicted_addr = tcdm_prefetch_last_addr_q[c][r];
+        predicted_phase = tcdm_prefetch_phase_q[c][r];
+        for (int p = 0; p < TCDMPrefetchDegree; p++) begin
+          if (tcdm_prefetch_predict_valid[c][r]) begin
+            if (predicted_phase < TCDMPrefetchBlockWords - 1) begin
+              predicted_addr = predicted_addr + TCDMPrefetchInnerDelta;
+              predicted_phase = predicted_phase + 1'b1;
+            end else begin
+              predicted_addr = predicted_addr + tcdm_prefetch_last_jump_q[c][r];
+              predicted_phase = '0;
+            end
+            tcdm_prefetch_predict_addr[c][r][p] = predicted_addr;
+          end
+        end
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_counters
+    tcdm_prefetch_observed_reads_d = '0;
+    tcdm_prefetch_predict_candidates_d = '0;
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      int unsigned route;
+
+      route = '0;
+      if (remote_req_interco_valid[c] &&
+          remote_req_interco_ready[c] &&
+          !remote_req_interco[c].wen) begin
+        route = int'(remote_req_interco_tgt_sel[c]);
+        if (route < NumRemoteReqRoutes) begin
+          tcdm_prefetch_observed_reads_d = tcdm_prefetch_observed_reads_d + 1'b1;
+          if (tcdm_prefetch_predict_valid[c][route]) begin
+            tcdm_prefetch_predict_candidates_d =
+              tcdm_prefetch_predict_candidates_d + TCDMPrefetchDegree;
+          end
+        end
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_event_counters
+    tcdm_prefetch_issued_d = '0;
+    tcdm_prefetch_captured_d = '0;
+    tcdm_prefetch_hits_d = '0;
+    tcdm_prefetch_dropped_d = '0;
+    tcdm_prefetch_capture_has_free = '0;
+
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      if (tcdm_prefetch_hit_valid[c] && remote_req_interco_ready[c]) begin
+        tcdm_prefetch_hits_d = tcdm_prefetch_hits_d + 1'b1;
+      end
+    end
+
+    for (int h = 0; h < NumRemoteReqRoutes; h++) begin
+      if (tcdm_prefetch_owner_push[h] && !tcdm_prefetch_owner_full[h] &&
+          tcdm_prefetch_out_is_prefetch[h]) begin
+        tcdm_prefetch_issued_d = tcdm_prefetch_issued_d + 1'b1;
+      end
+
+      if (tcdm_prefetch_resp_capture[h] &&
+          !tcdm_prefetch_owner_empty[h] &&
+          tcdm_prefetch_owner_valid_q[h][tcdm_prefetch_owner_head_q[h]]) begin
+        for (int b = 0; b < TCDMPrefetchBufferDepth; b++) begin
+          if (!tcdm_prefetch_buffer_valid_q[
+                tcdm_prefetch_owner_q[h][tcdm_prefetch_owner_head_q[h]].core
+              ][
+                tcdm_prefetch_owner_q[h][tcdm_prefetch_owner_head_q[h]].route
+              ][b]) begin
+            tcdm_prefetch_capture_has_free[h] = 1'b1;
+          end
+        end
+
+        if (tcdm_prefetch_capture_has_free[h]) begin
+          tcdm_prefetch_captured_d = tcdm_prefetch_captured_d + 1'b1;
+        end else begin
+          tcdm_prefetch_dropped_d = tcdm_prefetch_dropped_d + 1'b1;
+        end
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_buffer_lookup
+    tcdm_prefetch_buffer_has_free = '0;
+    tcdm_prefetch_hit_valid = '0;
+    tcdm_prefetch_hit_route = '0;
+    tcdm_prefetch_hit_index = '0;
+
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      for (int r = 0; r < NumRemoteReqRoutes; r++) begin
+        for (int b = 0; b < TCDMPrefetchBufferDepth; b++) begin
+          if (!tcdm_prefetch_buffer_valid_q[c][r][b]) begin
+            tcdm_prefetch_buffer_has_free[c][r] = 1'b1;
+          end
+        end
+      end
+    end
+
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      int unsigned route;
+
+      route = int'(remote_req_interco_tgt_sel[c]);
+      if (remote_req_interco_valid[c] &&
+          !remote_req_interco[c].wen &&
+          !tcdm_prefetch_hit_resp_valid_q[c] &&
+          route < NumRemoteReqRoutes) begin
+        for (int b = 0; b < TCDMPrefetchBufferDepth; b++) begin
+          if (!tcdm_prefetch_hit_valid[c] &&
+              tcdm_prefetch_buffer_valid_q[c][route][b] &&
+              tcdm_prefetch_buffer_addr_q[c][route][b] == remote_req_interco[c].tgt_addr) begin
+            tcdm_prefetch_hit_valid[c] = 1'b1;
+            tcdm_prefetch_hit_route[c] = remote_req_route_sel_t'(route);
+            tcdm_prefetch_hit_index[c] = TCDMPrefetchBufferIdxWidth'(b);
+          end
+        end
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_hit_filter
+    remote_req_mem_valid = '0;
+    remote_req_interco_ready = '0;
+
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      if (tcdm_prefetch_hit_valid[c]) begin
+        remote_req_interco_ready[c] = 1'b1;
+      end else begin
+        remote_req_mem_valid[c] = remote_req_interco_valid[c];
+        remote_req_interco_ready[c] = remote_req_mem_ready[c];
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_request_select
+    tcdm_prefetch_req = '0;
+    tcdm_prefetch_req_valid = '0;
+
+    for (int r = 0; r < NumRemoteReqRoutes; r++) begin
+      for (int c = 0; c < NumCoresPerTile; c++) begin
+        for (int p = 0; p < TCDMPrefetchDegree; p++) begin
+          logic duplicate;
+
+          duplicate = 1'b0;
+          for (int b = 0; b < TCDMPrefetchBufferDepth; b++) begin
+            if (tcdm_prefetch_buffer_valid_q[c][r][b] &&
+                tcdm_prefetch_buffer_addr_q[c][r][b] == tcdm_prefetch_predict_addr[c][r][p]) begin
+              duplicate = 1'b1;
+            end
+          end
+          for (int o = 0; o < TCDMPrefetchOwnerDepth; o++) begin
+            if (tcdm_prefetch_owner_valid_q[r][o] &&
+                tcdm_prefetch_owner_q[r][o].is_prefetch &&
+                tcdm_prefetch_owner_q[r][o].core == tile_core_id_t'(c) &&
+                tcdm_prefetch_owner_q[r][o].addr == tcdm_prefetch_predict_addr[c][r][p]) begin
+              duplicate = 1'b1;
+            end
+          end
+
+          if (!tcdm_prefetch_req_valid[r] &&
+              tcdm_prefetch_predict_valid[c][r] &&
+              tcdm_prefetch_buffer_has_free[c][r] &&
+              !duplicate) begin
+            tcdm_prefetch_req_valid[r] = 1'b1;
+            tcdm_prefetch_req[r].wen = 1'b0;
+            tcdm_prefetch_req[r].be = '1;
+            tcdm_prefetch_req[r].tgt_addr = tcdm_prefetch_predict_addr[c][r][p];
+            tcdm_prefetch_req[r].wdata = '0;
+            tcdm_prefetch_req[r].wdata.core_id = tile_core_id_t'(c);
+            tcdm_prefetch_req[r].wdata.back2local = tcdm_prefetch_last_back2local_q[c][r];
+          end
+        end
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_request_mux
+    prereg_tcdm_master_req = '0;
+    prereg_tcdm_master_req_valid = '0;
+    tcdm_prefetch_demand_ready = '0;
+    tcdm_prefetch_req_ready = '0;
+    tcdm_prefetch_out_is_prefetch = '0;
+    tcdm_prefetch_owner_push = '0;
+    tcdm_prefetch_owner_push_data = '0;
+
+    for (int h = 0; h < NumRemoteReqRoutes; h++) begin
+      if (tcdm_prefetch_demand_valid[h]) begin
+        prereg_tcdm_master_req[h] = tcdm_prefetch_demand_req[h];
+        prereg_tcdm_master_req_valid[h] =
+          tcdm_prefetch_demand_valid[h] && !tcdm_prefetch_owner_full[h];
+        tcdm_prefetch_demand_ready[h] =
+          prereg_tcdm_master_req_ready[h] && !tcdm_prefetch_owner_full[h];
+        tcdm_prefetch_owner_push[h] =
+          prereg_tcdm_master_req_valid[h] && prereg_tcdm_master_req_ready[h];
+        tcdm_prefetch_owner_push_data[h].is_prefetch = 1'b0;
+        tcdm_prefetch_owner_push_data[h].core = tcdm_prefetch_demand_req[h].wdata.core_id;
+        tcdm_prefetch_owner_push_data[h].route = remote_req_route_sel_t'(h);
+        tcdm_prefetch_owner_push_data[h].addr = tcdm_prefetch_demand_req[h].tgt_addr;
+      end else if (tcdm_prefetch_req_valid[h]) begin
+        prereg_tcdm_master_req[h] = tcdm_prefetch_req[h];
+        prereg_tcdm_master_req_valid[h] =
+          tcdm_prefetch_req_valid[h] && !tcdm_prefetch_owner_full[h];
+        tcdm_prefetch_req_ready[h] =
+          prereg_tcdm_master_req_ready[h] && !tcdm_prefetch_owner_full[h];
+        tcdm_prefetch_out_is_prefetch[h] = 1'b1;
+        tcdm_prefetch_owner_push[h] =
+          prereg_tcdm_master_req_valid[h] && prereg_tcdm_master_req_ready[h];
+        tcdm_prefetch_owner_push_data[h].is_prefetch = 1'b1;
+        tcdm_prefetch_owner_push_data[h].core = tcdm_prefetch_req[h].wdata.core_id;
+        tcdm_prefetch_owner_push_data[h].route = remote_req_route_sel_t'(h);
+        tcdm_prefetch_owner_push_data[h].addr = tcdm_prefetch_req[h].tgt_addr;
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_response_filter
+    tcdm_prefetch_resp_xbar_data = postreg_tcdm_master_resp;
+    tcdm_prefetch_resp_xbar_valid = '0;
+    postreg_tcdm_master_resp_ready = '0;
+    tcdm_prefetch_owner_pop = '0;
+    tcdm_prefetch_resp_capture = '0;
+
+    for (int h = 0; h < NumRemoteReqRoutes; h++) begin
+      if (postreg_tcdm_master_resp_valid[h] &&
+          !tcdm_prefetch_owner_empty[h] &&
+          tcdm_prefetch_owner_valid_q[h][tcdm_prefetch_owner_head_q[h]] &&
+          tcdm_prefetch_owner_q[h][tcdm_prefetch_owner_head_q[h]].is_prefetch) begin
+        postreg_tcdm_master_resp_ready[h] = 1'b1;
+        tcdm_prefetch_owner_pop[h] = 1'b1;
+        tcdm_prefetch_resp_capture[h] = 1'b1;
+      end else begin
+        tcdm_prefetch_resp_xbar_valid[h] = postreg_tcdm_master_resp_valid[h];
+        postreg_tcdm_master_resp_ready[h] = tcdm_prefetch_resp_xbar_ready[h];
+        tcdm_prefetch_owner_pop[h] =
+          postreg_tcdm_master_resp_valid[h] &&
+          tcdm_prefetch_resp_xbar_ready[h] &&
+          !tcdm_prefetch_owner_empty[h] &&
+          tcdm_prefetch_owner_valid_q[h][tcdm_prefetch_owner_head_q[h]];
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_resp_mux
+    remote_resp_interco = remote_resp_from_memory;
+    remote_resp_interco_valid = remote_resp_from_memory_valid;
+    remote_resp_from_memory_ready = remote_resp_interco_ready;
+
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      if (tcdm_prefetch_hit_resp_valid_q[c]) begin
+        remote_resp_interco[c] = tcdm_prefetch_hit_resp_q[c];
+        remote_resp_interco_valid[c] = 1'b1;
+        remote_resp_from_memory_ready[c] = 1'b0;
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : proc_tcdm_prefetch_observe
+    if (!rst_ni) begin
+      tcdm_prefetch_stream_valid_q <= '0;
+      tcdm_prefetch_jump_valid_q <= '0;
+      tcdm_prefetch_phase_q <= '0;
+      tcdm_prefetch_last_addr_q <= '0;
+      tcdm_prefetch_last_jump_q <= '0;
+      tcdm_prefetch_last_back2local_q <= '0;
+      tcdm_prefetch_observed_reads_q <= '0;
+      tcdm_prefetch_predict_candidates_q <= '0;
+    end else begin
+      tcdm_prefetch_observed_reads_q <=
+        tcdm_prefetch_observed_reads_q + tcdm_prefetch_observed_reads_d;
+      tcdm_prefetch_predict_candidates_q <=
+        tcdm_prefetch_predict_candidates_q + tcdm_prefetch_predict_candidates_d;
+
+      for (int c = 0; c < NumCoresPerTile; c++) begin
+        if (remote_req_interco_valid[c] &&
+            remote_req_interco_ready[c] &&
+            !remote_req_interco[c].wen) begin
+          tcdm_addr_t delta;
+          int unsigned route;
+
+          route = int'(remote_req_interco_tgt_sel[c]);
+          if (route < NumRemoteReqRoutes) begin
+            delta = remote_req_interco[c].tgt_addr - tcdm_prefetch_last_addr_q[c][route];
+
+            if (tcdm_prefetch_stream_valid_q[c][route]) begin
+              if (delta == TCDMPrefetchInnerDelta) begin
+                if (tcdm_prefetch_phase_q[c][route] < TCDMPrefetchBlockWords - 1) begin
+                  tcdm_prefetch_phase_q[c][route] <= tcdm_prefetch_phase_q[c][route] + 1'b1;
+                end
+              end else if (tcdm_prefetch_phase_q[c][route] >= TCDMPrefetchBlockWords - 1) begin
+                tcdm_prefetch_last_jump_q[c][route] <= delta;
+                tcdm_prefetch_jump_valid_q[c][route] <= 1'b1;
+                tcdm_prefetch_phase_q[c][route] <= '0;
+              end else begin
+                tcdm_prefetch_phase_q[c][route] <= '0;
+              end
+            end
+
+            tcdm_prefetch_stream_valid_q[c][route] <= 1'b1;
+            tcdm_prefetch_last_addr_q[c][route] <= remote_req_interco[c].tgt_addr;
+            tcdm_prefetch_last_back2local_q[c][route] <= remote_req_interco[c].wdata.back2local;
+          end
+        end
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : proc_tcdm_prefetch_state
+    if (!rst_ni) begin
+      tcdm_prefetch_buffer_valid_q <= '0;
+      tcdm_prefetch_buffer_addr_q <= '0;
+      tcdm_prefetch_buffer_data_q <= '0;
+      tcdm_prefetch_hit_resp_q <= '0;
+      tcdm_prefetch_hit_resp_valid_q <= '0;
+      tcdm_prefetch_owner_q <= '0;
+      tcdm_prefetch_owner_valid_q <= '0;
+      tcdm_prefetch_owner_head_q <= '0;
+      tcdm_prefetch_owner_tail_q <= '0;
+      tcdm_prefetch_owner_count_q <= '0;
+      tcdm_prefetch_issued_q <= '0;
+      tcdm_prefetch_captured_q <= '0;
+      tcdm_prefetch_hits_q <= '0;
+      tcdm_prefetch_dropped_q <= '0;
+    end else begin
+      tcdm_prefetch_issued_q <= tcdm_prefetch_issued_q + tcdm_prefetch_issued_d;
+      tcdm_prefetch_captured_q <= tcdm_prefetch_captured_q + tcdm_prefetch_captured_d;
+      tcdm_prefetch_hits_q <= tcdm_prefetch_hits_q + tcdm_prefetch_hits_d;
+      tcdm_prefetch_dropped_q <= tcdm_prefetch_dropped_q + tcdm_prefetch_dropped_d;
+
+      for (int c = 0; c < NumCoresPerTile; c++) begin
+        if (tcdm_prefetch_hit_resp_valid_q[c] && remote_resp_interco_ready[c]) begin
+          tcdm_prefetch_hit_resp_valid_q[c] <= 1'b0;
+        end
+
+        if (tcdm_prefetch_hit_valid[c] && remote_req_interco_ready[c]) begin
+          tcdm_prefetch_buffer_valid_q[c][tcdm_prefetch_hit_route[c]]
+            [tcdm_prefetch_hit_index[c]] <= 1'b0;
+          tcdm_prefetch_hit_resp_q[c].rdata.meta_id <= remote_req_interco[c].wdata.meta_id;
+          tcdm_prefetch_hit_resp_q[c].rdata.core_id <= remote_req_interco[c].wdata.core_id;
+          tcdm_prefetch_hit_resp_q[c].rdata.amo <= remote_req_interco[c].wdata.amo;
+          tcdm_prefetch_hit_resp_q[c].rdata.back2local <= remote_req_interco[c].wdata.back2local;
+          tcdm_prefetch_hit_resp_q[c].rdata.data <=
+            tcdm_prefetch_buffer_data_q[c][tcdm_prefetch_hit_route[c]][tcdm_prefetch_hit_index[c]];
+          tcdm_prefetch_hit_resp_valid_q[c] <= 1'b1;
+        end
+      end
+
+      for (int h = 0; h < NumRemoteReqRoutes; h++) begin
+        if (tcdm_prefetch_owner_push[h] && !tcdm_prefetch_owner_full[h]) begin
+          tcdm_prefetch_owner_q[h][tcdm_prefetch_owner_tail_q[h]] <=
+            tcdm_prefetch_owner_push_data[h];
+          tcdm_prefetch_owner_valid_q[h][tcdm_prefetch_owner_tail_q[h]] <= 1'b1;
+          tcdm_prefetch_owner_tail_q[h] <= tcdm_prefetch_owner_tail_q[h] + 1'b1;
+        end
+
+        if (tcdm_prefetch_resp_capture[h]) begin
+          logic stored;
+          tile_core_id_t core;
+          remote_req_route_sel_t route;
+
+          stored = 1'b0;
+          core = tcdm_prefetch_owner_q[h][tcdm_prefetch_owner_head_q[h]].core;
+          route = tcdm_prefetch_owner_q[h][tcdm_prefetch_owner_head_q[h]].route;
+          for (int b = 0; b < TCDMPrefetchBufferDepth; b++) begin
+            if (!stored && !tcdm_prefetch_buffer_valid_q[core][route][b]) begin
+              tcdm_prefetch_buffer_valid_q[core][route][b] <= 1'b1;
+              tcdm_prefetch_buffer_addr_q[core][route][b] <=
+                tcdm_prefetch_owner_q[h][tcdm_prefetch_owner_head_q[h]].addr;
+              tcdm_prefetch_buffer_data_q[core][route][b] <=
+                postreg_tcdm_master_resp[h].rdata.data;
+              stored = 1'b1;
+            end
+          end
+        end
+
+        if (tcdm_prefetch_owner_pop[h] && !tcdm_prefetch_owner_empty[h]) begin
+          tcdm_prefetch_owner_valid_q[h][tcdm_prefetch_owner_head_q[h]] <= 1'b0;
+          tcdm_prefetch_owner_head_q[h] <= tcdm_prefetch_owner_head_q[h] + 1'b1;
+        end
+
+        unique case ({tcdm_prefetch_owner_push[h] && !tcdm_prefetch_owner_full[h],
+                      tcdm_prefetch_owner_pop[h] && !tcdm_prefetch_owner_empty[h]})
+          2'b10: tcdm_prefetch_owner_count_q[h] <= tcdm_prefetch_owner_count_q[h] + 1'b1;
+          2'b01: tcdm_prefetch_owner_count_q[h] <= tcdm_prefetch_owner_count_q[h] - 1'b1;
+          default: tcdm_prefetch_owner_count_q[h] <= tcdm_prefetch_owner_count_q[h];
+        endcase
+      end
+    end
+  end
+
+  always_comb begin : proc_tcdm_prefetch_owner_status
+    tcdm_prefetch_owner_full = '0;
+    tcdm_prefetch_owner_empty = '0;
+    for (int h = 0; h < NumRemoteReqRoutes; h++) begin
+      tcdm_prefetch_owner_full[h] =
+        (tcdm_prefetch_owner_count_q[h] == TCDMPrefetchOwnerCountWidth'(TCDMPrefetchOwnerDepth));
+      tcdm_prefetch_owner_empty[h] = (tcdm_prefetch_owner_count_q[h] == '0);
+    end
+  end
+
+`endif
 
 `ifdef REMOTE_REQ_SHARED_SLOTS
   remote_req_slot_t [NumGroups+NumSubGroupsPerGroup-1-1:0] remote_req_slot_data_i;
@@ -807,9 +1308,15 @@ module mempool_tile
     .ready_o(remote_req_mem_ready        ),
     .sel_i  (remote_req_interco_tgt_sel  ),
     // Slave
+`ifdef TCDM_PREFETCH_EXPERIMENT
+    .data_o (tcdm_prefetch_demand_req    ),
+    .valid_o(tcdm_prefetch_demand_valid  ),
+    .ready_i(tcdm_prefetch_demand_ready  ),
+`else
     .data_o (prereg_tcdm_master_req      ),
     .valid_o(prereg_tcdm_master_req_valid),
     .ready_i(prereg_tcdm_master_req_ready),
+`endif
     .idx_o  (/* Unused */                )
   );
 `endif
@@ -825,14 +1332,20 @@ module mempool_tile
     // External priority flag
     .rr_i   ('0                              ),
     // Master
+`ifdef TCDM_PREFETCH_EXPERIMENT
+    .data_i (tcdm_prefetch_resp_xbar_data    ),
+    .valid_i(tcdm_prefetch_resp_xbar_valid   ),
+    .ready_o(tcdm_prefetch_resp_xbar_ready   ),
+`else
     .data_i (postreg_tcdm_master_resp        ),
     .valid_i(postreg_tcdm_master_resp_valid  ),
     .ready_o(postreg_tcdm_master_resp_ready  ),
+`endif
     .sel_i  (postreg_tcdm_master_resp_ini_sel),
     // Slave
-    .data_o (remote_resp_interco             ),
-    .valid_o(remote_resp_interco_valid       ),
-    .ready_i(remote_resp_interco_ready       ),
+    .data_o (remote_resp_from_memory         ),
+    .valid_o(remote_resp_from_memory_valid   ),
+    .ready_i(remote_resp_from_memory_ready   ),
     .idx_o  (/* Unused */                    )
   );
 
