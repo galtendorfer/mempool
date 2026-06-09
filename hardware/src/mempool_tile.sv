@@ -1222,6 +1222,69 @@ module mempool_tile
     end
   end
 
+`ifdef TCDM_PREFETCH_MONITOR
+  integer tcdm_prefetch_fd;
+
+  initial begin
+    string tcdm_prefetch_file;
+
+    tcdm_prefetch_fd = 0;
+    if ($test$plusargs("tcdm_prefetch_monitor")) begin
+      #1;
+      tcdm_prefetch_file = $sformatf("tcdm_prefetch_tile%0d.csv", tile_id_i);
+      tcdm_prefetch_fd = $fopen(tcdm_prefetch_file, "w");
+      if (tcdm_prefetch_fd == 0) begin
+        $warning("TCDM_PREFETCH_MONITOR could not open %s", tcdm_prefetch_file);
+      end else begin
+        $fwrite(tcdm_prefetch_fd,
+          "tile,observed_remote_reads,predicted_candidates,prefetch_issued,prefetch_captured,prefetch_hits,prefetch_dropped,outstanding_total,outstanding_prefetch,buffer_entries\n");
+      end
+    end
+  end
+
+  final begin
+    integer outstanding_total;
+    integer outstanding_prefetch;
+    integer buffer_entries;
+
+    outstanding_total = 0;
+    outstanding_prefetch = 0;
+    buffer_entries = 0;
+    for (int h = 0; h < NumRemoteReqRoutes; h++) begin
+      outstanding_total += int'(tcdm_prefetch_owner_count_q[h]);
+      for (int o = 0; o < TCDMPrefetchOwnerDepth; o++) begin
+        if (tcdm_prefetch_owner_valid_q[h][o] && tcdm_prefetch_owner_q[h][o].is_prefetch) begin
+          outstanding_prefetch += 1;
+        end
+      end
+    end
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      for (int r = 0; r < NumRemoteReqRoutes; r++) begin
+        for (int b = 0; b < TCDMPrefetchBufferDepth; b++) begin
+          if (tcdm_prefetch_buffer_valid_q[c][r][b]) begin
+            buffer_entries += 1;
+          end
+        end
+      end
+    end
+
+    if (tcdm_prefetch_fd != 0) begin
+      $fwrite(tcdm_prefetch_fd,
+        "%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d,%0d\n",
+        tile_id_i,
+        tcdm_prefetch_observed_reads_q,
+        tcdm_prefetch_predict_candidates_q,
+        tcdm_prefetch_issued_q,
+        tcdm_prefetch_captured_q,
+        tcdm_prefetch_hits_q,
+        tcdm_prefetch_dropped_q,
+        outstanding_total,
+        outstanding_prefetch,
+        buffer_entries);
+      $fclose(tcdm_prefetch_fd);
+    end
+  end
+`endif
 `endif
 
 `ifdef REMOTE_REQ_SHARED_SLOTS

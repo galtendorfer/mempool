@@ -305,6 +305,7 @@ tile_path_load_only ?= 0
 tile_path_source_ports_only ?= 0
 remote_req_shared_slots ?= 0
 tcdm_prefetch_experiment ?= 0
+tcdm_prefetch_monitor ?= $(tcdm_prefetch_experiment)
 
 
 
@@ -383,6 +384,9 @@ endif
 ifeq ($(tile_path_source_ports_only),1)
 path_monitor_args += +tile_path_source_ports_only
 endif
+ifeq ($(tcdm_prefetch_monitor),1)
+path_monitor_args += +tcdm_prefetch_monitor
+endif
 questa_args += $(path_monitor_args)
 
 # VCS args
@@ -456,9 +460,17 @@ endif
 ifneq ($(filter $(tcdm_prefetch_experiment),0 1),$(tcdm_prefetch_experiment))
 $(error Unsupported tcdm_prefetch_experiment=$(tcdm_prefetch_experiment). Supported values: 0 1)
 endif
+ifneq ($(filter $(tcdm_prefetch_monitor),0 1),$(tcdm_prefetch_monitor))
+$(error Unsupported tcdm_prefetch_monitor=$(tcdm_prefetch_monitor). Supported values: 0 1)
+endif
 ifeq ($(tcdm_prefetch_experiment),1)
 ifneq ($(remote_req_shared_slots),0)
 $(error tcdm_prefetch_experiment=1 currently requires remote_req_shared_slots=0)
+endif
+endif
+ifeq ($(tcdm_prefetch_monitor),1)
+ifneq ($(tcdm_prefetch_experiment),1)
+$(error tcdm_prefetch_monitor=1 requires tcdm_prefetch_experiment=1)
 endif
 endif
 
@@ -521,6 +533,9 @@ vlog_defs   += -DREMOTE_REQ_SHARED_SLOTS
 endif
 ifeq ($(tcdm_prefetch_experiment),1)
 vlog_defs   += -DTCDM_PREFETCH_EXPERIMENT
+endif
+ifeq ($(tcdm_prefetch_monitor),1)
+vlog_defs   += -DTCDM_PREFETCH_MONITOR
 endif
 ifneq ($(filter 1,$(path_util_monitor) $(tile_path_monitor)),)
 vlog_defs   += -DPATH_UTIL_MONITOR
@@ -627,7 +642,7 @@ simc: clean-dasm clean-path-monitor compile
 	./scripts/return_status.sh $(buildpath)/transcript
 
 clean-path-monitor:
-	rm -f $(buildpath)/path_util_group*.csv $(buildpath)/tile_path_tile*.csv
+	rm -f $(buildpath)/path_util_group*.csv $(buildpath)/tile_path_tile*.csv $(buildpath)/tcdm_prefetch_tile*.csv
 
 # DPIs
 .PHONY: dpi
@@ -651,7 +666,7 @@ $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 # invocation, we delete the stale VCS artefacts so Make sees them as
 # out-of-date and re-elaborates / recompiles.
 vcs_config_stamp      := $(buildpath)/.vcs_config_stamp
-vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das):back2local=$(back2local):sharedslots=$(remote_req_shared_slots):prefetch=$(tcdm_prefetch_experiment):pathmon=$(path_util_monitor):tilepathmon=$(tile_path_monitor):pathload=$(path_util_load_only):tileactive=$(tile_path_active_only):tileload=$(tile_path_load_only):tilesrcports=$(tile_path_source_ports_only)
+vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das):back2local=$(back2local):sharedslots=$(remote_req_shared_slots):prefetch=$(tcdm_prefetch_experiment):prefetchmon=$(tcdm_prefetch_monitor):pathmon=$(path_util_monitor):tilepathmon=$(tile_path_monitor):pathload=$(path_util_load_only):tileactive=$(tile_path_active_only):tileload=$(tile_path_load_only):tilesrcports=$(tile_path_source_ports_only)
 
 $(vcs_config_stamp): FORCE | $(buildpath)
 	@if [ ! -f "$@" ] || [ "$$(cat $@)" != "$(vcs_config_fingerprint)" ]; then \
@@ -919,12 +934,12 @@ log:
 	cp "$$(grep -oP '(?<=\+PRELOAD=)[^ \" ]*' $(buildpath)/transcript)"* "$(result_dir)" || \
 	echo "No application specified")
 	{ \
-		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\nback2local=%s\nremote_req_shared_slots=%s\ntcdm_prefetch_experiment=%s\npath_util_monitor=%s\ntile_path_monitor=%s\npath_util_start=%s\npath_util_end=%s\npath_util_load_only=%s\ntile_path_tile=%s\ntile_path_active_only=%s\ntile_path_load_only=%s\ntile_path_source_ports_only=%s\n' \
-			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)" "$(back2local)" "$(remote_req_shared_slots)" "$(tcdm_prefetch_experiment)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)"; \
+		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\nback2local=%s\nremote_req_shared_slots=%s\ntcdm_prefetch_experiment=%s\ntcdm_prefetch_monitor=%s\npath_util_monitor=%s\ntile_path_monitor=%s\npath_util_start=%s\npath_util_end=%s\npath_util_load_only=%s\ntile_path_tile=%s\ntile_path_active_only=%s\ntile_path_load_only=%s\ntile_path_source_ports_only=%s\n' \
+			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)" "$(back2local)" "$(remote_req_shared_slots)" "$(tcdm_prefetch_experiment)" "$(tcdm_prefetch_monitor)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)"; \
 		env; \
 	} > "$(result_dir)/env"
-	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nBACK2LOCAL=%s\nREMOTE_REQ_SHARED_SLOTS=%s\nTCDM_PREFETCH_EXPERIMENT=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\nPATH_UTIL_MONITOR=%s\nTILE_PATH_MONITOR=%s\nPATH_UTIL_START=%s\nPATH_UTIL_END=%s\nPATH_UTIL_LOAD_ONLY=%s\nTILE_PATH_TILE=%s\nTILE_PATH_ACTIVE_ONLY=%s\nTILE_PATH_LOAD_ONLY=%s\nTILE_PATH_SOURCE_PORTS_ONLY=%s\n' \
-		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(back2local)" "$(remote_req_shared_slots)" "$(tcdm_prefetch_experiment)" "$(num_das_partitions)" "$(das_mem_size)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)" > "$(result_dir)/topology.env"
+	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nBACK2LOCAL=%s\nREMOTE_REQ_SHARED_SLOTS=%s\nTCDM_PREFETCH_EXPERIMENT=%s\nTCDM_PREFETCH_MONITOR=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\nPATH_UTIL_MONITOR=%s\nTILE_PATH_MONITOR=%s\nPATH_UTIL_START=%s\nPATH_UTIL_END=%s\nPATH_UTIL_LOAD_ONLY=%s\nTILE_PATH_TILE=%s\nTILE_PATH_ACTIVE_ONLY=%s\nTILE_PATH_LOAD_ONLY=%s\nTILE_PATH_SOURCE_PORTS_ONLY=%s\n' \
+		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(back2local)" "$(remote_req_shared_slots)" "$(tcdm_prefetch_experiment)" "$(tcdm_prefetch_monitor)" "$(num_das_partitions)" "$(das_mem_size)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)" > "$(result_dir)/topology.env"
 	cp $(MEMPOOL_DIR)/config/config.mk $(result_dir)/config
 	git rev-parse HEAD > "$(result_dir)/git-info.diff"
 	git show --oneline -s >> "$(result_dir)/git-info.diff"
@@ -940,10 +955,10 @@ save_transcript:
 	fi
 
 save_path_monitor:
-	@if [ "$(path_util_monitor)" = "1" ] || [ "$(tile_path_monitor)" = "1" ]; then \
+	@if [ "$(path_util_monitor)" = "1" ] || [ "$(tile_path_monitor)" = "1" ] || [ "$(tcdm_prefetch_monitor)" = "1" ]; then \
 		found=0; \
 		shopt -s nullglob; \
-		for file in "$(buildpath)"/path_util_group*.csv "$(buildpath)"/tile_path_tile*.csv; do \
+		for file in "$(buildpath)"/path_util_group*.csv "$(buildpath)"/tile_path_tile*.csv "$(buildpath)"/tcdm_prefetch_tile*.csv; do \
 			if [ "$$found" -eq 0 ]; then \
 				mkdir -p "$(result_dir)/monitor"; \
 				found=1; \
