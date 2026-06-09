@@ -749,6 +749,60 @@ module mempool_group
     logic             [NumTilesPerGroup-1:0][NumGroups-1:0] tile_slave_resp_valid;
     logic             [NumTilesPerGroup-1:0][NumGroups-1:0] tile_slave_resp_ready;
 
+`ifdef PATH_UTIL_MONITOR
+    integer path_util_fd;
+    logic [63:0] path_util_cycle_q;
+    longint unsigned path_util_start;
+    longint unsigned path_util_end;
+    logic path_util_load_only;
+
+    initial begin
+      string path_util_file;
+      path_util_fd = 0;
+      path_util_start = '0;
+      path_util_end = 64'hffff_ffff_ffff_ffff;
+      path_util_load_only = 1'b0;
+      if ($test$plusargs("path_util_monitor")) begin
+        #1;
+        path_util_load_only = $test$plusargs("path_util_load_only");
+        if (!$value$plusargs("path_util_start=%d", path_util_start)) begin
+          path_util_start = '0;
+        end
+        if (!$value$plusargs("path_util_end=%d", path_util_end)) begin
+          path_util_end = 64'hffff_ffff_ffff_ffff;
+        end
+        path_util_file = $sformatf("path_util_group%0d.csv", group_id_i);
+        path_util_fd = $fopen(path_util_file, "w");
+        if (path_util_fd == 0) begin
+          $warning("PATH_UTIL_MONITOR could not open %s", path_util_file);
+        end else begin
+          $fwrite(path_util_fd,
+            "cycle,time,group,tile,port,channel,out_valid,out_ready,out_fire,out_back2local,in0_valid,in0_ready,in0_fire,in1_valid,in1_ready,in1_fire,post0_valid,post0_ready,post0_fire,post1_valid,post1_ready,post1_fire\n");
+        end
+      end
+    end
+
+    always_ff @(posedge clk_i or negedge rst_ni) begin
+      if (!rst_ni) begin
+        path_util_cycle_q <= '0;
+      end else begin
+        path_util_cycle_q <= path_util_cycle_q + 64'd1;
+      end
+    end
+
+    function automatic logic path_util_mon_valid(input logic valid, input logic write);
+      return path_util_load_only ? (valid && !write) : valid;
+    endfunction
+
+    function automatic logic path_util_mon_ready(input logic valid, input logic ready, input logic write);
+      return path_util_load_only ? (valid && !write && ready) : ready;
+    endfunction
+
+    function automatic logic path_util_mon_fire(input logic valid, input logic ready, input logic write);
+      return path_util_load_only ? (valid && !write && ready) : (valid && ready);
+    endfunction
+`endif
+
 
     for (genvar t = 0; unsigned'(t) < NumTilesPerGroup; t++) begin: gen_tiles
       tile_id_t id;
@@ -819,6 +873,32 @@ module mempool_group
       assign mux_to_tile_slave_req[t][0]         = tcdm_slave_req[0][t];
       assign mux_to_tile_slave_req_valid[t][0]   = tcdm_slave_req_valid[0][t];
       assign tcdm_slave_req_ready[0][t]          = mux_to_tile_slave_req_ready[t][0];
+
+`ifdef PATH_UTIL_MONITOR
+      always_ff @(posedge clk_i) begin
+        if (rst_ni && path_util_fd != 0 && path_util_cycle_q >= path_util_start &&
+            path_util_cycle_q <= path_util_end &&
+            (!path_util_load_only ||
+             path_util_mon_valid(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req[t][0].wen))) begin
+          $fwrite(path_util_fd,
+            "%0d,%0t,%0d,%0d,0,req,%0b,%0b,%0b,%0b,%0b,%0b,%0b,0,0,0,%0b,%0b,%0b,0,0,0\n",
+            path_util_cycle_q,
+            $time,
+            group_id_i,
+            t,
+            path_util_mon_valid(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req[t][0].wen),
+            path_util_mon_ready(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req_ready[t][0], mux_to_tile_slave_req[t][0].wen),
+            path_util_mon_fire(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req_ready[t][0], mux_to_tile_slave_req[t][0].wen),
+            path_util_mon_valid(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req[t][0].wen) ? mux_to_tile_slave_req[t][0].wdata.back2local : 1'b0,
+            path_util_mon_valid(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req[t][0].wen),
+            path_util_mon_ready(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req_ready[t][0], mux_to_tile_slave_req[t][0].wen),
+            path_util_mon_fire(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req_ready[t][0], mux_to_tile_slave_req[t][0].wen),
+            path_util_mon_valid(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req[t][0].wen),
+            path_util_mon_ready(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req_ready[t][0], mux_to_tile_slave_req[t][0].wen),
+            path_util_mon_fire(mux_to_tile_slave_req_valid[t][0], mux_to_tile_slave_req_ready[t][0], mux_to_tile_slave_req[t][0].wen));
+        end
+      end
+`endif
     end : gen_tiles
 
     /*************************
@@ -1087,6 +1167,41 @@ module mempool_group
           .oup_ready_i(mux_to_tile_master_resp_ready[t][r]    )
         );
 
+`ifdef PATH_UTIL_MONITOR
+        always_ff @(posedge clk_i) begin
+          if (rst_ni && path_util_fd != 0 && path_util_cycle_q >= path_util_start &&
+              path_util_cycle_q <= path_util_end &&
+              (!path_util_load_only ||
+               path_util_mon_valid(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req[t][r].wen) ||
+               path_util_mon_valid(slave_premux_req_valid[0], slave_premux_req_data[0].wen) ||
+               path_util_mon_valid(slave_premux_req_valid[1], slave_premux_req_data[1].wen))) begin
+            $fwrite(path_util_fd,
+              "%0d,%0t,%0d,%0d,%0d,req,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b,%0b\n",
+              path_util_cycle_q,
+              $time,
+              group_id_i,
+              t,
+              r,
+              path_util_mon_valid(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req[t][r].wen),
+              path_util_mon_ready(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req_ready[t][r], mux_to_tile_slave_req[t][r].wen),
+              path_util_mon_fire(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req_ready[t][r], mux_to_tile_slave_req[t][r].wen),
+              path_util_mon_valid(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req[t][r].wen) ? mux_to_tile_slave_req[t][r].wdata.back2local : 1'b0,
+              path_util_mon_valid(slave_premux_req_valid[0], slave_premux_req_data[0].wen),
+              path_util_mon_ready(slave_premux_req_valid[0], slave_premux_req_ready[0], slave_premux_req_data[0].wen),
+              path_util_mon_fire(slave_premux_req_valid[0], slave_premux_req_ready[0], slave_premux_req_data[0].wen),
+              path_util_mon_valid(slave_premux_req_valid[1], slave_premux_req_data[1].wen),
+              path_util_mon_ready(slave_premux_req_valid[1], slave_premux_req_ready[1], slave_premux_req_data[1].wen),
+              path_util_mon_fire(slave_premux_req_valid[1], slave_premux_req_ready[1], slave_premux_req_data[1].wen),
+              path_util_mon_valid(slave_premux_req_valid[0], slave_premux_req_data[0].wen),
+              path_util_mon_ready(slave_premux_req_valid[0], slave_premux_req_ready[0], slave_premux_req_data[0].wen),
+              path_util_mon_fire(slave_premux_req_valid[0], slave_premux_req_ready[0], slave_premux_req_data[0].wen),
+              path_util_mon_valid(slave_premux_req_valid[1], slave_premux_req_data[1].wen),
+              path_util_mon_ready(slave_premux_req_valid[1], slave_premux_req_ready[1], slave_premux_req_data[1].wen),
+              path_util_mon_fire(slave_premux_req_valid[1], slave_premux_req_ready[1], slave_premux_req_data[1].wen));
+          end
+        end
+`endif
+
       end: gen_back2local_mux
 
 
@@ -1098,6 +1213,34 @@ module mempool_group
         assign mux_to_tile_slave_req[t][r]         = tcdm_slave_req[r][t];
         assign mux_to_tile_slave_req_valid[t][r]   = tcdm_slave_req_valid[r][t];
         assign tcdm_slave_req_ready[r][t]          = mux_to_tile_slave_req_ready[t][r];
+
+`ifdef PATH_UTIL_MONITOR
+        always_ff @(posedge clk_i) begin
+          if (rst_ni && path_util_fd != 0 && path_util_cycle_q >= path_util_start &&
+              path_util_cycle_q <= path_util_end &&
+              (!path_util_load_only ||
+               path_util_mon_valid(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req[t][r].wen) ||
+               path_util_mon_valid(tcdm_slave_req_valid[r][t], tcdm_slave_req[r][t].wen))) begin
+            $fwrite(path_util_fd,
+              "%0d,%0t,%0d,%0d,%0d,req,%0b,%0b,%0b,%0b,%0b,%0b,%0b,0,0,0,%0b,%0b,%0b,0,0,0\n",
+              path_util_cycle_q,
+              $time,
+              group_id_i,
+              t,
+              r,
+              path_util_mon_valid(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req[t][r].wen),
+              path_util_mon_ready(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req_ready[t][r], mux_to_tile_slave_req[t][r].wen),
+              path_util_mon_fire(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req_ready[t][r], mux_to_tile_slave_req[t][r].wen),
+              path_util_mon_valid(mux_to_tile_slave_req_valid[t][r], mux_to_tile_slave_req[t][r].wen) ? mux_to_tile_slave_req[t][r].wdata.back2local : 1'b0,
+              path_util_mon_valid(tcdm_slave_req_valid[r][t], tcdm_slave_req[r][t].wen),
+              path_util_mon_ready(tcdm_slave_req_valid[r][t], tcdm_slave_req_ready[r][t], tcdm_slave_req[r][t].wen),
+              path_util_mon_fire(tcdm_slave_req_valid[r][t], tcdm_slave_req_ready[r][t], tcdm_slave_req[r][t].wen),
+              path_util_mon_valid(tcdm_slave_req_valid[r][t], tcdm_slave_req[r][t].wen),
+              path_util_mon_ready(tcdm_slave_req_valid[r][t], tcdm_slave_req_ready[r][t], tcdm_slave_req[r][t].wen),
+              path_util_mon_fire(tcdm_slave_req_valid[r][t], tcdm_slave_req_ready[r][t], tcdm_slave_req[r][t].wen));
+          end
+        end
+`endif
       end: gen_remote_tile_passthrough
 `endif
 

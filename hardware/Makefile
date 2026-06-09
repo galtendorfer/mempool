@@ -132,6 +132,24 @@
 #   plot_topology=<name>
 #                     For `make plots`: override topology auto-detection.
 #                     Normally not needed because result metadata is used.
+#   path_util_monitor=1
+#                     Compile and enable group-level path monitor CSV capture.
+#   tile_path_monitor=1
+#                     Enable tile-level path monitor CSV capture.
+#   path_util_start=<cycle> / path_util_end=<cycle>
+#                     Optional cycle window for both monitor writers.
+#   path_util_load_only=1
+#                     For group monitor rows, emit only valid load requests.
+#   tile_path_tile=<tile>
+#                     Optional single-tile filter for tile path capture.
+#   tile_path_active_only=1
+#                     For tile monitor rows, emit only valid requests.
+#   tile_path_load_only=1
+#                     For tile monitor rows, emit only valid load requests.
+#   tile_path_source_ports_only=1
+#                     For tile monitor rows, emit only source-side `tcdm_remote`
+#                     route-port rows. This is the compact monitor mode used by
+#                     port-pressure, fan-in, and source-target plots.
 #   back2local=0/1    Enable the Back2Local routing path for same-group loads.
 #                     Default is in config/config.mk; command-line override is
 #                     still accepted for one-off runs.
@@ -263,6 +281,15 @@ snitch_trace    ?= 1
 trace           := $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
 tracepath       ?= $(buildpath)/traces
 traceresult     ?= $(tracepath)/results.csv
+path_util_monitor ?= 0
+tile_path_monitor ?= $(path_util_monitor)
+path_util_start ?=
+path_util_end ?=
+path_util_load_only ?= 0
+tile_path_tile ?=
+tile_path_active_only ?= 0
+tile_path_load_only ?= 0
+tile_path_source_ports_only ?= 0
 
 
 
@@ -313,9 +340,39 @@ questa_args += $(if $(preload),+PRELOAD=$(preload),)
 questa_args += -sv_lib $(dpi_library)/mempool_dpi
 questa_args += -work $(library)
 questa_args += -suppress vsim-12070
+path_monitor_args :=
+ifeq ($(path_util_monitor),1)
+path_monitor_args += +path_util_monitor
+endif
+ifeq ($(tile_path_monitor),1)
+path_monitor_args += +tile_path_monitor
+endif
+ifneq ($(strip $(path_util_start)),)
+path_monitor_args += +path_util_start=$(path_util_start)
+endif
+ifneq ($(strip $(path_util_end)),)
+path_monitor_args += +path_util_end=$(path_util_end)
+endif
+ifeq ($(path_util_load_only),1)
+path_monitor_args += +path_util_load_only
+endif
+ifneq ($(strip $(tile_path_tile)),)
+path_monitor_args += +tile_path_tile=$(tile_path_tile)
+endif
+ifeq ($(tile_path_active_only),1)
+path_monitor_args += +tile_path_active_only
+endif
+ifeq ($(tile_path_load_only),1)
+path_monitor_args += +tile_path_load_only
+endif
+ifeq ($(tile_path_source_ports_only),1)
+path_monitor_args += +tile_path_source_ports_only
+endif
+questa_args += $(path_monitor_args)
 
 # VCS args
 vcs_args    += $(if $(preload),+PRELOAD=$(preload),)
+vcs_args    += $(path_monitor_args)
 
 # Questasim vlog args
 vlog_args   += -suppress vlog-2583
@@ -378,7 +435,6 @@ endif
 ifneq ($(filter $(back2local),0 1),$(back2local))
 $(error Unsupported back2local=$(back2local). Supported values: 0 1)
 endif
-
 # Traces
 trace = $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
 tracepath ?= $(buildpath)/traces
@@ -432,6 +488,9 @@ vlog_defs   += -DDAS_MEM_SIZE=$(das_mem_size)
 endif
 ifeq ($(back2local),1)
 vlog_defs   += -DBACK2LOCAL
+endif
+ifneq ($(filter 1,$(path_util_monitor) $(tile_path_monitor)),)
+vlog_defs   += -DPATH_UTIL_MONITOR
 endif
 # Snitch ISA
 vlog_defs   += -DXPULPIMG=$(xpulpimg)
@@ -520,19 +579,22 @@ $(buildpath)/compile.tcl: $(bender) $(config_mk) Makefile $(MEMPOOL_DIR)/Bender.
 	cd $(buildpath) && $(questa_cmd) vsim -work $(library) -c -do compile.tcl
 
 # Simulation
-.PHONY: sim
-sim: clean-dasm compile
+.PHONY: sim clean-path-monitor
+sim: clean-dasm clean-path-monitor compile
 	rm -f $(buildpath)/transcript
 	cd $(buildpath) && \
 	$(questa_cmd) vsim -voptargs=+acc $(questa_args) $(library).$(top_level) -do "set config ${config}" -do ../scripts/questa/run.tcl
 	./scripts/return_status.sh $(buildpath)/transcript
 
 .PHONY: simc
-simc: clean-dasm compile
+simc: clean-dasm clean-path-monitor compile
 	rm -f $(buildpath)/transcript
 	cd $(buildpath) && \
 	$(questa_cmd) vsim -c $(questa_args) $(library).$(top_level) -do "run -a"
 	./scripts/return_status.sh $(buildpath)/transcript
+
+clean-path-monitor:
+	rm -f $(buildpath)/path_util_group*.csv $(buildpath)/tile_path_tile*.csv
 
 # DPIs
 .PHONY: dpi
@@ -556,7 +618,7 @@ $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 # invocation, we delete the stale VCS artefacts so Make sees them as
 # out-of-date and re-elaborates / recompiles.
 vcs_config_stamp      := $(buildpath)/.vcs_config_stamp
-vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das):back2local=$(back2local)
+vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das):back2local=$(back2local):pathmon=$(path_util_monitor):tilepathmon=$(tile_path_monitor):pathload=$(path_util_load_only):tileactive=$(tile_path_active_only):tileload=$(tile_path_load_only):tilesrcports=$(tile_path_source_ports_only)
 
 $(vcs_config_stamp): FORCE | $(buildpath)
 	@if [ ! -f "$@" ] || [ "$$(cat $@)" != "$(vcs_config_fingerprint)" ]; then \
@@ -590,12 +652,12 @@ $(buildpath)/mempool_simvopt: $(buildpath)/compilevcs.sh $(buildpath)/$(dpi_libr
 	$(vcs_cmd) vcs -full64 $(top_level) -cc $(CC) -cpp $(CXX) -ld $(CXX) $(dpi_library)/mempool_vcs_dpi.so -assert disable_cover -o mempool_simvopt
 
 # Simulation
-simvcs: clean-dasm compile_vcs_simv
+simvcs: clean-dasm clean-path-monitor compile_vcs_simv
 	rm -f $(buildpath)/transcript
 	cd $(buildpath) && \
 	./mempool_simv $(vcs_args) -ucli -do ../scripts/vcs/run.tcl -gui
 
-simcvcs: clean-dasm compile_vcs_simvopt
+simcvcs: clean-dasm clean-path-monitor compile_vcs_simvopt
 	@if [ -f "$(vcs_config_stamp)" ] && [ "$$(cat $(vcs_config_stamp))" != "$(vcs_config_fingerprint)" ]; then \
 		echo "ERROR: VCS binary was built for '$$(cat $(vcs_config_stamp))' but you requested '$(vcs_config_fingerprint)'" >&2; \
 		echo "       Run 'make compile_vcs_simvopt config=$(config)' first, or delete build/mempool_simvopt." >&2; \
@@ -603,7 +665,7 @@ simcvcs: clean-dasm compile_vcs_simvopt
 	fi
 	rm -f $(buildpath)/transcript
 	cd $(buildpath) && \
-	./mempool_simvopt $(vcs_args)
+	set -o pipefail; ./mempool_simvopt $(vcs_args) | tee transcript
 
 # DPIs
 .PHONY: dpivcs
@@ -735,7 +797,7 @@ plot_tiles_args = $(if $(strip $(plot_tiles)),--tiles $(plot_tiles),)
 plot_topology_args = $(if $(strip $(plot_topology)),--topology $(plot_topology),)
 rerun_force_args = $(if $(filter 1,$(force)),--force,)
 
-.PHONY: build_app benchmark plots plots_parallel plots_comm archive_result freeze rerun_stall_timeseries save_transcript comm_events_real stall_timeseries_build prepare_result_data_links
+.PHONY: build_app benchmark plots plots_parallel plots_comm archive_result freeze rerun_stall_timeseries save_transcript save_path_monitor comm_events_real stall_timeseries_build prepare_result_data_links
 
 prepare_result_data_links:
 	@mkdir -p "$(result_data_dir)"
@@ -774,10 +836,11 @@ benchmark: build_app
 		echo "       Set force=1 to overwrite." >&2; \
 		exit 1; \
 	fi
-	result_dir="$(result_dir)" $(MAKE) log
+	result_dir="$(result_dir)" app="$(app)" $(MAKE) log
 	@sim_status=0; \
-	$(MAKE) simcvcs || sim_status=$$?; \
+	$(MAKE) app="$(app)" simcvcs || sim_status=$$?; \
 	result_dir="$(result_dir)" $(MAKE) save_transcript; \
+	result_dir="$(result_dir)" $(MAKE) save_path_monitor; \
 	if [ "$$sim_status" -ne 0 ]; then \
 		exit "$$sim_status"; \
 	fi
@@ -808,12 +871,12 @@ log:
 	cp "$$(grep -oP '(?<=\+PRELOAD=)[^ \" ]*' $(buildpath)/transcript)"* "$(result_dir)" || \
 	echo "No application specified")
 	{ \
-		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\nback2local=%s\n' \
-			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)" "$(back2local)"; \
+		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\nback2local=%s\npath_util_monitor=%s\ntile_path_monitor=%s\npath_util_start=%s\npath_util_end=%s\npath_util_load_only=%s\ntile_path_tile=%s\ntile_path_active_only=%s\ntile_path_load_only=%s\ntile_path_source_ports_only=%s\n' \
+			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)" "$(back2local)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)"; \
 		env; \
 	} > "$(result_dir)/env"
-	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nBACK2LOCAL=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\n' \
-		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(back2local)" "$(num_das_partitions)" "$(das_mem_size)" > "$(result_dir)/topology.env"
+	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nBACK2LOCAL=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\nPATH_UTIL_MONITOR=%s\nTILE_PATH_MONITOR=%s\nPATH_UTIL_START=%s\nPATH_UTIL_END=%s\nPATH_UTIL_LOAD_ONLY=%s\nTILE_PATH_TILE=%s\nTILE_PATH_ACTIVE_ONLY=%s\nTILE_PATH_LOAD_ONLY=%s\nTILE_PATH_SOURCE_PORTS_ONLY=%s\n' \
+		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(back2local)" "$(num_das_partitions)" "$(das_mem_size)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)" > "$(result_dir)/topology.env"
 	cp $(MEMPOOL_DIR)/config/config.mk $(result_dir)/config
 	git rev-parse HEAD > "$(result_dir)/git-info.diff"
 	git show --oneline -s >> "$(result_dir)/git-info.diff"
@@ -826,6 +889,22 @@ save_transcript:
 		mv "$(result_dir)/transcript.tmp" "$(result_dir)/transcript"; \
 	else \
 		echo "WARNING: transcript not found: $(buildpath)/transcript" >&2; \
+	fi
+
+save_path_monitor:
+	@if [ "$(path_util_monitor)" = "1" ] || [ "$(tile_path_monitor)" = "1" ]; then \
+		found=0; \
+		shopt -s nullglob; \
+		for file in "$(buildpath)"/path_util_group*.csv "$(buildpath)"/tile_path_tile*.csv; do \
+			if [ "$$found" -eq 0 ]; then \
+				mkdir -p "$(result_dir)/monitor"; \
+				found=1; \
+			fi; \
+			cp "$$file" "$(result_dir)/monitor/"; \
+		done; \
+		if [ "$$found" -eq 0 ]; then \
+			echo "WARNING: monitor requested but no monitor CSVs were found in $(buildpath)" >&2; \
+		fi; \
 	fi
 
 trace: pre_trace $(trace) post_trace

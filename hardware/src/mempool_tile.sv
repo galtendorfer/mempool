@@ -1220,6 +1220,177 @@ module mempool_tile
     .mst_resp_i (axi_mst_resp_i                         )
   );
 
+`ifdef PATH_UTIL_MONITOR
+  integer tile_path_fd;
+  logic [63:0] tile_path_cycle_q;
+  longint unsigned tile_path_start;
+  longint unsigned tile_path_end;
+  integer tile_path_tile_filter;
+  logic tile_path_enabled;
+  logic tile_path_has_tile_filter;
+  logic tile_path_active_only;
+  logic tile_path_load_only;
+  logic tile_path_source_ports_only;
+
+  task automatic tile_path_write;
+    input string point;
+    input int index;
+    input int core;
+    input int port;
+    input int bank;
+    input logic valid;
+    input logic ready;
+    input logic write;
+    input logic back2local;
+    input addr_t addr;
+    input addr_t source_addr;
+    input meta_id_t meta_id;
+    input tile_core_id_t payload_core;
+    begin
+      if ((!tile_path_active_only || valid) && (!tile_path_load_only || (valid && !write))) begin
+        $fwrite(tile_path_fd,
+          "%0d,%0t,%0d,%s,%0d,%0d,%0d,%0d,%0b,%0b,%0b,%0b,%0b,%0h,%0h,%0d,%0d\n",
+          tile_path_cycle_q,
+          $time,
+          tile_id_i,
+          point,
+          index,
+          core,
+          port,
+          bank,
+          valid,
+          ready,
+          valid & ready,
+          write,
+          back2local,
+          addr,
+          source_addr,
+          meta_id,
+          payload_core);
+      end
+    end
+  endtask
+
+  initial begin
+    string tile_path_file;
+    tile_path_fd = 0;
+    tile_path_start = '0;
+    tile_path_end = 64'hffff_ffff_ffff_ffff;
+    tile_path_tile_filter = 0;
+    tile_path_enabled = 1'b0;
+    tile_path_has_tile_filter = 1'b0;
+    tile_path_active_only = 1'b0;
+    tile_path_load_only = 1'b0;
+    tile_path_source_ports_only = 1'b0;
+    if ($test$plusargs("tile_path_monitor")) begin
+      #1;
+      tile_path_enabled = 1'b1;
+      tile_path_active_only = $test$plusargs("tile_path_active_only");
+      tile_path_load_only = $test$plusargs("tile_path_load_only");
+      tile_path_source_ports_only = $test$plusargs("tile_path_source_ports_only");
+      if (!$value$plusargs("tile_path_start=%d", tile_path_start)) begin
+        if (!$value$plusargs("path_util_start=%d", tile_path_start)) begin
+          tile_path_start = '0;
+        end
+      end
+      if (!$value$plusargs("tile_path_end=%d", tile_path_end)) begin
+        if (!$value$plusargs("path_util_end=%d", tile_path_end)) begin
+          tile_path_end = 64'hffff_ffff_ffff_ffff;
+        end
+      end
+      if ($value$plusargs("tile_path_tile=%d", tile_path_tile_filter)) begin
+        tile_path_has_tile_filter = 1'b1;
+      end
+      if (tile_path_has_tile_filter && tile_path_tile_filter != int'(tile_id_i)) begin
+        tile_path_enabled = 1'b0;
+      end
+      if (tile_path_enabled) begin
+        tile_path_file = $sformatf("tile_path_tile%0d.csv", tile_id_i);
+        tile_path_fd = $fopen(tile_path_file, "w");
+        if (tile_path_fd == 0) begin
+          $warning("PATH_UTIL_MONITOR could not open %s", tile_path_file);
+        end else begin
+          $fwrite(tile_path_fd,
+            "cycle,time,tile,point,index,core,port,bank,valid,ready,fire,write,back2local,addr,source_addr,meta_id,payload_core\n");
+        end
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin
+    if (!rst_ni) begin
+      tile_path_cycle_q <= '0;
+    end else begin
+      tile_path_cycle_q <= tile_path_cycle_q + 64'd1;
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && tile_path_fd != 0 && tile_path_cycle_q >= tile_path_start &&
+        tile_path_cycle_q <= tile_path_end) begin
+      for (int c = 0; c < NumCoresPerTile; c++) begin
+        if (!tile_path_source_ports_only) begin
+          tile_path_write("core_q", c, c, -1, -1,
+            snitch_data_qvalid[c], snitch_data_qready[c], snitch_data_qwrite[c], 1'b0,
+            snitch_data_qaddr[c], snitch_data_qaddr[c], snitch_data_qid[c], tile_core_id_t'(c));
+          tile_path_write("tcdm_local", c, c, 0, int'(local_req_interco_tgt_sel[c]),
+            local_req_interco_valid[c], local_req_interco_ready[c], local_req_interco_payload[c].wen,
+            local_req_interco_payload[c].wdata.back2local, addr_t'(local_req_interco_payload[c].tgt_addr),
+            snitch_data_qaddr[c], local_req_interco_payload[c].wdata.meta_id,
+            local_req_interco_payload[c].wdata.core_id);
+        end
+        tile_path_write("tcdm_remote", c, c, int'(remote_req_interco_tgt_sel[c]),
+          int'(remote_req_interco[c].tgt_addr[idx_width(NumBanksPerTile)-1:0]),
+          remote_req_interco_valid[c], remote_req_interco_ready[c], remote_req_interco[c].wen,
+          remote_req_interco[c].wdata.back2local, addr_t'(remote_req_interco[c].tgt_addr),
+          snitch_data_qaddr[c], remote_req_interco[c].wdata.meta_id,
+          remote_req_interco[c].wdata.core_id);
+      end
+      if (!tile_path_source_ports_only) begin
+        for (int h = 0; h < NumGroups+NumSubGroupsPerGroup-1; h++) begin
+          tile_path_write("remote_xbar_out", h, -1, h,
+            int'(prereg_tcdm_master_req[h].tgt_addr[idx_width(NumBanksPerTile)-1:0]),
+            prereg_tcdm_master_req_valid[h], prereg_tcdm_master_req_ready[h],
+            prereg_tcdm_master_req[h].wen, prereg_tcdm_master_req[h].wdata.back2local,
+            addr_t'(prereg_tcdm_master_req[h].tgt_addr), addr_t'(prereg_tcdm_master_req[h].tgt_addr),
+            prereg_tcdm_master_req[h].wdata.meta_id,
+            prereg_tcdm_master_req[h].wdata.core_id);
+          tile_path_write("tile_master_req_out", h, -1, h,
+            int'(tcdm_master_req_o[h].tgt_addr[idx_width(NumBanksPerTile)-1:0]),
+            tcdm_master_req_valid_o[h], tcdm_master_req_ready_i[h], tcdm_master_req_o[h].wen,
+            tcdm_master_req_o[h].wdata.back2local, addr_t'(tcdm_master_req_o[h].tgt_addr),
+            addr_t'(tcdm_master_req_o[h].tgt_addr), tcdm_master_req_o[h].wdata.meta_id,
+            tcdm_master_req_o[h].wdata.core_id);
+          tile_path_write("tile_slave_req_in", h, -1, h,
+            int'(tcdm_slave_req_i[h].tgt_addr[idx_width(NumBanksPerTile)-1:0]),
+            tcdm_slave_req_valid_i[h], tcdm_slave_req_ready_o[h], tcdm_slave_req_i[h].wen,
+            tcdm_slave_req_i[h].wdata.back2local, addr_t'(tcdm_slave_req_i[h].tgt_addr),
+            addr_t'(tcdm_slave_req_i[h].tgt_addr), tcdm_slave_req_i[h].wdata.meta_id,
+            tcdm_slave_req_i[h].wdata.core_id);
+          tile_path_write("tile_slave_req_postreg", h, -1, h,
+            int'(postreg_tcdm_slave_req[h].tgt_addr[idx_width(NumBanksPerTile)-1:0]),
+            postreg_tcdm_slave_req_valid[h], postreg_tcdm_slave_req_ready[h], postreg_tcdm_slave_req[h].wen,
+            postreg_tcdm_slave_req[h].wdata.back2local, addr_t'(postreg_tcdm_slave_req[h].tgt_addr),
+            addr_t'(postreg_tcdm_slave_req[h].tgt_addr), postreg_tcdm_slave_req[h].wdata.meta_id,
+            postreg_tcdm_slave_req[h].wdata.core_id);
+        end
+        for (int b = 0; b < NumBanksPerTile; b++) begin
+          tile_path_write("local_xbar_out", b, -1, -1, b,
+            superbank_req_valid[b], superbank_req_ready[b], superbank_req_payload[b].wen,
+            superbank_req_payload[b].wdata.back2local, addr_t'(superbank_req_payload[b].tgt_addr),
+            addr_t'(superbank_req_payload[b].tgt_addr), superbank_req_payload[b].wdata.meta_id,
+            superbank_req_payload[b].wdata.core_id);
+          tile_path_write("bank_req", b, -1, -1, b,
+            bank_req_valid[b], bank_req_ready[b], bank_req_payload[b].wen,
+            bank_req_payload[b].wdata.back2local, addr_t'(bank_req_payload[b].tgt_addr),
+            addr_t'(bank_req_payload[b].tgt_addr), bank_req_payload[b].wdata.meta_id,
+            bank_req_payload[b].wdata.core_id);
+        end
+      end
+    end
+  end
+`endif
+
   /******************
    *   Assertions   *
    ******************/
