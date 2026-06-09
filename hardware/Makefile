@@ -303,6 +303,7 @@ tile_path_tile ?=
 tile_path_active_only ?= 0
 tile_path_load_only ?= 0
 tile_path_source_ports_only ?= 0
+remote_req_shared_slots ?= 0
 
 
 
@@ -448,6 +449,9 @@ endif
 ifneq ($(filter $(back2local),0 1),$(back2local))
 $(error Unsupported back2local=$(back2local). Supported values: 0 1)
 endif
+ifneq ($(filter $(remote_req_shared_slots),0 1),$(remote_req_shared_slots))
+$(error Unsupported remote_req_shared_slots=$(remote_req_shared_slots). Supported values: 0 1)
+endif
 # Traces
 trace = $(patsubst $(buildpath)/%.dasm,$(buildpath)/%.trace,$(wildcard $(buildpath)/*.dasm))
 tracepath ?= $(buildpath)/traces
@@ -501,6 +505,9 @@ vlog_defs   += -DDAS_MEM_SIZE=$(das_mem_size)
 endif
 ifeq ($(back2local),1)
 vlog_defs   += -DBACK2LOCAL
+endif
+ifeq ($(remote_req_shared_slots),1)
+vlog_defs   += -DREMOTE_REQ_SHARED_SLOTS
 endif
 ifneq ($(filter 1,$(path_util_monitor) $(tile_path_monitor)),)
 vlog_defs   += -DPATH_UTIL_MONITOR
@@ -631,7 +638,7 @@ $(buildpath)/$(dpi_library)/mempool_dpi.so: $(dpi)
 # invocation, we delete the stale VCS artefacts so Make sees them as
 # out-of-date and re-elaborates / recompiles.
 vcs_config_stamp      := $(buildpath)/.vcs_config_stamp
-vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das):back2local=$(back2local):pathmon=$(path_util_monitor):tilepathmon=$(tile_path_monitor):pathload=$(path_util_load_only):tileactive=$(tile_path_active_only):tileload=$(tile_path_load_only):tilesrcports=$(tile_path_source_ports_only)
+vcs_config_fingerprint := $(config):cores=$(num_cores):groups=$(num_groups):sub=$(num_sub_groups_per_group):das=$(das):back2local=$(back2local):sharedslots=$(remote_req_shared_slots):pathmon=$(path_util_monitor):tilepathmon=$(tile_path_monitor):pathload=$(path_util_load_only):tileactive=$(tile_path_active_only):tileload=$(tile_path_load_only):tilesrcports=$(tile_path_source_ports_only)
 
 $(vcs_config_stamp): FORCE | $(buildpath)
 	@if [ ! -f "$@" ] || [ "$$(cat $@)" != "$(vcs_config_fingerprint)" ]; then \
@@ -899,12 +906,12 @@ log:
 	cp "$$(grep -oP '(?<=\+PRELOAD=)[^ \" ]*' $(buildpath)/transcript)"* "$(result_dir)" || \
 	echo "No application specified")
 	{ \
-		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\nback2local=%s\npath_util_monitor=%s\ntile_path_monitor=%s\npath_util_start=%s\npath_util_end=%s\npath_util_load_only=%s\ntile_path_tile=%s\ntile_path_active_only=%s\ntile_path_load_only=%s\ntile_path_source_ports_only=%s\n' \
-			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)" "$(back2local)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)"; \
+		printf 'app=%s\nresult_app=%s\nconfig=%s\nkernel=%s\nvariant=%s\nresult_dir=%s\nback2local=%s\nremote_req_shared_slots=%s\npath_util_monitor=%s\ntile_path_monitor=%s\npath_util_start=%s\npath_util_end=%s\npath_util_load_only=%s\ntile_path_tile=%s\ntile_path_active_only=%s\ntile_path_load_only=%s\ntile_path_source_ports_only=%s\n' \
+			"$(app)" "$(result_app)" "$(config)" "$(kernel)" "$(variant)" "$(result_dir)" "$(back2local)" "$(remote_req_shared_slots)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)"; \
 		env; \
 	} > "$(result_dir)/env"
-	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nBACK2LOCAL=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\nPATH_UTIL_MONITOR=%s\nTILE_PATH_MONITOR=%s\nPATH_UTIL_START=%s\nPATH_UTIL_END=%s\nPATH_UTIL_LOAD_ONLY=%s\nTILE_PATH_TILE=%s\nTILE_PATH_ACTIVE_ONLY=%s\nTILE_PATH_LOAD_ONLY=%s\nTILE_PATH_SOURCE_PORTS_ONLY=%s\n' \
-		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(back2local)" "$(num_das_partitions)" "$(das_mem_size)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)" > "$(result_dir)/topology.env"
+	printf 'APP=%s\nKERNEL=%s\nVARIANT=%s\nCONFIG=%s\nNUM_CORES=%s\nNUM_GROUPS=%s\nNUM_CORES_PER_TILE=%s\nSEQ_MEM_SIZE=%s\nBANKING_FACTOR=%s\nL1_BANK_SIZE=%s\nNUM_SUB_GROUPS_PER_GROUP=%s\nDAS=%s\nBACK2LOCAL=%s\nREMOTE_REQ_SHARED_SLOTS=%s\nNUM_DAS_PARTITIONS=%s\nDAS_MEM_SIZE=%s\nPATH_UTIL_MONITOR=%s\nTILE_PATH_MONITOR=%s\nPATH_UTIL_START=%s\nPATH_UTIL_END=%s\nPATH_UTIL_LOAD_ONLY=%s\nTILE_PATH_TILE=%s\nTILE_PATH_ACTIVE_ONLY=%s\nTILE_PATH_LOAD_ONLY=%s\nTILE_PATH_SOURCE_PORTS_ONLY=%s\n' \
+		"$(app)" "$(kernel)" "$(variant)" "$(config)" "$(num_cores)" "$(num_groups)" "$(num_cores_per_tile)" "$(seq_mem_size)" "$(banking_factor)" "$(l1_bank_size)" "$(num_sub_groups_per_group)" "$(das)" "$(back2local)" "$(remote_req_shared_slots)" "$(num_das_partitions)" "$(das_mem_size)" "$(path_util_monitor)" "$(tile_path_monitor)" "$(path_util_start)" "$(path_util_end)" "$(path_util_load_only)" "$(tile_path_tile)" "$(tile_path_active_only)" "$(tile_path_load_only)" "$(tile_path_source_ports_only)" > "$(result_dir)/topology.env"
 	cp $(MEMPOOL_DIR)/config/config.mk $(result_dir)/config
 	git rev-parse HEAD > "$(result_dir)/git-info.diff"
 	git show --oneline -s >> "$(result_dir)/git-info.diff"

@@ -77,6 +77,13 @@ module mempool_tile
   import snitch_pkg::dresp_t;
 
   typedef logic [idx_width(NumGroups)-1:0] group_id_t;
+  typedef logic [idx_width(NumGroups+NumSubGroupsPerGroup-1)-1:0] remote_req_route_sel_t;
+  localparam int unsigned NumRemoteReqRoutes = NumGroups + NumSubGroupsPerGroup - 1;
+
+  typedef struct packed {
+    tcdm_master_req_t      req;
+    remote_req_route_sel_t sel;
+  } remote_req_slot_t;
 
   // Local interconnect address width
   typedef logic [idx_width(NumCoresPerTile + NumGroups + NumSubGroupsPerGroup - 1)-1:0] local_req_interco_addr_t;
@@ -627,6 +634,7 @@ module mempool_tile
 
   // Break paths between request and response with registers
   for (genvar h = 0; unsigned'(h) < NumGroups+NumSubGroupsPerGroup-1; h++) begin: gen_tcdm_registers
+`ifndef REMOTE_REQ_SHARED_SLOTS
     spill_register #(
       .T(tcdm_master_req_t)
     ) i_tcdm_master_req_register (
@@ -639,6 +647,7 @@ module mempool_tile
       .valid_o(tcdm_master_req_valid_o[h]     ),
       .ready_i(tcdm_master_req_ready_i[h]     )
     );
+`endif
 
     fall_through_register #(
       .T(tcdm_master_resp_t)
@@ -694,9 +703,16 @@ module mempool_tile
   tcdm_master_req_t  [NumCoresPerTile-1:0] remote_req_interco;
   logic              [NumCoresPerTile-1:0] remote_req_interco_valid;
   logic              [NumCoresPerTile-1:0] remote_req_interco_ready;
+  tcdm_master_req_t  [NumCoresPerTile-1:0] remote_req_mem;
+  logic              [NumCoresPerTile-1:0] remote_req_mem_valid;
+  logic              [NumCoresPerTile-1:0] remote_req_mem_ready;
   tcdm_master_resp_t [NumCoresPerTile-1:0] remote_resp_interco;
   logic              [NumCoresPerTile-1:0] remote_resp_interco_valid;
   logic              [NumCoresPerTile-1:0] remote_resp_interco_ready;
+
+  assign remote_req_mem = remote_req_interco;
+  assign remote_req_mem_valid = remote_req_interco_valid;
+  assign remote_req_interco_ready = remote_req_mem_ready;
 
   `ifdef TERAPOOL
     tile_remote_sel_t  [NumCoresPerTile-1:0] remote_req_interco_tgt_sel;
@@ -707,6 +723,74 @@ module mempool_tile
     group_id_t         [NumCoresPerTile-1:0] remote_req_interco_tgt_g_sel;
   `endif
 
+`ifdef REMOTE_REQ_SHARED_SLOTS
+  remote_req_slot_t [NumGroups+NumSubGroupsPerGroup-1-1:0] remote_req_slot_data_i;
+  remote_req_slot_t [NumGroups+NumSubGroupsPerGroup-1-1:0] remote_req_slot_data_o;
+  logic             [NumGroups+NumSubGroupsPerGroup-1-1:0] remote_req_slot_valid_i;
+  logic             [NumGroups+NumSubGroupsPerGroup-1-1:0] remote_req_slot_valid_o;
+  logic             [NumGroups+NumSubGroupsPerGroup-1-1:0] remote_req_slot_ready_i;
+  logic             [NumGroups+NumSubGroupsPerGroup-1-1:0] remote_req_slot_ready_o;
+  logic             [NumGroups+NumSubGroupsPerGroup-1-1:0] remote_req_slot_claimed;
+
+  for (genvar s = 0; unsigned'(s) < NumGroups+NumSubGroupsPerGroup-1; s++) begin: gen_remote_req_shared_slots
+    spill_register #(
+      .T(remote_req_slot_t)
+    ) i_remote_req_shared_slot (
+      .clk_i  (clk_i                     ),
+      .rst_ni (rst_ni                    ),
+      .data_i (remote_req_slot_data_i[s] ),
+      .valid_i(remote_req_slot_valid_i[s]),
+      .ready_o(remote_req_slot_ready_o[s]),
+      .data_o (remote_req_slot_data_o[s] ),
+      .valid_o(remote_req_slot_valid_o[s]),
+      .ready_i(remote_req_slot_ready_i[s])
+    );
+  end
+
+  always_comb begin : proc_remote_req_shared_slot_alloc
+    remote_req_mem_ready     = '0;
+    remote_req_slot_data_i   = '0;
+    remote_req_slot_valid_i  = '0;
+    remote_req_slot_claimed  = '0;
+
+    for (int c = 0; c < NumCoresPerTile; c++) begin
+      for (int s = 0; s < NumGroups+NumSubGroupsPerGroup-1; s++) begin
+        if (!remote_req_mem_ready[c] &&
+            remote_req_mem_valid[c] &&
+            remote_req_slot_ready_o[s] &&
+            !remote_req_slot_claimed[s]) begin
+          remote_req_mem_ready[c] = 1'b1;
+          remote_req_slot_valid_i[s] = 1'b1;
+          remote_req_slot_data_i[s].req = remote_req_mem[c];
+          remote_req_slot_data_i[s].sel = remote_req_route_sel_t'(remote_req_interco_tgt_sel[c]);
+          remote_req_slot_claimed[s] = 1'b1;
+        end
+      end
+    end
+  end
+
+  always_comb begin : proc_remote_req_shared_slot_route
+    prereg_tcdm_master_req       = '0;
+    prereg_tcdm_master_req_valid = '0;
+    prereg_tcdm_master_req_ready = tcdm_master_req_ready_i;
+    remote_req_slot_ready_i      = '0;
+
+    for (int h = 0; h < NumGroups+NumSubGroupsPerGroup-1; h++) begin
+      for (int s = 0; s < NumGroups+NumSubGroupsPerGroup-1; s++) begin
+        if (!prereg_tcdm_master_req_valid[h] &&
+            remote_req_slot_valid_o[s] &&
+            remote_req_slot_data_o[s].sel == remote_req_route_sel_t'(h)) begin
+          prereg_tcdm_master_req[h] = remote_req_slot_data_o[s].req;
+          prereg_tcdm_master_req_valid[h] = 1'b1;
+          remote_req_slot_ready_i[s] = tcdm_master_req_ready_i[h];
+        end
+      end
+    end
+  end
+
+  assign tcdm_master_req_o       = prereg_tcdm_master_req;
+  assign tcdm_master_req_valid_o = prereg_tcdm_master_req_valid;
+`else
   stream_xbar #(
     .NumInp   (NumCoresPerTile                 ),
     .NumOut   (NumGroups+NumSubGroupsPerGroup-1),
@@ -718,9 +802,9 @@ module mempool_tile
     // External priority flag
     .rr_i   ('0                          ),
     // Master
-    .data_i (remote_req_interco          ),
-    .valid_i(remote_req_interco_valid    ),
-    .ready_o(remote_req_interco_ready    ),
+    .data_i (remote_req_mem              ),
+    .valid_i(remote_req_mem_valid        ),
+    .ready_o(remote_req_mem_ready        ),
     .sel_i  (remote_req_interco_tgt_sel  ),
     // Slave
     .data_o (prereg_tcdm_master_req      ),
@@ -728,6 +812,7 @@ module mempool_tile
     .ready_i(prereg_tcdm_master_req_ready),
     .idx_o  (/* Unused */                )
   );
+`endif
 
   stream_xbar #(
     .NumInp   (NumGroups+NumSubGroupsPerGroup-1),
