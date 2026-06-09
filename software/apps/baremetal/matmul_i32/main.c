@@ -41,7 +41,7 @@
 #if !defined(MATMUL_I32_KERNEL_4X4_ASM) && \
   !defined(MATMUL_I32_KERNEL_4X4_CONFLICT_OPT_ASM) && \
   !defined(MATMUL_I32_KERNEL_4X4_DAS_THESIS_ASM)
-#error "DAS-enabled matmul_i32 only supports 4x4_asm, 4x4_conflict_opt_asm, and 4x4_das_thesis_asm."
+#error "DAS-enabled matmul_i32 only supports DAS-aware ASM kernels."
 #endif
 
 #define NUM_TILES (NUM_CORES / NUM_CORES_PER_TILE)

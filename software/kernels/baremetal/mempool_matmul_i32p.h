@@ -482,16 +482,6 @@ void mat_mul_unrolled_4x4_parallel(int32_t const *__restrict__ A,
   }
 }
 
-// Default benchmark normalization:
-// - MemPool  -> 4 tile cores, 256-bank group domain
-// - TeraPool -> 8 tile cores, 256-bank subgroup domain
-#ifdef TERAPOOL
-#define MATMUL_4X4_CONFLICT_TILE_CORE_COUNT 8u
-#else
-#define MATMUL_4X4_CONFLICT_TILE_CORE_COUNT 4u
-#endif
-#define MATMUL_4X4_CONFLICT_BANK_COUNT 256u
-
 void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
                                                 int32_t const *__restrict__ B,
                                                 int32_t *__restrict__ C,
@@ -511,8 +501,12 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
   uint32_t const c_start = (P / c) * (id % c);
   uint32_t const c_end = (P / c) * ((id % c) + 1);
 
-  uint32_t jump_lines_A = MATMUL_4X4_CONFLICT_BANK_COUNT / N; // Used for i control
-  uint32_t jump_lines_B = MATMUL_4X4_CONFLICT_BANK_COUNT / P; // Used for k control
+  // For avoiding group conflict by same tile
+  // Each cores in the same tile should access to different groups
+  uint32_t group_bank_nums = 512;              // MemPool = 256
+  uint32_t tile_core_nums = 8;                 // MemPool = 4
+  uint32_t jump_lines_A = group_bank_nums / N; // Used for i control
+  uint32_t jump_lines_B = group_bank_nums / P; // Used for k control
   // Window size limit, min jump lines is 4 for MatrixA
   if (jump_lines_A < 4) {
     jump_lines_A = 4;
@@ -522,16 +516,14 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
   //      LOOP   OFFSET      //
   /////////////////////////////
   // Outer Loop Control, for group access port conflict
-  uint32_t i_offset = jump_lines_A * (id % MATMUL_4X4_CONFLICT_TILE_CORE_COUNT);
+  uint32_t i_offset = jump_lines_A * (id % tile_core_nums);
   // Inner Loop Incremental Control, for group access port conflict
-  uint32_t k_offset_incr = jump_lines_B * (id % MATMUL_4X4_CONFLICT_TILE_CORE_COUNT);
+  uint32_t k_offset_incr = jump_lines_B * (id % tile_core_nums);
   // Inner Loop Control
   // k_offset = (Core offset) + (Window offset) + (Group offset from MatrixB)
   uint32_t k_offset = (id % c) + (2 * (id / c)) + k_offset_incr;
   // Middle Loop Control, window jump for avoiding bank conflict
-  uint32_t conflict_row =
-      (MATMUL_4X4_CONFLICT_BANK_COUNT * MATMUL_4X4_CONFLICT_TILE_CORE_COUNT) /
-      P;
+  uint32_t conflict_row = (group_bank_nums * tile_core_nums) / P;
   uint32_t j_offset = (2 * (id / c)) / conflict_row;
 
   /////////////////////////////
@@ -659,6 +651,9 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
 #define P3 (matrix_P - 3) * 4
 #define P31 (-3 * matrix_N + 1) * 4
 
+#ifndef NUM_CORES
+#define NUM_CORES 256u
+#endif
 #ifndef NUM_CORES_PER_TILE
 #define NUM_CORES_PER_TILE 4u
 #endif
@@ -670,6 +665,34 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel(int32_t const *__restrict__ A,
 #endif
 #ifndef NUM_BANKS_PER_TILE
 #define NUM_BANKS_PER_TILE (NUM_CORES_PER_TILE * BANKING_FACTOR)
+#endif
+// K-phase bank domain for the thesis DAS schedule: MemPool group domain and
+// TeraPool subgroup domain are both 256 banks in the default configurations.
+#ifndef MATMUL_4X4_DAS_PHASE_BANK_DOMAIN
+#define MATMUL_4X4_DAS_PHASE_BANK_DOMAIN 256u
+#endif
+#ifndef MATMUL_4X4_DAS_PHASE_STEP
+#define MATMUL_4X4_DAS_PHASE_STEP \
+  ((MATMUL_4X4_DAS_PHASE_BANK_DOMAIN / matrix_P) != 0u \
+       ? (MATMUL_4X4_DAS_PHASE_BANK_DOMAIN / matrix_P) \
+       : 1u)
+#endif
+#define MATMUL_4X4_DAS_MAX_BLOCKS \
+  ((matrix_M / MATMUL_4X4_ROWS) * (matrix_P / MATMUL_4X4_COLS))
+#define MATMUL_4X4_DAS_ACTIVE_CORES \
+  ((NUM_CORES < MATMUL_4X4_DAS_MAX_BLOCKS) ? NUM_CORES \
+                                           : MATMUL_4X4_DAS_MAX_BLOCKS)
+#define MATMUL_4X4_DAS_RAW_WORKERS_PER_ROWBLOCK \
+  (MATMUL_4X4_DAS_ACTIVE_CORES / (matrix_M / MATMUL_4X4_ROWS))
+#define MATMUL_4X4_DAS_WORKERS_PER_ROWBLOCK \
+  (MATMUL_4X4_DAS_RAW_WORKERS_PER_ROWBLOCK != 0u \
+       ? MATMUL_4X4_DAS_RAW_WORKERS_PER_ROWBLOCK \
+       : 1u)
+#ifndef MATMUL_4X4_DAS_PHASE_PERIOD
+#define MATMUL_4X4_DAS_PHASE_PERIOD \
+  ((MATMUL_4X4_DAS_WORKERS_PER_ROWBLOCK < matrix_N) \
+       ? MATMUL_4X4_DAS_WORKERS_PER_ROWBLOCK \
+       : matrix_N)
 #endif
 
 void mat_mul_unrolled_4x4_parallel_asm(int32_t const *__restrict__ A,
@@ -811,8 +834,20 @@ void mat_mul_unrolled_4x4_parallel_asm(int32_t const *__restrict__ A,
 /* MemPool 128x64x128 IPC:            */
 /* total_ipc = 0.9224                 */
 /**************************************/
-// Starts the K loop at a core-dependent offset and rewinds A with the
-// configured N stride instead of assuming a fixed matrix shape.
+/*
+ * DAS 4x4 ASM thesis specialization.
+ *
+ * Assumes matmul_i32 DAS placement (A/C local, B fully interleaved) and 4x4
+ * blocking. The K-start phase is derived from topology and work partitioning:
+ *
+ *   source_core    = id % NUM_CORES_PER_TILE
+ *   k_phase_step   = max(1, 256 / matrix_P)
+ *   k_phase_period = min(active_cores / (matrix_M / 4), matrix_N)
+ *   k_offset       = (rowblock + k_phase_step * source_core) % k_phase_period
+ *
+ * The hot ASM still uses compile-time matrix_N/matrix_P stride immediates, so
+ * changing dimensions requires regenerating data and rebuilding the binary.
+ */
 void mat_mul_unrolled_4x4_das_thesis_parallel_asm(
     int32_t const *__restrict__ A, int32_t const *__restrict__ B,
     int32_t *__restrict__ C, uint32_t M, uint32_t N, uint32_t P, uint32_t id,
@@ -824,8 +859,11 @@ void mat_mul_unrolled_4x4_das_thesis_parallel_asm(
   uint32_t const c_start = (P / c) * (id % c);
   uint32_t const c_end = (P / c) * ((id % c) + 1);
   uint32_t const rowblock = id / c;
-  uint32_t const source_core = id % 4u;
-  uint32_t const k_offset = (rowblock + 2u * source_core) % 8u;
+  uint32_t const source_core = id % NUM_CORES_PER_TILE;
+  uint32_t const k_phase_step = MATMUL_4X4_DAS_PHASE_STEP;
+  uint32_t const k_phase_period = MATMUL_4X4_DAS_PHASE_PERIOD;
+  uint32_t const k_offset =
+      (rowblock + k_phase_step * source_core) % k_phase_period;
   int32_t const NP_bytes_r = matrix_N * matrix_P * 4;
   for (uint32_t i = MATMUL_4X4_ROWS * (id / c); i < M;
        i += MATMUL_4X4_ROWS * (numThreads / c)) {
@@ -997,8 +1035,12 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
   uint32_t const c_start = (P / c) * (id % c);
   uint32_t const c_end = (P / c) * ((id % c) + 1);
 
-  uint32_t jump_lines_A = MATMUL_4X4_CONFLICT_BANK_COUNT / N; // Used for i control
-  uint32_t jump_lines_B = MATMUL_4X4_CONFLICT_BANK_COUNT / P; // Used for k control
+  // For avoiding group conflict by same tile
+  // Each cores in the same tile should access to different groups
+  uint32_t group_bank_nums = 512;              // MemPool = 256
+  uint32_t tile_core_nums = 8;                 // MemPool = 4
+  uint32_t jump_lines_A = group_bank_nums / N; // Used for i control
+  uint32_t jump_lines_B = group_bank_nums / P; // Used for k control
   // Window size limit, min jump lines is 4 for MatrixA
   if (jump_lines_A < 4) {
     jump_lines_A = 4;
@@ -1008,16 +1050,14 @@ void mat_mul_unrolled_4x4_conflict_opt_parallel_asm(
   //      LOOP   OFFSET      //
   /////////////////////////////
   // Outer Loop Control, for group access port conflict
-  uint32_t i_offset = jump_lines_A * (id % MATMUL_4X4_CONFLICT_TILE_CORE_COUNT);
+  uint32_t i_offset = jump_lines_A * (id % tile_core_nums);
   // Inner Loop Incremental Control, for group access port conflict
-  uint32_t k_offset_incr = jump_lines_B * (id % MATMUL_4X4_CONFLICT_TILE_CORE_COUNT);
+  uint32_t k_offset_incr = jump_lines_B * (id % tile_core_nums);
   // Inner Loop Control
   // k_offset = (Core offset) + (Window offset) + (Group offset from MatrixB)
   uint32_t k_offset = (id % c) + (2 * (id / c)) + k_offset_incr;
   // Middle Loop Control, window jump for avoiding bank conflict
-  uint32_t conflict_row =
-      (MATMUL_4X4_CONFLICT_BANK_COUNT * MATMUL_4X4_CONFLICT_TILE_CORE_COUNT) /
-      P;
+  uint32_t conflict_row = (group_bank_nums * tile_core_nums) / P;
   uint32_t j_offset = (2 * (id / c)) / conflict_row;
 
   /////////////////////////////

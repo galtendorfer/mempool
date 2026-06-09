@@ -59,15 +59,21 @@ $(error kernel=4x4_conflict_opt_asm requires xpulpimg=1)
 		ifneq ($(XPULPIMG),1)
 $(error kernel=4x4_das_thesis_asm requires xpulpimg=1)
 		endif
+	else ifeq ($(kernel),4x4_das_thesis_phase1_asm)
+		DEFINES += -DMATMUL_I32_KERNEL_4X4_DAS_THESIS_ASM
+		DEFINES += -DMATMUL_4X4_DAS_PHASE_STEP=1u
+		ifneq ($(XPULPIMG),1)
+$(error kernel=4x4_das_thesis_phase1_asm requires xpulpimg=1)
+		endif
 	else ifneq ($(strip $(kernel)),)
-$(error Unsupported kernel=$(kernel) for the matmul_i32 family. Supported values: 2x2_xpulpv2 2x2_rv32im 4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm 4x4_das_thesis_asm)
+$(error Unsupported kernel=$(kernel) for the matmul_i32 family. Supported values: 2x2_xpulpv2 2x2_rv32im 4x4 4x4_conflict_opt 4x4_asm 4x4_conflict_opt_asm 4x4_das_thesis_asm 4x4_das_thesis_phase1_asm)
 	endif
 endif
 
 ifneq ($(filter matmul_i32,$(MAKECMDGOALS)),)
 ifeq ($(das),1)
-ifneq ($(filter 4x4_asm 4x4_conflict_opt_asm 4x4_das_thesis_asm,$(kernel)),$(kernel))
-$(error DAS-enabled matmul_i32 only supports kernel=4x4_asm, kernel=4x4_conflict_opt_asm, or kernel=4x4_das_thesis_asm)
+ifneq ($(filter 4x4_asm 4x4_conflict_opt_asm 4x4_das_thesis_asm 4x4_das_thesis_phase1_asm,$(kernel)),$(kernel))
+$(error DAS-enabled matmul_i32 only supports DAS-aware ASM kernels)
 endif
 endif
 endif
