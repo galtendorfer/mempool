@@ -250,8 +250,10 @@ module idma_split_midend #(
             burst_req_o = burst_req_i;
             // Calculate the size for the 1st burst
             burst_req_o.num_bytes = PartitionDmaRegionWidth-start_row_offset;
-            // TODO (bowwang): parameterize
-            req_d.num_bytes = (tiles_das_sel <= NumTilesPerDma) ? (rows_das_sel*DmaBackendWidth) : (rows_das_sel*PartitionDmaRegionWidth);
+            // Keep the original logical byte count for split-state tracking.
+            // The Busy state subtracts emitted bytes from this value; replacing
+            // it with a DAS traversal span can make longer transfers complete
+            // early and emit a zero-sized split.
             if (spm2dram) begin
               burst_req_o.src = post_scramble_src;
               req_d.src       = post_scramble_src;
