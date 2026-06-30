@@ -44,8 +44,7 @@ int main() {
   mempool_barrier(num_cores);
 
   // Compute
-  redmule_synch_single(l1_X, l1_Y, l1_W,
-                       matrix_M, matrix_N, matrix_P, GEMM, 0);
+  redmule_synch_single(l1_X, l1_W, l1_Y, matrix_M, matrix_N, matrix_P, GEMM, 0);
 
 #endif
 
