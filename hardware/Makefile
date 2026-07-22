@@ -120,6 +120,11 @@ vlog_defs   += -DL1_BANK_SIZE=$(l1_bank_size)
 vlog_defs   += -DBOOT_ADDR=32\'d$(boot_addr)
 vlog_defs   += -DDAS=$(das)
 vlog_defs   += -DNUM_DAS_PARTITIONS=$(num_das_partitions)
+ifeq ($(config),mempool)
+ifeq ($(back2local),1)
+vlog_defs   += -DBACK2LOCAL
+endif
+endif
 # Snitch ISA
 vlog_defs   += -DXPULPIMG=$(xpulpimg)
 vlog_defs   += -DZFINX=$(zfinx)
