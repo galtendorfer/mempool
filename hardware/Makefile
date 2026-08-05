@@ -127,9 +127,12 @@ vlog_defs   += -DNUM_DAS_PARTITIONS=$(num_das_partitions)
 ifeq ($(das),1)
 vlog_defs   += -DDAS_MEM_SIZE=$(das_mem_size)
 endif
-ifeq ($(config),mempool)
 ifeq ($(back2local),1)
 vlog_defs   += -DBACK2LOCAL
+ifeq ($(config),terapool)
+ifeq ($(back2local_tera_group),1)
+vlog_defs   += -DBACK2LOCAL_TERA_GROUP
+endif
 endif
 endif
 # Snitch ISA

@@ -266,12 +266,14 @@ module mempool_group
     dma_meta_t [NumDmasPerGroup-1:0] dma_meta;
 
     // Connect the IOs to the SubGroups' signals
+  `ifndef BACK2LOCAL_TERA_GROUP
     assign tcdm_master_resp[NumGroups-1:1]         = tcdm_master_resp_i[NumGroups-1:1];
     assign tcdm_master_resp_valid[NumGroups-1:1]   = tcdm_master_resp_valid_i[NumGroups-1:1];
     assign tcdm_master_resp_ready_o[NumGroups-1:1] = tcdm_master_resp_ready[NumGroups-1:1];
     assign tcdm_slave_req[NumGroups-1:1]           = tcdm_slave_req_i[NumGroups-1:1];
     assign tcdm_slave_req_valid[NumGroups-1:1]     = tcdm_slave_req_valid_i[NumGroups-1:1];
     assign tcdm_slave_req_ready_o[NumGroups-1:1]   = tcdm_slave_req_ready[NumGroups-1:1];
+  `endif
 
     // AXI interfaces
     axi_tile_req_t   [NumAXIMastersPerGroup-1:0] axi_mst_req;
@@ -467,6 +469,113 @@ module mempool_group
       tile_group_id_t [(NumSubGroupsPerGroup * NumTilesPerSubGroup)-1:0] slave_remote_resp_ini_addr;
       tcdm_payload_t  [(NumSubGroupsPerGroup * NumTilesPerSubGroup)-1:0] slave_remote_resp_rdata;
 
+    `ifdef BACK2LOCAL_TERA_GROUP
+      // Back2Local paths from the demuxes to the arbiters before the subgroup ports.
+      logic [NumTilesPerGroup-1:0] slave_back2local_req_valid;
+      logic [NumTilesPerGroup-1:0] slave_back2local_req_ready;
+      logic [NumTilesPerGroup-1:0] master_back2local_resp_valid;
+      logic [NumTilesPerGroup-1:0] master_back2local_resp_ready;
+
+      // Remote interconnect outputs to the demuxes.
+      logic [NumTilesPerGroup-1:0] slave_demux_req_valid;
+      logic [NumTilesPerGroup-1:0] slave_demux_req_ready;
+      logic [NumTilesPerGroup-1:0] master_demux_resp_valid;
+      logic [NumTilesPerGroup-1:0] master_demux_resp_ready;
+
+      for (genvar sg = 0; sg < NumSubGroupsPerGroup; sg++) begin: gen_back2local_sg
+        for (genvar t = 0; t < NumTilesPerSubGroup; t++) begin: gen_back2local_t
+          localparam int unsigned tile_idx = sg * NumTilesPerSubGroup + t;
+
+          logic [1:0] slave_split_req_valid;
+          logic [1:0] slave_split_req_ready;
+          logic [1:0] master_split_resp_valid;
+          logic [1:0] master_split_resp_ready;
+
+          // Arbiter input 0 is incoming remote; input 1 is Back2Local.
+          logic [1:0] slave_arb_req_valid;
+          logic [1:0] slave_arb_req_ready;
+          tcdm_slave_req_t [1:0] slave_arb_req;
+          logic [1:0] master_arb_resp_valid;
+          logic [1:0] master_arb_resp_ready;
+          tcdm_master_resp_t [1:0] master_arb_resp;
+
+          stream_demux #(
+            .N_OUP(2)
+          ) i_req_demux (
+            .inp_valid_i(slave_demux_req_valid[tile_idx]             ),
+            .inp_ready_o(slave_demux_req_ready[tile_idx]             ),
+            .oup_sel_i  (slave_remote_req_wdata[tile_idx].back2local ),
+            .oup_valid_o(slave_split_req_valid                       ),
+            .oup_ready_i(slave_split_req_ready                       )
+          );
+
+          assign slave_remote_req_valid[tile_idx]     = slave_split_req_valid[0];
+          assign slave_split_req_ready[0]             = slave_remote_req_ready[tile_idx];
+          assign slave_back2local_req_valid[tile_idx] = slave_split_req_valid[1];
+          assign slave_split_req_ready[1]             = slave_back2local_req_ready[tile_idx];
+
+          stream_demux #(
+            .N_OUP(2)
+          ) i_resp_demux (
+            .inp_valid_i(master_demux_resp_valid[tile_idx]             ),
+            .inp_ready_o(master_demux_resp_ready[tile_idx]             ),
+            .oup_sel_i  (master_remote_resp_rdata[tile_idx].back2local ),
+            .oup_valid_o(master_split_resp_valid                       ),
+            .oup_ready_i(master_split_resp_ready                       )
+          );
+
+          assign master_remote_resp_valid[tile_idx]     = master_split_resp_valid[0];
+          assign master_split_resp_ready[0]             = master_remote_resp_ready[tile_idx];
+          assign master_back2local_resp_valid[tile_idx] = master_split_resp_valid[1];
+          assign master_split_resp_ready[1]             = master_back2local_resp_ready[tile_idx];
+
+          assign slave_arb_req[0]                      = tcdm_slave_req_i[r][sg][t];
+          assign slave_arb_req_valid[0]                = tcdm_slave_req_valid_i[r][sg][t];
+          assign tcdm_slave_req_ready_o[r][sg][t]      = slave_arb_req_ready[0];
+          assign slave_arb_req[1]                      = tcdm_master_req_s[r][sg][t];
+          assign slave_arb_req_valid[1]                = slave_back2local_req_valid[tile_idx];
+          assign slave_back2local_req_ready[tile_idx]  = slave_arb_req_ready[1];
+
+          stream_arbiter #(
+            .DATA_T (tcdm_slave_req_t),
+            .N_INP  (2               ),
+            .ARBITER("rr"            )
+          ) i_req_arbiter (
+            .clk_i      (clk_i                          ),
+            .rst_ni     (rst_ni                         ),
+            .inp_data_i (slave_arb_req                  ),
+            .inp_valid_i(slave_arb_req_valid            ),
+            .inp_ready_o(slave_arb_req_ready            ),
+            .oup_data_o (tcdm_slave_req[r][sg][t]       ),
+            .oup_valid_o(tcdm_slave_req_valid[r][sg][t] ),
+            .oup_ready_i(tcdm_slave_req_ready[r][sg][t] )
+          );
+
+          assign master_arb_resp[0]                       = tcdm_master_resp_i[r][sg][t];
+          assign master_arb_resp_valid[0]                 = tcdm_master_resp_valid_i[r][sg][t];
+          assign tcdm_master_resp_ready_o[r][sg][t]       = master_arb_resp_ready[0];
+          assign master_arb_resp[1]                       = tcdm_slave_resp_s[r][sg][t];
+          assign master_arb_resp_valid[1]                 = master_back2local_resp_valid[tile_idx];
+          assign master_back2local_resp_ready[tile_idx]   = master_arb_resp_ready[1];
+
+          stream_arbiter #(
+            .DATA_T (tcdm_master_resp_t),
+            .N_INP  (2                  ),
+            .ARBITER("rr"               )
+          ) i_resp_arbiter (
+            .clk_i      (clk_i                            ),
+            .rst_ni     (rst_ni                           ),
+            .inp_data_i (master_arb_resp                  ),
+            .inp_valid_i(master_arb_resp_valid            ),
+            .inp_ready_o(master_arb_resp_ready            ),
+            .oup_data_o (tcdm_master_resp[r][sg][t]       ),
+            .oup_valid_o(tcdm_master_resp_valid[r][sg][t] ),
+            .oup_ready_i(tcdm_master_resp_ready[r][sg][t] )
+          );
+        end: gen_back2local_t
+      end: gen_back2local_sg
+    `endif
+
       for (genvar sg = 0; sg < NumSubGroupsPerGroup; sg++) begin: gen_remote_connections_sg
         for (genvar t = 0; t < NumTilesPerSubGroup; t++) begin: gen_remote_connections_t
           assign master_remote_req_valid[(sg * NumTilesPerSubGroup) + t]    = tcdm_master_req_valid[r][sg][t];
@@ -514,15 +623,25 @@ module mempool_group
         .req_wen_i      (master_remote_req_wen     ),
         .req_wdata_i    (master_remote_req_wdata   ),
         .req_be_i       (master_remote_req_be      ),
+      `ifdef BACK2LOCAL_TERA_GROUP
+        .resp_valid_o   (master_demux_resp_valid  ),
+        .resp_ready_i   (master_demux_resp_ready  ),
+      `else
         .resp_valid_o   (master_remote_resp_valid  ),
         .resp_ready_i   (master_remote_resp_ready  ),
+      `endif
         .resp_rdata_o   (master_remote_resp_rdata  ),
         .resp_ini_addr_i(slave_remote_resp_ini_addr),
         .resp_rdata_i   (slave_remote_resp_rdata   ),
         .resp_valid_i   (slave_remote_resp_valid   ),
         .resp_ready_o   (slave_remote_resp_ready   ),
+      `ifdef BACK2LOCAL_TERA_GROUP
+        .req_valid_o    (slave_demux_req_valid     ),
+        .req_ready_i    (slave_demux_req_ready     ),
+      `else
         .req_valid_o    (slave_remote_req_valid    ),
         .req_ready_i    (slave_remote_req_ready    ),
+      `endif
         .req_be_o       (slave_remote_req_be       ),
         .req_wdata_o    (slave_remote_req_wdata    ),
         .req_wen_o      (slave_remote_req_wen      ),

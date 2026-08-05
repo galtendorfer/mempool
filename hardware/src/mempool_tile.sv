@@ -819,6 +819,19 @@ module mempool_tile
 
   for (genvar c = 0; c < NumCoresPerTile; c++) begin: gen_core_mux
     `ifdef TERAPOOL
+    `ifdef BACK2LOCAL
+      logic subgroup_back2local;
+
+      // Distribute same-subgroup requests over the enabled tile ports.
+    `ifdef BACK2LOCAL_TERA_GROUP
+      localparam tile_remote_sel_t Back2LocalPort =
+          tile_remote_sel_t'(c % (NumGroups + NumSubGroupsPerGroup - 1));
+    `else
+      localparam tile_remote_sel_t Back2LocalPort =
+          tile_remote_sel_t'(c % NumSubGroupsPerGroup);
+    `endif
+    `endif
+
       // Remove tile index from local_req_interco_addr_int, since it will not be used for routing.
       addr_t local_req_interco_addr_int;
       assign local_req_interco_payload[c].tgt_addr =
@@ -833,7 +846,11 @@ module mempool_tile
            prescramble_tcdm_req_tgt_addr[ByteOffset +: idx_width(NumBanksPerTile)]}); // Tile
       end else begin : gen_remote_req_interco_tgt_addr
         always_comb begin
+        `ifdef BACK2LOCAL_TERA_GROUP
+          if (remote_req_interco_tgt_sel[c] < tile_remote_sel_t'(NumSubGroupsPerGroup)) begin
+        `else
           if (remote_req_interco_tgt_g_sel_tmp[c] == 'b0) begin
+        `endif
             remote_req_interco[c].tgt_addr =
             tcdm_addr_t'({prescramble_tcdm_req_tgt_addr[ByteOffset + idx_width(NumBanksPerTile) + $clog2(NumTilesPerGroup) + $clog2(NumGroups) +: TCDMAddrMemWidth], // Bank address
             prescramble_tcdm_req_tgt_addr[ByteOffset +: idx_width(NumBanksPerTile)], // Bank
@@ -851,22 +868,48 @@ module mempool_tile
       if (NumGroups == 1) begin : gen_remote_req_interco_tgt_sel
         if (NumSubGroupsPerGroup == 1) begin : gen_const_sel
           assign remote_req_interco_tgt_sel[c] = 1'b0;
+        `ifdef BACK2LOCAL
+          assign subgroup_back2local = 1'b0;
+        `endif
         end else begin : gen_const_sel
+        `ifdef BACK2LOCAL
+          assign remote_req_interco_tgt_sg_sel_tmp[c] = (prescramble_tcdm_req_tgt_addr[ByteOffset + $clog2(NumBanksPerTile) + $clog2(NumTilesPerSubGroup) +: $clog2(NumSubGroupsPerGroup)]) ^ sub_group_id;
+          assign subgroup_back2local = (remote_req_interco_tgt_sg_sel_tmp[c] == '0);
+          always_comb begin
+            remote_req_interco_tgt_sel[c] = remote_req_interco_tgt_sg_sel_tmp[c];
+            if (subgroup_back2local) begin
+              remote_req_interco_tgt_sel[c] = Back2LocalPort;
+            end
+          end
+        `else
           assign remote_req_interco_tgt_sel[c] = (prescramble_tcdm_req_tgt_addr[ByteOffset + $clog2(NumBanksPerTile) + $clog2(NumTilesPerSubGroup) +: $clog2(NumSubGroupsPerGroup)]) ^ sub_group_id;
+        `endif
         end
       end else begin : gen_remote_req_interco_tgt_sel
         // Output port depends on both the target and initiator group and sub-group
         if (NumSubGroupsPerGroup == 1) begin : gen_remote_group_sel
           assign remote_req_interco_tgt_sel[c] = (prescramble_tcdm_req_tgt_addr[ByteOffset + $clog2(NumBanksPerTile) + $clog2(NumTilesPerGroup) +: $clog2(NumGroups)]) ^ group_id;
+        `ifdef BACK2LOCAL
+          assign subgroup_back2local = 1'b0;
+        `endif
         end else begin : gen_remote_group_sel
           assign remote_req_interco_tgt_g_sel_tmp[c]  = (prescramble_tcdm_req_tgt_addr[ByteOffset + $clog2(NumBanksPerTile) + $clog2(NumTilesPerGroup) +: $clog2(NumGroups)]) ^ group_id;
           assign remote_req_interco_tgt_sg_sel_tmp[c] = (prescramble_tcdm_req_tgt_addr[ByteOffset + $clog2(NumBanksPerTile) + $clog2(NumTilesPerSubGroup) +: $clog2(NumSubGroupsPerGroup)]) ^ sub_group_id;
+        `ifdef BACK2LOCAL
+          assign subgroup_back2local = (remote_req_interco_tgt_g_sel_tmp[c] == '0) &&
+                                       (remote_req_interco_tgt_sg_sel_tmp[c] == '0);
+        `endif
           always_comb begin : gen_remote_sub_group_sel
             if (remote_req_interco_tgt_g_sel_tmp[c] == 'b0) begin: gen_local_group_sel
               remote_req_interco_tgt_sel[c] = remote_req_interco_tgt_sg_sel_tmp[c];
             end else begin: gen_remote_group_sel
               remote_req_interco_tgt_sel[c] = remote_req_interco_tgt_g_sel_tmp[c] + {(idx_width(NumSubGroupsPerGroup)){1'b1}};
             end
+          `ifdef BACK2LOCAL
+            if (subgroup_back2local) begin
+              remote_req_interco_tgt_sel[c] = Back2LocalPort;
+            end
+          `endif
           end
         end
       end
@@ -912,7 +955,13 @@ module mempool_tile
     assign remote_req_interco[c].wdata.core_id = c[idx_width(NumCoresPerTile)-1:0];
 
   `ifdef BACK2LOCAL
+    `ifdef TERAPOOL
+    // Mark same-subgroup requests. Borrowed-port boundaries use this bit
+    // to loop them back; the normal port ignores it.
+    assign remote_req_interco[c].wdata.back2local = subgroup_back2local;
+    `else
     assign remote_req_interco[c].wdata.back2local = (remote_req_interco_tgt_g_sel[c] == '0);
+    `endif
     assign local_req_interco_payload[c].wdata.back2local = 1'b0;
   `endif
 
