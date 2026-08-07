@@ -16,7 +16,11 @@ gmon.out
 tags
 # Python
 **.idea
-venv
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+mempoolvenv/
 # Visual Studio Code
 .vscode
 *.code-workspace
