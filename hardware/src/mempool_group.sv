@@ -78,7 +78,7 @@ module mempool_group
   input  logic                              [NumDASPartitions-1:0][TileInterleavingWidth-1:0] tiles_das_i,
   input  logic                              [NumDASPartitions-1:0][AddrWidth-1:0]             start_das_i,
   input  logic                              [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das_i,
-  input  logic                              [RowsInterleavingWidth-1:0]                       dma_rows_das_i
+  input  logic                              [RowsInterleavingWidth:0]                         dma_rows_das_i
 `endif
 );
 
@@ -600,8 +600,8 @@ module mempool_group
       .DmaRegionEnd   (TCDMBaseAddr+TCDMSize                   ),
       .TransFifoDepth (16                                      ),
 `ifdef DAS
-      .NumTiles       (NumTiles                                ),
       .NumDASPartitions(NumDASPartitions                       ),
+      .RowsWidth      (RowsInterleavingWidth + 1                ),
 `endif
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
@@ -1051,8 +1051,8 @@ module mempool_group
       .DmaRegionEnd   (TCDMBaseAddr+TCDMSize                   ),
       .TransFifoDepth (16                                      ),
 `ifdef DAS
-      .NumTiles       (NumTiles                                ),
       .NumDASPartitions(NumDASPartitions                       ),
+      .RowsWidth      (RowsInterleavingWidth + 1                ),
 `endif
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
