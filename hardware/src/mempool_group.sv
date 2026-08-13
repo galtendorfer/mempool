@@ -72,6 +72,14 @@ module mempool_group
    // AXI Interface
   output `STRUCT_VECT(axi_tile_req_t,     [NumAXIMastersPerGroup-1:0])           axi_mst_req_o,
   input  `STRUCT_VECT(axi_tile_resp_t,    [NumAXIMastersPerGroup-1:0])           axi_mst_resp_i
+`ifdef DAS
+  ,
+  // DAS partition configuration
+  input  logic                              [NumDASPartitions-1:0][TileInterleavingWidth-1:0] tiles_das_i,
+  input  logic                              [NumDASPartitions-1:0][AddrWidth-1:0]             start_das_i,
+  input  logic                              [NumDASPartitions-1:0][RowsInterleavingWidth-1:0] rows_das_i,
+  input  logic                              [RowsInterleavingWidth-1:0]                       dma_rows_das_i
+`endif
 );
 
   /*****************
@@ -333,6 +341,11 @@ module mempool_group
           .axi_mst_resp_i          (axi_mst_resp[sg*NumAXIMastersPerSubGroup +: NumAXIMastersPerSubGroup] ),
           // RO-Cache configuration
           .ro_cache_ctrl_i         (ro_cache_ctrl_q                                                       ),
+`ifdef DAS
+          .tiles_das_i             (tiles_das_i                                                           ),
+          .start_das_i             (start_das_i                                                           ),
+          .rows_das_i              (rows_das_i                                                            ),
+`endif
           // Wake up interface
           .wake_up_i      (wake_up_q[sg*NumCoresPerSubGroup +: NumCoresPerSubGroup]                       )
         );
@@ -385,6 +398,11 @@ module mempool_group
           .axi_mst_resp_i          (axi_mst_resp[sg*NumAXIMastersPerSubGroup +: NumAXIMastersPerSubGroup] ),
           // RO-Cache configuration
           .ro_cache_ctrl_i         (ro_cache_ctrl_q                                                       ),
+`ifdef DAS
+          .tiles_das_i             (tiles_das_i                                                           ),
+          .start_das_i             (start_das_i                                                           ),
+          .rows_das_i              (rows_das_i                                                            ),
+`endif
           // Wake up interface
           .wake_up_i      (wake_up_q[sg*NumCoresPerSubGroup +: NumCoresPerSubGroup]                       )
         );
@@ -581,11 +599,18 @@ module mempool_group
       .DmaRegionStart (TCDMBaseAddr                            ),
       .DmaRegionEnd   (TCDMBaseAddr+TCDMSize                   ),
       .TransFifoDepth (16                                      ),
+`ifdef DAS
+      .NumTiles       (NumTiles                                ),
+      .NumDASPartitions(NumDASPartitions                       ),
+`endif
       .burst_req_t    (dma_req_t                               ),
       .meta_t         (dma_meta_t                              )
     ) i_idma_distributed_midend (
       .clk_i       (clk_i            ),
       .rst_ni      (rst_ni           ),
+`ifdef DAS
+      .rows_das_i  (dma_rows_das_i   ),
+`endif
       .burst_req_i (dma_req_cut      ),
       .valid_i     (dma_req_cut_valid),
       .ready_o     (dma_req_cut_ready),
@@ -699,6 +724,11 @@ module mempool_group
         // AXI interface
         .axi_mst_req_o           (axi_tile_req[t]                                ),
         .axi_mst_resp_i          (axi_tile_resp[t]                               ),
+`ifdef DAS
+        .tiles_das_i             (tiles_das_i                                    ),
+        .start_das_i             (start_das_i                                    ),
+        .rows_das_i              (rows_das_i                                     ),
+`endif
         // Wake up interface
         .wake_up_i               (wake_up_q[t*NumCoresPerTile+:NumCoresPerTile]  )
       );
@@ -1015,16 +1045,23 @@ module mempool_group
     dma_meta_t [NumDmasPerGroup-1:0] dma_meta;
 
     idma_distributed_midend #(
-      .NoMstPorts     (NumDmasPerGroup                   ),
-      .DmaRegionWidth (NumBanksPerGroup*4/NumDmasPerGroup),
-      .DmaRegionStart (TCDMBaseAddr                      ),
-      .DmaRegionEnd   (TCDMBaseAddr+TCDMSize             ),
-      .TransFifoDepth (16                                ),
-      .burst_req_t    (dma_req_t                         ),
-      .meta_t         (dma_meta_t                        )
+      .NoMstPorts     (NumDmasPerGroup                         ),
+      .DmaRegionWidth (NumBanksPerGroup*4/NumDmasPerGroup      ),
+      .DmaRegionStart (TCDMBaseAddr                            ),
+      .DmaRegionEnd   (TCDMBaseAddr+TCDMSize                   ),
+      .TransFifoDepth (16                                      ),
+`ifdef DAS
+      .NumTiles       (NumTiles                                ),
+      .NumDASPartitions(NumDASPartitions                       ),
+`endif
+      .burst_req_t    (dma_req_t                               ),
+      .meta_t         (dma_meta_t                              )
     ) i_idma_distributed_midend (
       .clk_i       (clk_i            ),
       .rst_ni      (rst_ni           ),
+`ifdef DAS
+      .rows_das_i  (dma_rows_das_i   ),
+`endif
       .burst_req_i (dma_req_cut      ),
       .valid_i     (dma_req_cut_valid),
       .ready_o     (dma_req_cut_ready),

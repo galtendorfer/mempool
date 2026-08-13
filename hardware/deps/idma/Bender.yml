@@ -15,6 +15,7 @@ sources:
   # levels 1 and 0, etc. Files within a level are ordered alphabetically.
   # Level 0
   - src/axi_dma_data_path.sv
+  - src/midends/idma_address_scrambler.sv
   # Level 1
   - src/axi_dma_data_mover.sv
   - src/axi_dma_burst_reshaper.sv

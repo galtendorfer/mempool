@@ -16,6 +16,9 @@ RUNTIME_DIR := $(abspath $(SOFTWARE_DIR)/runtime)
 include $(RUNTIME_DIR)/runtime.mk
 
 TESTS := $(patsubst $(TESTS_DIR)/%/main.c,%,$(shell find $(TESTS_DIR) -name "main.c"))
+ifndef das
+  TESTS := $(filter-out das_%,$(TESTS))
+endif
 BINARIES := $(addprefix $(BIN_DIR)/,$(TESTS))
 
 # Make all applications
@@ -28,6 +31,10 @@ $(BINARIES): $(BIN_DIR)/%: %/main.c.o $(RUNTIME) $(LINKER_SCRIPT) data_%.h updat
 	mkdir -p $(dir $@)
 	$(RISCV_CC) -Iinclude $(RISCV_LDFLAGS) -o $@ $< $(RUNTIME) -T$(RUNTIME_DIR)/link.ld
 	$(RISCV_OBJDUMP) $(RISCV_OBJDUMP_FLAGS) -D $@ > $@.dump
+
+# Headerless DAS tests do not require generated input data.
+data_das_%.h:
+	@:
 
 # Helper targets
 update_opcodes:
